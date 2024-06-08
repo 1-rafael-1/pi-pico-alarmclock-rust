@@ -1,0 +1,27 @@
+[template]
+cargo_generate_version = ">=0.9.0"
+include = ["Cargo.toml", ".vscode/launch.json"]
+ignore = [".git"]
+
+[hooks]
+pre = ["cargo-generate/pre-hook.rhai"]
+
+[placeholders.usb]
+type = "bool"
+prompt = "Enable USB logging?"
+default = false
+
+[placeholders.cyw43]
+type = "bool"
+prompt = "Enable wifi support for Pico-W?"
+default = false
+
+[placeholders.wiznet]
+type = "bool"
+prompt = "Enable wiznet ethernet support"
+default = false
+
+[placeholders.pio]
+type = "bool"
+prompt = "Include PIO crates?"
+default = false
