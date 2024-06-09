@@ -2,7 +2,7 @@
 edition = "2021"
 name = "pi-pico-alarmclock"
 version = "0.1.0"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 resolver = "2"
 
 

@@ -1,78 +1,54 @@
-// The format of this file is specified in https://probe.rs/docs/tools/vscode/#start-a-debug-session-with-minimum-configuration
 {
     "version": "0.2.0",
     "configurations": [
         {
-            "preLaunchTask": "rust: cargo build",
             "type": "probe-rs-debug",
             "request": "launch",
-            "name": "embassy-rp-starter launch",
+            "name": "probe_rs launch",
             "cwd": "${workspaceFolder}",
-            "chip": "rp2040",
-            // RP2040 doesn't support connectUnderReset
-            "connectUnderReset": false,
-            "speed": 4000,
             "runtimeExecutable": "probe-rs",
             "runtimeArgs": [
                 "dap-server"
             ],
+            "chip": "rp2040",
             "flashingConfig": {
                 "flashingEnabled": true,
-                "resetAfterFlashing": true,
-                "haltAfterReset": true,
+                "haltAfterReset": false,
+                "formatOptions": {
+                    //!MODIFY (or remove). Valid values are: 'bin', 'hex', 'elf'(default), 'idf'
+                    "binaryFormat": "elf"
+                }
             },
             "coreConfigs": [
                 {
                     "coreIndex": 0,
-                    "programBinary": "target/thumbv6m-none-eabi/debug/embassy-rp-starter",
-                    "chip": "RP2040",
-                    // Uncomment this if you've downloaded the SVD from
-                    // https://github.com/raspberrypi/pico-sdk/raw/1.5.1/src/rp2040/hardware_regs/rp2040.svd
-                    // and placed it in the .vscode directory
-                    // "svdFile": "./.vscode/rp2040.svd",
-                    "rttEnabled": true,
-                    "options": {
-                        "env": {
-                            "DEFMT_LOG": "debug"
-                        }
-                    },
+                    //!MODIFY
+                    "programBinary": "target\\thumbv6m-none-eabi\\debug\\pi-pico-alarmclock",
+                    //!MODIFY
+                    "svdFile": "Relative or fully qualified path to your programBinary"
                 }
             ],
-            "consoleLogLevel": "Info", //Error, Warn, Info, Debug, Trace
-            "wireProtocol": "Swd"
+            "env": {},
+            // Info, Debug
+            "consoleLogLevel": "Console"
         },
         {
             "type": "probe-rs-debug",
             "request": "attach",
-            "name": "embassy-rp-starter attach",
+            "name": "probe_rs attach",
             "cwd": "${workspaceFolder}",
             "chip": "rp2040",
-            // RP2040 doesn't support connectUnderReset
-            "connectUnderReset": false,
-            "speed": 4000,
-            "runtimeExecutable": "probe-rs",
-            "runtimeArgs": [
-                "dap-server"
-            ],
             "coreConfigs": [
                 {
                     "coreIndex": 0,
-                    "programBinary": "target/thumbv6m-none-eabi/debug/embassy-rp-starter",
-                    "chip": "RP2040",
-                    // Uncomment this if you've downloaded the SVD from
-                    // https://github.com/raspberrypi/pico-sdk/raw/1.5.1/src/rp2040/hardware_regs/rp2040.svd
-                    // and placed it in the .vscode directory
-                    // "svdFile": "./.vscode/rp2040.svd",
-                    "rttEnabled": true,
-                    "options": {
-                        "env": {
-                            "DEFMT_LOG": "debug"
-                        }
-                    },
+                    "programBinary": "target\\thumbv6m-none-eabi\\debug\\pi-pico-alarmclock",
+                    //!MODIFY
+                    "svdFile": "Relative or fully qualified path to your programBinary"
                 }
             ],
-            "consoleLogLevel": "Info", //Error, Warn, Info, Debug, Trace
-            "wireProtocol": "Swd"
+            "env": {},
+            // Info, Debug
+            "consoleLogLevel": "Console"
         }
     ]
 }
