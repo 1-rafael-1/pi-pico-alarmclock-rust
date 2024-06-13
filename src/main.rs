@@ -25,10 +25,25 @@ async fn main(spawner: Spawner) {
 
     // buttons
     // green_button
-    let green_button_input = Input::new(peripherals.PIN_20, gpio::Pull::Up); // initialize the green button on pin 20
+    let green_button_input = Input::new(peripherals.PIN_20, gpio::Pull::Up);
     spawner
         .spawn(classes::btn_mgr::green_button(spawner, green_button_input))
-        .unwrap(); // spawn the green_button task
+        .unwrap();
+
+    //blue_button
+    let blue_button_input = Input::new(peripherals.PIN_21, gpio::Pull::Up);
+    spawner
+        .spawn(classes::btn_mgr::blue_button(spawner, blue_button_input))
+        .unwrap();
+
+    //yellow_button
+    let yellow_button_input = Input::new(peripherals.PIN_22, gpio::Pull::Up);
+    spawner
+        .spawn(classes::btn_mgr::yellow_button(
+            spawner,
+            yellow_button_input,
+        ))
+        .unwrap();
 
     loop {
         info!("led on!");
