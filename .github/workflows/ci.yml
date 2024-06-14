@@ -11,12 +11,20 @@ env:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
+    - name: Set up Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+        components: rust-src # Ensure rust-src component is installed
+        target: thumbv6m-none-eabi
+    - name: Add Rust target
+      run: rustup target add thumbv6m-none-eabi
     - name: Build
-      run: cargo build --verbose
-    # - name: Run tests
-    #   run: cargo test --verbose
+      run: cargo build --target thumbv6m-none-eabi --verbose
+    #- name: Run tests
+    #  run: cargo test --verbose --target thumbv6m-none-eabi
