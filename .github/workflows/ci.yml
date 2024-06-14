@@ -18,10 +18,13 @@ jobs:
     - name: Set up Rust
       uses: actions-rs/toolchain@v1
       with:
-        toolchain: stable # Specify the Rust version here, e.g., "1.56.0". Use "stable" for the latest stable.
+        toolchain: stable # Or specify a specific version that you know works with your project
         override: true
+        target: thumbv6m-none-eabi # Add this line to specify the target architecture
+    - name: Add target for Rust
+      run: rustup target add thumbv6m-none-eabi
     - name: Build
-      run: cargo build --verbose
+      run: cargo build --target=thumbv6m-none-eabi --verbose
     # Optionally, uncomment to run tests
     # - name: Run tests
-    #   run: cargo test --verbose
+    #   run: cargo test --target=thumbv6m-none-eabi --verbose
