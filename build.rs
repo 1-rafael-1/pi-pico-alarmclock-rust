@@ -8,12 +8,39 @@
 //! updating `memory.x` ensures a rebuild of the application with the
 //! new memory settings.
 
+use serde_json;
 use std::env;
+use std::fs;
 use std::fs::File;
+use std::io;
 use std::io::Write;
+use std::path::Path;
 use std::path::PathBuf;
 
 fn main() {
+    memory_x();
+    wifi_secrets();
+}
+
+fn wifi_secrets() -> io::Result<()> {
+    // Fetch the output directory from the OUT_DIR environment variable
+    let out_dir = env::var("OUT_DIR").expect("OUT_DIR environment variable not set");
+    let dest_path = Path::new(&out_dir).join("classes/wifi_credentials.rs");
+    let mut f = File::create(&dest_path)?;
+
+    let config_contents = fs::read_to_string("wifi_config.json").unwrap();
+    let config: serde_json::Value = serde_json::from_str(&config_contents).unwrap();
+
+    let ssid = config["ssid"].as_str().unwrap_or("default_ssid");
+    let password = config["password"].as_str().unwrap_or("default_password");
+
+    writeln!(f, "pub const SSID: &str = {:?};", ssid)?;
+    writeln!(f, "pub const PASSWORD: &str = {:?};", password)?;
+
+    Ok(())
+}
+
+fn memory_x() {
     // Put `memory.x` in our output directory and ensure it's
     // on the linker search path.
     let out = &PathBuf::from(env::var_os("OUT_DIR").unwrap());
