@@ -20,6 +20,7 @@ jobs:
       with:
         toolchain: stable
         override: true
+        components: rust-src # Ensure rust-src component is installed
         target: thumbv6m-none-eabi
     - name: Add Rust target
       run: rustup target add thumbv6m-none-eabi
