@@ -26,3 +26,5 @@ jobs:
       run: rustup target add thumbv6m-none-eabi
     - name: Build
       run: cargo build --target thumbv6m-none-eabi --verbose
+    - name: Run tests
+      run: cargo test --verbose --target thumbv6m-none-eabi
