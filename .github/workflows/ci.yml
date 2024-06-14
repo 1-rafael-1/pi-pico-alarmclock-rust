@@ -11,12 +11,17 @@ env:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
+    - name: Set up Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable # Specify the Rust version here, e.g., "1.56.0". Use "stable" for the latest stable.
+        override: true
     - name: Build
       run: cargo build --verbose
+    # Optionally, uncomment to run tests
     # - name: Run tests
     #   run: cargo test --verbose
