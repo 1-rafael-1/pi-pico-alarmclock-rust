@@ -20,25 +20,39 @@ use std::path::PathBuf;
 fn main() {
     println!("in build.rs");
     memory_x();
-    let _ = wifi_secrets(); // ToDo: Handle error
+    wifi_secrets().unwrap();
 }
 
 fn wifi_secrets() -> io::Result<()> {
-    print!("in wifi_secrets");
+    println!("in wifi_secrets");
     // Fetch the output directory from the OUT_DIR environment variable
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR environment variable not set");
+    // Create a new file in the output directory
     let dest_path = Path::new(&out_dir).join("wifi_secrets.rs");
-    let mut f = File::create(&dest_path)?;
+    let mut f = File::create(&dest_path).expect("Could not create wifi_secrets.rs file");
 
-    let config_contents = fs::read_to_string("wifi_config.json").unwrap();
-    let config: serde_json::Value = serde_json::from_str(&config_contents).unwrap();
+    // Read the wifi_config.json file
+    println!("in wifi_secrets, before reading wifi_config.json");
+    let config_contents =
+        fs::read_to_string("wifi_config.json").expect("Could not read wifi_config.json file");
+    let config: serde_json::Value =
+        serde_json::from_str(&config_contents).expect("Could not parse wifi_config.json file");
 
-    let ssid = config["ssid"].as_str().unwrap_or("default_ssid");
-    let password = config["password"].as_str().unwrap_or("default_password");
+    // read the ssid and password from the json file
+    println!("in wifi_secrets, before reading ssid and password from json file");
+    let ssid = config["ssid"]
+        .as_str()
+        .expect("ssid not found in wifi_config.json file");
+    let password = config["password"]
+        .as_str()
+        .expect("password not found in wifi_config.json file");
 
+    // Write the ssid and password to the output file
+    println!("in wifi_secrets, before writing ssid and password to output file");
     writeln!(f, "pub const SSID: &str = {:?};", ssid)?;
     writeln!(f, "pub const PASSWORD: &str = {:?};", password)?;
 
+    // return the result, which is an empty Ok() in this case if everything went well
     Ok(())
 }
 
