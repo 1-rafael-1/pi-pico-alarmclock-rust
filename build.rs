@@ -18,14 +18,16 @@ use std::path::Path;
 use std::path::PathBuf;
 
 fn main() {
+    println!("in build.rs");
     memory_x();
-    wifi_secrets();
+    let _ = wifi_secrets(); // ToDo: Handle error
 }
 
 fn wifi_secrets() -> io::Result<()> {
+    print!("in wifi_secrets");
     // Fetch the output directory from the OUT_DIR environment variable
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR environment variable not set");
-    let dest_path = Path::new(&out_dir).join("classes/wifi_credentials.rs");
+    let dest_path = Path::new(&out_dir).join("wifi_secrets.rs");
     let mut f = File::create(&dest_path)?;
 
     let config_contents = fs::read_to_string("wifi_config.json").unwrap();
@@ -41,6 +43,7 @@ fn wifi_secrets() -> io::Result<()> {
 }
 
 fn memory_x() {
+    print!("in memory_x");
     // Put `memory.x` in our output directory and ensure it's
     // on the linker search path.
     let out = &PathBuf::from(env::var_os("OUT_DIR").unwrap());
