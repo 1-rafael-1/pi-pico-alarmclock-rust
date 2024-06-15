@@ -9,26 +9,25 @@ include!(concat!(env!("OUT_DIR"), "/wifi_secrets.rs"));
 
 //use core::str;
 
+//use crate::classes::irqs::Irqs;
+use cyw43::ControlError;
 use cyw43_pio::PioSpi;
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_net::Stack;
-use embassy_rp::bind_interrupts;
-use embassy_rp::gpio::{Level, Output};
+//use embassy_rp::bind_interrupts;
+use embassy_rp::gpio::Output;
 use embassy_rp::peripherals::{DMA_CH0, PIO0};
-use embassy_rp::pio::{InterruptHandler, Pio};
+//use embassy_rp::pio::{InterruptHandler, Pio};
+use embassy_time::{Duration, Timer};
 use heapless::String;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
-bind_interrupts!(struct Irqs {
-    PIO0_IRQ_0 => InterruptHandler<PIO0>;
-});
-
 enum WifiState {
     Disconnected,
     Connected,
-    Error(String<128>), // Optionally, include an error message
+    Error(ControlError), // Optionally, include an error message
 }
 
 struct WifiManager {
@@ -50,6 +49,10 @@ impl WifiManager {
         self.state = new_state;
     }
 
+    fn get_state(&self) -> &WifiState {
+        &self.state
+    }
+
     fn set_credentials(&mut self) {
         self.ssid = Some(self.convert_str_to_heapless_safe(SSID).unwrap());
         self.password = Some(self.convert_str_to_heapless_safe(PASSWORD).unwrap());
@@ -67,6 +70,16 @@ impl WifiManager {
         }
         Ok(heapless_string)
     }
+
+    fn convert_heapless_safe_to_str(
+        &self,
+        s: Option<heapless::String<128>>,
+    ) -> heapless::String<128> {
+        match s {
+            Some(value) => value,            // Directly return the heapless::String<128>
+            None => heapless::String::new(), // Return an empty heapless::String if None
+        }
+    }
 }
 
 #[embassy_executor::task]
@@ -82,34 +95,22 @@ async fn net_task(stack: &'static Stack<cyw43::NetDriver<'static>>) -> ! {
 }
 
 #[embassy_executor::task]
-async fn connect(spawner: Spawner) {
-    info!("Initializing WifiManager...");
+pub async fn connect_wifi(
+    spawner: Spawner,
+    pwr: Output<'static>,
+    spi: PioSpi<'static, PIO0, 0, DMA_CH0>,
+) {
     let mut wifi_manager = WifiManager::new(); // Initialize WifiManager
     wifi_manager.set_credentials(); // Set credentials from wifi_secrets.rs
 
-    let p = embassy_rp::init(Default::default());
-
-    //let fw = include_bytes!("../../../../cyw43-firmware/43439A0.bin");
-    //let clm = include_bytes!("../../../../cyw43-firmware/43439A0_clm.bin");
+    // let fw = include_bytes!("../../../../cyw43-firmware/43439A0.bin");
+    // let clm = include_bytes!("../../../../cyw43-firmware/43439A0_clm.bin");
     // To make flashing faster for development, you may want to flash the firmwares independently
     // at hardcoded addresses, instead of baking them into the program with `include_bytes!`:
     //     probe-rs download 43439A0.bin --binary-format bin --chip RP2040 --base-address 0x10100000
     //     probe-rs download 43439A0_clm.bin --binary-format bin --chip RP2040 --base-address 0x10140000
     let fw = unsafe { core::slice::from_raw_parts(0x10100000 as *const u8, 230321) };
     let clm = unsafe { core::slice::from_raw_parts(0x10140000 as *const u8, 4752) };
-
-    let pwr = Output::new(p.PIN_23, Level::Low);
-    let cs = Output::new(p.PIN_25, Level::High);
-    let mut pio = Pio::new(p.PIO0, Irqs);
-    let spi = PioSpi::new(
-        &mut pio.common,
-        pio.sm0,
-        pio.irq0,
-        cs,
-        p.PIN_24,
-        p.PIN_29,
-        p.DMA_CH0,
-    );
 
     static STATE: StaticCell<cyw43::State> = StaticCell::new();
     let state = STATE.init(cyw43::State::new());
@@ -120,4 +121,24 @@ async fn connect(spawner: Spawner) {
     control
         .set_power_management(cyw43::PowerManagementMode::PowerSave)
         .await;
+
+    let ssid_str = wifi_manager.convert_heapless_safe_to_str(wifi_manager.ssid.clone()); // Assuming ssid is Option<heapless::String<128>>
+    let password_str = wifi_manager.convert_heapless_safe_to_str(wifi_manager.password.clone()); // Assuming password is Option<heapless::String<128>>
+
+    info!(
+        "Joining WPA2 network with SSID: {:?} and password: {:?}",
+        ssid_str, password_str
+    );
+
+    if let Err(e) = control.join_wpa2(&ssid_str, &password_str).await {
+        wifi_manager.set_state(WifiState::Error(e));
+    } else {
+        wifi_manager.set_state(WifiState::Connected);
+    };
+
+    // every 120 seconds, check if we are still connected
+    loop {
+        Timer::after(Duration::from_secs(120)).await;
+        info!("In loop and doing fuck all");
+    }
 }
