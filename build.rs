@@ -25,21 +25,27 @@ fn main() {
 
 fn wifi_secrets() -> io::Result<()> {
     println!("in wifi_secrets");
-    // Fetch the output directory from the OUT_DIR environment variable
-    let out_dir = env::var("OUT_DIR").expect("OUT_DIR environment variable not set");
+    // Read the wifi_config.json file and write the SSID and password to wifi_secrets.rs
+
     // Create a new file in the output directory
+    let out_dir = env::var("OUT_DIR").expect("OUT_DIR environment variable not set");
     let dest_path = Path::new(&out_dir).join("wifi_secrets.rs");
     let mut f = File::create(&dest_path).expect("Could not create wifi_secrets.rs file");
 
-    // Read the wifi_config.json file
-    println!("in wifi_secrets, before reading wifi_config.json");
-    let config_contents =
-        fs::read_to_string("wifi_config.json").expect("Could not read wifi_config.json file");
+    // Read the wifi_config.json file, or create it with dummy values if it doesn't exist
+    let config_path = Path::new("wifi_config.json");
+    let config_contents = if config_path.exists() {
+        fs::read_to_string(config_path).expect("Could not read wifi_config.json file")
+    } else {
+        println!("wifi_config.json not found, creating with dummy values");
+        let dummy_config = r#"{"ssid":"dummy","password":"dummy"}"#;
+        fs::write(config_path, dummy_config).expect("Could not write dummy wifi_config.json file");
+        dummy_config.to_string()
+    };
+
+    // Parse the JSON and extract the SSID and password
     let config: serde_json::Value =
         serde_json::from_str(&config_contents).expect("Could not parse wifi_config.json file");
-
-    // read the ssid and password from the json file
-    println!("in wifi_secrets, before reading ssid and password from json file");
     let ssid = config["ssid"]
         .as_str()
         .expect("ssid not found in wifi_config.json file");
@@ -47,12 +53,10 @@ fn wifi_secrets() -> io::Result<()> {
         .as_str()
         .expect("password not found in wifi_config.json file");
 
-    // Write the ssid and password to the output file
+    // Write the SSID and password to wifi_secrets.rs
     println!("in wifi_secrets, before writing ssid and password to output file");
     writeln!(f, "pub const SSID: &str = {:?};", ssid)?;
     writeln!(f, "pub const PASSWORD: &str = {:?};", password)?;
-
-    // return the result, which is an empty Ok() in this case if everything went well
     Ok(())
 }
 
