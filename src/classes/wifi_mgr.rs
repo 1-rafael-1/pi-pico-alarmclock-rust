@@ -17,6 +17,8 @@ use embassy_rp::gpio::Output;
 use embassy_rp::peripherals::{DMA_CH0, PIO0};
 use embassy_time::{Duration, Timer};
 use heapless::String;
+use reqwless::client::HttpClient;
+use reqwless::request::Request;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
@@ -76,9 +78,6 @@ pub async fn connect_wifi(
     pwr: Output<'static>,
     spi: PioSpi<'static, PIO0, 0, DMA_CH0>,
 ) {
-    // let mut wifi_manager = WifiManager::new(); // Initialize WifiManager
-    // wifi_manager.set_credentials(); // Set credentials from wifi_secrets.rs
-
     // let fw = include_bytes!("../../../../cyw43-firmware/43439A0.bin");
     // let clm = include_bytes!("../../../../cyw43-firmware/43439A0_clm.bin");
     // To make flashing faster for development, you may want to flash the firmwares independently

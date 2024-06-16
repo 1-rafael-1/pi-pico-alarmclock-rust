@@ -1,0 +1,6 @@
+{
+    "time api by zone": {
+        "baseurl": "https://timeapi.io/api/Time/current/zone?timeZone=",
+        "timezone": "Europe/Berlin"
+    }
+}

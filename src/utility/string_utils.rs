@@ -21,4 +21,17 @@ impl StringUtils {
             None => String::new(), // Return an empty heapless::String if None
         }
     }
+
+    /// This function concatenates two heapless::String<64> and <32> into a heapless::String<256>
+    pub fn concatenate_heapless_strings(
+        first_string: &heapless::String<128>,
+        second_string: &heapless::String<128>,
+    ) -> heapless::String<256> {
+        let mut combined = String::<256>::new();
+        combined.push_str(first_string.as_str()).unwrap_or_default();
+        combined
+            .push_str(second_string.as_str())
+            .unwrap_or_default();
+        combined
+    }
 }
