@@ -3,6 +3,7 @@
 #![no_main]
 
 use crate::classes::wifi_mgr::WifiManager; // WifiManager
+use crate::utility::string_utils::StringUtils; // StringUtils
 use cyw43_pio::PioSpi; // for WiFi
 use defmt::*; // global logger
 use embassy_executor::Spawner; // executor
@@ -16,6 +17,9 @@ use {defmt_rtt as _, panic_probe as _}; // panic handler
 
 // import the classes module (submodule of src)
 mod classes;
+
+// import the utility module (submodule of src)
+mod utility;
 
 // Entry point
 #[embassy_executor::main]

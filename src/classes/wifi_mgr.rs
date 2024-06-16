@@ -7,6 +7,7 @@
 //also make sure that build.rs loads the wifi_manager.json file and writes it to wifi_secrets.rs
 include!(concat!(env!("OUT_DIR"), "/wifi_secrets.rs"));
 
+use crate::utility::string_utils::StringUtils;
 use cyw43::ControlError;
 use cyw43_pio::PioSpi;
 use defmt::*;
@@ -51,33 +52,8 @@ impl WifiManager {
     }
 
     fn set_credentials(&mut self) {
-        self.ssid = Some(self.convert_str_to_heapless_safe(SSID).unwrap());
-        self.password = Some(self.convert_str_to_heapless_safe(PASSWORD).unwrap());
-    }
-
-    /// This function converts a &str to a heapless::String<128>. Apparently simple strings are not really woking in embedded systems
-    fn convert_str_to_heapless_safe(
-        &mut self,
-        s: &str,
-    ) -> Result<heapless::String<128>, &'static str> {
-        let mut heapless_string: heapless::String<128> = heapless::String::new();
-        for c in s.chars() {
-            if heapless_string.push(c).is_err() {
-                return Err("String exceeds capacity");
-            }
-        }
-        Ok(heapless_string)
-    }
-
-    /// This function unwraps a heapless::String<128> or returns an empty heapless::String<128> if None.
-    fn unwrap_or_default_heapless_string(
-        &self,
-        s: Option<heapless::String<128>>,
-    ) -> heapless::String<128> {
-        match s {
-            Some(value) => value,            // Directly return the heapless::String<128>
-            None => heapless::String::new(), // Return an empty heapless::String if None
-        }
+        self.ssid = Some(StringUtils::convert_str_to_heapless_safe(SSID).unwrap());
+        self.password = Some(StringUtils::convert_str_to_heapless_safe(PASSWORD).unwrap());
     }
 }
 
@@ -122,9 +98,9 @@ pub async fn connect_wifi(
         .set_power_management(cyw43::PowerManagementMode::PowerSave)
         .await;
 
-    let ssid_str = wifi_manager.unwrap_or_default_heapless_string(wifi_manager.ssid.clone()); // Assuming ssid is Option<heapless::String<128>>
+    let ssid_str = StringUtils::unwrap_or_default_heapless_string(wifi_manager.ssid.clone()); // Assuming ssid is Option<heapless::String<128>>
     let password_str =
-        wifi_manager.unwrap_or_default_heapless_string(wifi_manager.password.clone()); // Assuming password is Option<heapless::String<128>>
+        StringUtils::unwrap_or_default_heapless_string(wifi_manager.password.clone()); // Assuming password is Option<heapless::String<128>>
 
     info!(
         "Joining WPA2 network with SSID: {:?} and password: {:?}",
