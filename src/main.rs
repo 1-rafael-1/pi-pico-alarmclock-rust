@@ -2,7 +2,7 @@
 #![no_std]
 #![no_main]
 
-//use crate::classes::irqs::Irqs;
+use crate::classes::wifi_mgr::WifiManager; // WifiManager
 use cyw43_pio::PioSpi; // for WiFi
 use defmt::*; // global logger
 use embassy_executor::Spawner; // executor
@@ -71,9 +71,18 @@ async fn main(spawner: Spawner) {
     bind_interrupts!(struct Irqs {
         PIO0_IRQ_0 => InterruptHandler<PIO0>;
     });
+
+    // Initialize WifiManager
+    let mut wifi_manager = WifiManager::new();
+
     // Call connect_wifi with the necessary parameters
     spawner
-        .spawn(classes::wifi_mgr::connect_wifi(spawner, pwr, spi))
+        .spawn(classes::wifi_mgr::connect_wifi(
+            spawner,
+            wifi_manager,
+            pwr,
+            spi,
+        ))
         .unwrap();
 
     loop {

@@ -7,18 +7,13 @@
 //also make sure that build.rs loads the wifi_manager.json file and writes it to wifi_secrets.rs
 include!(concat!(env!("OUT_DIR"), "/wifi_secrets.rs"));
 
-//use core::str;
-
-//use crate::classes::irqs::Irqs;
 use cyw43::ControlError;
 use cyw43_pio::PioSpi;
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_net::Stack;
-//use embassy_rp::bind_interrupts;
 use embassy_rp::gpio::Output;
 use embassy_rp::peripherals::{DMA_CH0, PIO0};
-//use embassy_rp::pio::{InterruptHandler, Pio};
 use embassy_time::{Duration, Timer};
 use heapless::String;
 use static_cell::StaticCell;
@@ -30,26 +25,28 @@ enum WifiState {
     Error(ControlError), // Optionally, include an error message
 }
 
-struct WifiManager {
+pub struct WifiManager {
     state: WifiState,
     ssid: Option<String<128>>,
     password: Option<String<128>>,
 }
 
 impl WifiManager {
-    fn new() -> Self {
-        WifiManager {
+    pub fn new() -> Self {
+        let mut manager = WifiManager {
             state: WifiState::Disconnected,
             ssid: None,
             password: None,
-        }
+        };
+        manager.set_credentials();
+        manager
     }
 
     fn set_state(&mut self, new_state: WifiState) {
         self.state = new_state;
     }
 
-    fn get_state(&self) -> &WifiState {
+    pub fn get_state(&self) -> &WifiState {
         &self.state
     }
 
@@ -58,6 +55,7 @@ impl WifiManager {
         self.password = Some(self.convert_str_to_heapless_safe(PASSWORD).unwrap());
     }
 
+    /// This function converts a &str to a heapless::String<128>. Apparently simple strings are not really woking in embedded systems
     fn convert_str_to_heapless_safe(
         &mut self,
         s: &str,
@@ -71,7 +69,8 @@ impl WifiManager {
         Ok(heapless_string)
     }
 
-    fn convert_heapless_safe_to_str(
+    /// This function unwraps a heapless::String<128> or returns an empty heapless::String<128> if None.
+    fn unwrap_or_default_heapless_string(
         &self,
         s: Option<heapless::String<128>>,
     ) -> heapless::String<128> {
@@ -97,11 +96,12 @@ async fn net_task(stack: &'static Stack<cyw43::NetDriver<'static>>) -> ! {
 #[embassy_executor::task]
 pub async fn connect_wifi(
     spawner: Spawner,
+    mut wifi_manager: WifiManager,
     pwr: Output<'static>,
     spi: PioSpi<'static, PIO0, 0, DMA_CH0>,
 ) {
-    let mut wifi_manager = WifiManager::new(); // Initialize WifiManager
-    wifi_manager.set_credentials(); // Set credentials from wifi_secrets.rs
+    // let mut wifi_manager = WifiManager::new(); // Initialize WifiManager
+    // wifi_manager.set_credentials(); // Set credentials from wifi_secrets.rs
 
     // let fw = include_bytes!("../../../../cyw43-firmware/43439A0.bin");
     // let clm = include_bytes!("../../../../cyw43-firmware/43439A0_clm.bin");
@@ -122,8 +122,9 @@ pub async fn connect_wifi(
         .set_power_management(cyw43::PowerManagementMode::PowerSave)
         .await;
 
-    let ssid_str = wifi_manager.convert_heapless_safe_to_str(wifi_manager.ssid.clone()); // Assuming ssid is Option<heapless::String<128>>
-    let password_str = wifi_manager.convert_heapless_safe_to_str(wifi_manager.password.clone()); // Assuming password is Option<heapless::String<128>>
+    let ssid_str = wifi_manager.unwrap_or_default_heapless_string(wifi_manager.ssid.clone()); // Assuming ssid is Option<heapless::String<128>>
+    let password_str =
+        wifi_manager.unwrap_or_default_heapless_string(wifi_manager.password.clone()); // Assuming password is Option<heapless::String<128>>
 
     info!(
         "Joining WPA2 network with SSID: {:?} and password: {:?}",
