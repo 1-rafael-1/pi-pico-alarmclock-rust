@@ -2,3 +2,6 @@
 target
 Cargo.lock
 *.orig
+
+#secrets
+wifi_config.json
