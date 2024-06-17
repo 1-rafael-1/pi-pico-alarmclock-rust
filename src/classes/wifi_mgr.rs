@@ -1,18 +1,22 @@
 #![allow(async_fn_in_trait)]
-//make sure to have a wifi_manager.json file in the classes folder formatted as follows:
-//{
-//    "ssid": "some_ssid_here",
-//    "password": "some_password_here"
-//}
-//also make sure that build.rs loads the wifi_manager.json file and writes it to wifi_secrets.rs
+// make sure to have a wifi_manager.json file in the config folder formatted as follows:
+// {
+//     "ssid": "some_ssid_here",
+//     "password": "some_password_here"
+// }
+// also make sure that build.rs loads the wifi_manager.json file and writes it to wifi_secrets.rs
 include!(concat!(env!("OUT_DIR"), "/wifi_secrets.rs"));
 
 use crate::utility::string_utils::StringUtils;
-use cyw43::ControlError;
+use cyw43::{ControlError, State};
 use cyw43_pio::PioSpi;
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_net::Stack;
+use embassy_net::{
+    dns,
+    tcp::client::{TcpClient, TcpClientState},
+    Config, Stack,
+};
 use embassy_rp::gpio::Output;
 use embassy_rp::peripherals::{DMA_CH0, PIO0};
 use embassy_time::{Duration, Timer};
@@ -105,16 +109,47 @@ pub async fn connect_wifi(
         "Joining WPA2 network with SSID: {:?} and password: {:?}",
         ssid_str, password_str
     );
-
-    if let Err(e) = control.join_wpa2(&ssid_str, &password_str).await {
-        wifi_manager.set_state(WifiState::Error(e));
-    } else {
-        wifi_manager.set_state(WifiState::Connected);
-    };
-
-    // every 120 seconds, check if we are still connected
-    loop {
-        Timer::after(Duration::from_secs(120)).await;
-        info!("In loop and doing fuck all");
+    match control.join_wpa2(&ssid_str, &password_str).await {
+        Ok(_) => {
+            wifi_manager.set_state(WifiState::Connected);
+            info!("Connected to wifi");
+        }
+        Err(e) => {
+            wifi_manager.set_state(WifiState::Error(e));
+            info!("Error connecting to wifi");
+        }
     }
+    // we can end this task here, as we are not doing anything else
+}
+
+#[embassy_executor::task]
+pub async fn get_time_from_service(stack: &'static Stack<cyw43::NetDriver<'static>>) {
+    let mut rx_buffer = [0; 8192];
+    let mut tls_read_buffer = [0; 8192];
+    let mut tls_write_buffer = [0; 8192];
+
+    // see if we are connected to the network, if not, wait until we are
+    loop {
+        if stack.is_link_up() {
+            break;
+        }
+        Timer::after(Duration::from_millis(500)).await;
+    }
+
+    stack.wait_config_up().await;
+
+    let client_state = TcpClientState::<1, 1024, 1024>::new();
+    let tcp_client = TcpClient::new(&stack, &client_state);
+    let dns_client = dns::DnsSocket::new(&stack);
+    let mut http_client = HttpClient::new(&tcp_client, &dns_client);
+    let url = "https://timeapi.io/api/Time/current/zone?timeZone=Europe/Berlin";
+    let mut request = http_client
+        .request(reqwless::request::Method::GET, url)
+        .await
+        .unwrap()
+        .send(&mut rx_buffer)
+        .await
+        .unwrap();
+    let response = request.body().read_to_end().await.unwrap();
+    info!("Response: {:?}", response);
 }

@@ -1,4 +1,6 @@
+// make sure to have a time_api_config.json file in the config folder formatted as follows:
 include!(concat!(env!("OUT_DIR"), "/time_api_config.rs"));
+
 use crate::utility::string_utils::StringUtils;
 use embassy_executor::Spawner;
 use embassy_net::Stack;
@@ -33,9 +35,9 @@ impl<'a, T: embassy_rp::rtc::Instance> TimeManager<'a, T> {
         self.time_zone = Some(StringUtils::convert_str_to_heapless_safe(TIME_ZONE).unwrap());
     }
 
-    pub async fn update_rtc(&self) {
-        let url = StringUtils::unwrap_or_default_heapless_string(self.time_server_url.clone());
-        let zone = StringUtils::unwrap_or_default_heapless_string(self.time_zone.clone());
-        let combined_url = StringUtils::concatenate_heapless_strings(&url, &zone);
-    }
+    // pub async fn update_rtc(&self) {
+    //     let url = StringUtils::unwrap_or_default_heapless_string(self.time_server_url.clone());
+    //     let zone = StringUtils::unwrap_or_default_heapless_string(self.time_zone.clone());
+    //     let combined_url = StringUtils::concatenate_heapless_strings(&url, &zone);
+    // }
 }

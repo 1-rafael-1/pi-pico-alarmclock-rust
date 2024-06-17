@@ -41,6 +41,7 @@ embassy-net = { git = "https://github.com/embassy-rs/embassy", features = [
     "raw",
     "dhcpv4",
     "medium-ethernet",
+    "dns",
 ] }
 embassy-net-wiznet = { git = "https://github.com/embassy-rs/embassy", features = [
     "defmt",
@@ -88,6 +89,7 @@ pio-proc = "0.2"
 pio = "0.2.1"
 rand = { version = "0.8.5", default-features = false }
 embedded-sdmmc = "0.7.0"
+#embedded-nal = "0.8.0"
 
 reqwless = { git = "https://github.com/drogue-iot/reqwless", features = [
     "defmt",

@@ -34,7 +34,10 @@ fn wifi_secrets() -> io::Result<()> {
     let mut f = File::create(&dest_path).expect("Could not create wifi_secrets.rs file");
 
     // Read the wifi_config.json file, or create it with dummy values if it doesn't exist
-    let config_path = Path::new("wifi_config.json");
+    let manifest_dir =
+        env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR environment variable not set");
+    let config_path = Path::new(&manifest_dir).join("src/config/wifi_config.json");
+    //let config_path = Path::new("src/config/wifi_config.json");
     let config_contents = if config_path.exists() {
         fs::read_to_string(config_path).expect("Could not read wifi_config.json file")
     } else {
@@ -71,7 +74,10 @@ fn time_api_config() -> io::Result<()> {
     let mut f = File::create(&dest_path).expect("Could not create time_api_config.rs file");
 
     // Read the time_api.json file, or create it with dummy values if it doesn't exist
-    let config_path = Path::new("time_api.json");
+    let manifest_dir =
+        env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR environment variable not set");
+    let config_path = Path::new(&manifest_dir).join("src/config/time_api.json");
+    //let config_path = Path::new("src/config/time_api.json");
     let config_contents = if config_path.exists() {
         fs::read_to_string(config_path).expect("Could not read time_api.json file")
     } else {
