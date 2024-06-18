@@ -15,7 +15,7 @@ use embassy_executor::Spawner;
 use embassy_net::{
     dns,
     tcp::client::{TcpClient, TcpClientState},
-    Config, Stack,
+    Config, Stack, StackResources,
 };
 use embassy_rp::gpio::Output;
 use embassy_rp::peripherals::{DMA_CH0, PIO0};
@@ -30,7 +30,7 @@ use {defmt_rtt as _, panic_probe as _};
 enum WifiState {
     Disconnected,
     Connected,
-    Error(ControlError), // Optionally, include an error message
+    Error,
 }
 
 pub struct WifiManager {
@@ -94,7 +94,7 @@ pub async fn connect_wifi(
 
     static STATE: StaticCell<cyw43::State> = StaticCell::new();
     let state = STATE.init(cyw43::State::new());
-    let (_net_device, mut control, runner) = cyw43::new(state, pwr, spi, fw).await;
+    let (net_device, mut control, runner) = cyw43::new(state, pwr, spi, fw).await;
     unwrap!(spawner.spawn(wifi_task(runner)));
 
     control.init(clm).await;
@@ -116,10 +116,70 @@ pub async fn connect_wifi(
             info!("Connected to wifi");
         }
         Err(e) => {
-            wifi_manager.set_state(WifiState::Error(e));
-            info!("Error connecting to wifi");
+            wifi_manager.set_state(WifiState::Error);
+            info!("Error connecting to wifi: {}", e.status);
         }
     }
+
+    // stuff for the http request
+    let config = Config::dhcpv4(Default::default());
+    // Generate random seed
+    let seed = 0x0123_4567_89ab_cdef;
+    // Initialize the stack
+    static STACK: StaticCell<Stack<cyw43::NetDriver<'static>>> = StaticCell::new();
+    static RESOURCES: StaticCell<StackResources<2>> = StaticCell::new();
+    let stack = &*STACK.init(Stack::new(
+        net_device,
+        config,
+        RESOURCES.init(StackResources::<2>::new()),
+        seed,
+    ));
+
+    unwrap!(spawner.spawn(net_task(stack)));
+
+    // Wait for DHCP, not necessary when using static IP
+    info!("waiting for DHCP...");
+    while !stack.is_config_up() {
+        Timer::after_millis(100).await;
+    }
+    info!("DHCP is now up!");
+
+    // see if we are connected to the network, if not, wait until we are
+    info!("waiting for link up...");
+    loop {
+        if stack.is_link_up() {
+            break;
+        }
+        Timer::after(Duration::from_millis(500)).await;
+    }
+    info!("Link is up!");
+
+    // wait for the stack to be up
+    info!("waiting for stack to be up...");
+    stack.wait_config_up().await;
+    info!("Stack is up!");
+
+    // make the web request
+    let mut rx_buffer = [0; 8192];
+    let mut tls_read_buffer = [0; 8192];
+    let mut tls_write_buffer = [0; 8192];
+
+    info!("Making request to timeapi.io");
+    let client_state = TcpClientState::<1, 1024, 1024>::new();
+    let tcp_client = TcpClient::new(&stack, &client_state);
+    let dns_client = dns::DnsSocket::new(&stack);
+    let mut http_client = HttpClient::new(&tcp_client, &dns_client);
+    info!("HttpClient created");
+    let url = "https://timeapi.io/api/Time/current/zone?timeZone=Europe/Berlin";
+    info!("URL: {:?}", url);
+    info!("Making request");
+    let mut request_builder = http_client.request(Method::GET, url).await.unwrap();
+    info!("Sending request");
+    let mut request = request_builder.send(&mut rx_buffer).await.unwrap();
+    info!("Reading response");
+    let response = request.body().read_to_end().await.unwrap();
+    info!("Response: {:?}", response);
+
     // we can end this task here, as we are not doing anything else
 }
 
