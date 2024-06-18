@@ -22,6 +22,7 @@ use embassy_rp::peripherals::{DMA_CH0, PIO0};
 use embassy_time::{Duration, Timer};
 use heapless::String;
 use reqwless::client::HttpClient;
+use reqwless::request::Method;
 use reqwless::request::Request;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
@@ -143,13 +144,23 @@ pub async fn get_time_from_service(stack: &'static Stack<cyw43::NetDriver<'stati
     let dns_client = dns::DnsSocket::new(&stack);
     let mut http_client = HttpClient::new(&tcp_client, &dns_client);
     let url = "https://timeapi.io/api/Time/current/zone?timeZone=Europe/Berlin";
-    let mut request = http_client
-        .request(reqwless::request::Method::GET, url)
-        .await
-        .unwrap()
-        .send(&mut rx_buffer)
-        .await
-        .unwrap();
+    // Before the fix:
+    // let mut request = http_client
+    //     .request(Method::GET, url)
+    //     .await
+    //     .unwrap()
+    //     .send(&mut rx_buffer)
+    //     .await
+    //     .unwrap();
+
+    // After the fix:
+    // First, separate the creation of the request from sending it.
+    let mut request_builder = http_client.request(Method::GET, url).await.unwrap();
+
+    // Then, send the request and await the response.
+    let mut request = request_builder.send(&mut rx_buffer).await.unwrap();
+
+    // Now you can safely use `request`.
     let response = request.body().read_to_end().await.unwrap();
     info!("Response: {:?}", response);
 }
