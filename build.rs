@@ -8,7 +8,6 @@
 //! updating `memory.x` ensures a rebuild of the application with the
 //! new memory settings.
 
-use serde_json;
 use std::env;
 use std::fs;
 use std::fs::File;
@@ -31,7 +30,7 @@ fn wifi_secrets() -> io::Result<()> {
     // Create a new file in the output directory
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR environment variable not set");
     let dest_path = Path::new(&out_dir).join("wifi_secrets.rs");
-    let mut f = File::create(&dest_path).expect("Could not create wifi_secrets.rs file");
+    let mut f = File::create(dest_path).expect("Could not create wifi_secrets.rs file");
 
     // Read the wifi_config.json file, or create it with dummy values if it doesn't exist
     let manifest_dir =
@@ -71,7 +70,7 @@ fn time_api_config() -> io::Result<()> {
     // Create a new file in the output directory
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR environment variable not set");
     let dest_path = Path::new(&out_dir).join("time_api_config.rs");
-    let mut f = File::create(&dest_path).expect("Could not create time_api_config.rs file");
+    let mut f = File::create(dest_path).expect("Could not create time_api_config.rs file");
 
     // Read the time_api.json file, or create it with dummy values if it doesn't exist
     let manifest_dir =

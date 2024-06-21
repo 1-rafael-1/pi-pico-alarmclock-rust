@@ -2,7 +2,6 @@
 include!(concat!(env!("OUT_DIR"), "/time_api_config.rs"));
 
 use crate::utility::string_utils::StringUtils;
-use embassy_executor::Spawner;
 //use embassy_net::Stack;
 //use embassy_rp::rtc::{DateTime, DayOfWeek, Instance, Rtc};
 use embassy_rp::rtc::Instance;

@@ -3,7 +3,6 @@
 #![no_main]
 
 use crate::classes::wifi_mgr::WifiManager; // WifiManager
-use crate::utility::string_utils::StringUtils; // StringUtils
 use cyw43_pio::PioSpi; // for WiFi
 use defmt::*; // global logger
 use embassy_executor::Spawner; // executor
@@ -77,7 +76,7 @@ async fn main(spawner: Spawner) {
     });
 
     // Initialize WifiManager
-    let mut wifi_manager = WifiManager::new();
+    let wifi_manager = WifiManager::new();
 
     // Call connect_wifi with the necessary parameters
     spawner

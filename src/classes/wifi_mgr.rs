@@ -28,7 +28,6 @@ use reqwless::client::HttpClient;
 use reqwless::client::TlsConfig;
 use reqwless::client::TlsVerify;
 use reqwless::request::Method;
-use reqwless::request::Request;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
@@ -173,8 +172,8 @@ pub async fn connect_wifi(
 
     info!("Making request to timeapi.io");
     let client_state = TcpClientState::<1, 1024, 1024>::new();
-    let tcp_client = TcpClient::new(&stack, &client_state);
-    let dns_client = dns::DnsSocket::new(&stack);
+    let tcp_client = TcpClient::new(stack, &client_state);
+    let dns_client = dns::DnsSocket::new(stack);
     let tls_config = TlsConfig::new(
         seed,
         &mut tls_read_buffer,
@@ -189,7 +188,7 @@ pub async fn connect_wifi(
     info!("Making request");
     // Replace .unwrap() when making the request
     // let mut request = http_client.request(Method::GET, &url).await.unwrap();
-    let mut request = match http_client.request(Method::GET, &url).await {
+    let mut request = match http_client.request(Method::GET, url).await {
         Ok(req) => req,
         Err(e) => {
             error!("Failed to make HTTP request: {:?}", e);
