@@ -9,7 +9,6 @@ include!(concat!(env!("OUT_DIR"), "/wifi_secrets.rs"));
 
 use crate::utility::string_utils::StringUtils;
 use core::str::from_utf8;
-//use cyw43::{ControlError, State};
 use cyw43_pio::PioSpi;
 use defmt::*;
 use embassy_executor::Spawner;
@@ -30,8 +29,6 @@ use reqwless::client::TlsVerify;
 use reqwless::request::Method;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
-
-//use reqwless::client::TlsConfig;
 
 enum WifiState {
     Disconnected,
@@ -89,12 +86,6 @@ pub async fn connect_wifi(
     pwr: Output<'static>,
     spi: PioSpi<'static, PIO0, 0, DMA_CH0>,
 ) {
-    // let fw = include_bytes!("../../../../cyw43-firmware/43439A0.bin");
-    // let clm = include_bytes!("../../../../cyw43-firmware/43439A0_clm.bin");
-    // To make flashing faster for development, you may want to flash the firmwares independently
-    // at hardcoded addresses, instead of baking them into the program with `include_bytes!`:
-    //     probe-rs download 43439A0.bin --binary-format bin --chip RP2040 --base-address 0x10100000
-    //     probe-rs download 43439A0_clm.bin --binary-format bin --chip RP2040 --base-address 0x10140000
     let fw = unsafe { core::slice::from_raw_parts(0x10100000 as *const u8, 230321) };
     let clm = unsafe { core::slice::from_raw_parts(0x10140000 as *const u8, 4752) };
 
@@ -108,9 +99,9 @@ pub async fn connect_wifi(
         .set_power_management(cyw43::PowerManagementMode::PowerSave)
         .await;
 
-    let ssid_str = StringUtils::unwrap_or_default_heapless_string(wifi_manager.ssid.clone()); // Assuming ssid is Option<heapless::String<128>>
+    let ssid_str = StringUtils::unwrap_or_default_heapless_string(wifi_manager.ssid.clone());
     let password_str =
-        StringUtils::unwrap_or_default_heapless_string(wifi_manager.password.clone()); // Assuming password is Option<heapless::String<128>>
+        StringUtils::unwrap_or_default_heapless_string(wifi_manager.password.clone());
 
     info!(
         "Joining WPA2 network with SSID: {:?} and password: {:?}",
@@ -127,7 +118,6 @@ pub async fn connect_wifi(
         }
     }
 
-    // stuff for the http request
     let config = Config::dhcpv4(Default::default());
     let mut rng = RoscRng;
     let seed = rng.next_u64();
@@ -143,14 +133,12 @@ pub async fn connect_wifi(
 
     unwrap!(spawner.spawn(net_task(stack)));
 
-    // Wait for DHCP, not necessary when using static IP
     info!("waiting for DHCP...");
     while !stack.is_config_up() {
         Timer::after_millis(100).await;
     }
     info!("DHCP is now up!");
 
-    // see if we are connected to the network, if not, wait until we are
     info!("waiting for link up...");
     loop {
         if stack.is_link_up() {
@@ -160,17 +148,15 @@ pub async fn connect_wifi(
     }
     info!("Link is up!");
 
-    // wait for the stack to be up
     info!("waiting for stack to be up...");
     stack.wait_config_up().await;
     info!("Stack is up!");
 
-    // make the web request
+    info!("Preparing request to timeapi.io");
     let mut rx_buffer = [0; 8192];
     let mut tls_read_buffer = [0; 16640];
     let mut tls_write_buffer = [0; 16640];
 
-    info!("Making request to timeapi.io");
     let client_state = TcpClientState::<1, 1024, 1024>::new();
     let tcp_client = TcpClient::new(stack, &client_state);
     let dns_client = dns::DnsSocket::new(stack);
@@ -180,14 +166,11 @@ pub async fn connect_wifi(
         &mut tls_write_buffer,
         TlsVerify::None,
     );
-    //let mut http_client = HttpClient::new(&tcp_client, &dns_client);
+    //let mut http_client = HttpClient::new(&tcp_client, &dns_client); // -> seems to need tls
     let mut http_client = HttpClient::new_with_tls(&tcp_client, &dns_client, tls_config);
     info!("HttpClient created");
     let url = "https://timeapi.io/api/Time/current/zone?timeZone=Europe/Berlin";
-    info!("URL: {:?}", url);
     info!("Making request");
-    // Replace .unwrap() when making the request
-    // let mut request = http_client.request(Method::GET, &url).await.unwrap();
     let mut request = match http_client.request(Method::GET, url).await {
         Ok(req) => req,
         Err(e) => {
@@ -202,45 +185,3 @@ pub async fn connect_wifi(
 
     // we can end this task here, as we are not doing anything else
 }
-
-// #[embassy_executor::task]
-// pub async fn get_time_from_service(stack: &'static Stack<cyw43::NetDriver<'static>>) {
-//     let mut rx_buffer = [0; 8192];
-//     let mut tls_read_buffer = [0; 8192];
-//     let mut tls_write_buffer = [0; 8192];
-
-//     // see if we are connected to the network, if not, wait until we are
-//     loop {
-//         if stack.is_link_up() {
-//             break;
-//         }
-//         Timer::after(Duration::from_millis(500)).await;
-//     }
-
-//     stack.wait_config_up().await;
-
-//     let client_state = TcpClientState::<1, 1024, 1024>::new();
-//     let tcp_client = TcpClient::new(&stack, &client_state);
-//     let dns_client = dns::DnsSocket::new(&stack);
-//     let mut http_client = HttpClient::new(&tcp_client, &dns_client);
-//     let url = "https://timeapi.io/api/Time/current/zone?timeZone=Europe/Berlin";
-//     // Before the fix:
-//     // let mut request = http_client
-//     //     .request(Method::GET, url)
-//     //     .await
-//     //     .unwrap()
-//     //     .send(&mut rx_buffer)
-//     //     .await
-//     //     .unwrap();
-
-//     // After the fix:
-//     // First, separate the creation of the request from sending it.
-//     let mut request_builder = http_client.request(Method::GET, url).await.unwrap();
-
-//     // Then, send the request and await the response.
-//     let mut request = request_builder.send(&mut rx_buffer).await.unwrap();
-
-//     // Now you can safely use `request`.
-//     let response = request.body().read_to_end().await.unwrap();
-//     info!("Response: {:?}", response);
-// }
