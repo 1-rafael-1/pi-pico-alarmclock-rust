@@ -175,13 +175,10 @@ pub async fn connect_wifi(
         Ok(req) => req,
         Err(e) => {
             error!("Failed to make HTTP request: {:?}", e);
-            return; // Exit the function or handle the error appropriately
+            return; // ToDo
         }
     };
-    info!("Reading response");
     let response = request.send(&mut rx_buffer).await.unwrap();
     let body = from_utf8(response.body().read_to_end().await.unwrap()).unwrap();
     info!("Response body: {:?}", &body);
-
-    // we can end this task here, as we are not doing anything else
 }
