@@ -14,7 +14,7 @@ embassy-sync = { git = "https://github.com/embassy-rs/embassy", features = [
     "defmt",
 ] }
 embassy-executor = { git = "https://github.com/embassy-rs/embassy", features = [
-    "task-arena-size-32768",
+    "task-arena-size-98304",
     "arch-cortex-m",
     "executor-thread",
     "executor-interrupt",
@@ -89,7 +89,6 @@ pio-proc = "0.2"
 pio = "0.2.1"
 rand = { version = "0.8.5", default-features = false }
 embedded-sdmmc = "0.7.0"
-#embedded-nal = "0.8.0"
 
 reqwless = { git = "https://github.com/drogue-iot/reqwless", features = [
     "defmt",

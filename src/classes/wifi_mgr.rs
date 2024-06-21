@@ -8,7 +8,8 @@
 include!(concat!(env!("OUT_DIR"), "/wifi_secrets.rs"));
 
 use crate::utility::string_utils::StringUtils;
-use cyw43::{ControlError, State};
+use core::str::from_utf8;
+//use cyw43::{ControlError, State};
 use cyw43_pio::PioSpi;
 use defmt::*;
 use embassy_executor::Spawner;
@@ -17,15 +18,21 @@ use embassy_net::{
     tcp::client::{TcpClient, TcpClientState},
     Config, Stack, StackResources,
 };
+use embassy_rp::clocks::RoscRng;
 use embassy_rp::gpio::Output;
 use embassy_rp::peripherals::{DMA_CH0, PIO0};
 use embassy_time::{Duration, Timer};
 use heapless::String;
+use rand::RngCore;
 use reqwless::client::HttpClient;
+use reqwless::client::TlsConfig;
+use reqwless::client::TlsVerify;
 use reqwless::request::Method;
 use reqwless::request::Request;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
+
+//use reqwless::client::TlsConfig;
 
 enum WifiState {
     Disconnected,
@@ -123,15 +130,15 @@ pub async fn connect_wifi(
 
     // stuff for the http request
     let config = Config::dhcpv4(Default::default());
-    // Generate random seed
-    let seed = 0x0123_4567_89ab_cdef;
+    let mut rng = RoscRng;
+    let seed = rng.next_u64();
     // Initialize the stack
     static STACK: StaticCell<Stack<cyw43::NetDriver<'static>>> = StaticCell::new();
-    static RESOURCES: StaticCell<StackResources<2>> = StaticCell::new();
+    static RESOURCES: StaticCell<StackResources<5>> = StaticCell::new();
     let stack = &*STACK.init(Stack::new(
         net_device,
         config,
-        RESOURCES.init(StackResources::<2>::new()),
+        RESOURCES.init(StackResources::<5>::new()),
         seed,
     ));
 
@@ -161,66 +168,80 @@ pub async fn connect_wifi(
 
     // make the web request
     let mut rx_buffer = [0; 8192];
-    let mut tls_read_buffer = [0; 8192];
-    let mut tls_write_buffer = [0; 8192];
+    let mut tls_read_buffer = [0; 16640];
+    let mut tls_write_buffer = [0; 16640];
 
     info!("Making request to timeapi.io");
     let client_state = TcpClientState::<1, 1024, 1024>::new();
     let tcp_client = TcpClient::new(&stack, &client_state);
     let dns_client = dns::DnsSocket::new(&stack);
-    let mut http_client = HttpClient::new(&tcp_client, &dns_client);
+    let tls_config = TlsConfig::new(
+        seed,
+        &mut tls_read_buffer,
+        &mut tls_write_buffer,
+        TlsVerify::None,
+    );
+    //let mut http_client = HttpClient::new(&tcp_client, &dns_client);
+    let mut http_client = HttpClient::new_with_tls(&tcp_client, &dns_client, tls_config);
     info!("HttpClient created");
     let url = "https://timeapi.io/api/Time/current/zone?timeZone=Europe/Berlin";
     info!("URL: {:?}", url);
     info!("Making request");
-    let mut request_builder = http_client.request(Method::GET, url).await.unwrap();
-    info!("Sending request");
-    let mut request = request_builder.send(&mut rx_buffer).await.unwrap();
+    // Replace .unwrap() when making the request
+    // let mut request = http_client.request(Method::GET, &url).await.unwrap();
+    let mut request = match http_client.request(Method::GET, &url).await {
+        Ok(req) => req,
+        Err(e) => {
+            error!("Failed to make HTTP request: {:?}", e);
+            return; // Exit the function or handle the error appropriately
+        }
+    };
     info!("Reading response");
-    let response = request.body().read_to_end().await.unwrap();
-    info!("Response: {:?}", response);
+    let response = request.send(&mut rx_buffer).await.unwrap();
+    let body = from_utf8(response.body().read_to_end().await.unwrap()).unwrap();
+    info!("Response body: {:?}", &body);
 
     // we can end this task here, as we are not doing anything else
 }
 
-#[embassy_executor::task]
-pub async fn get_time_from_service(stack: &'static Stack<cyw43::NetDriver<'static>>) {
-    let mut rx_buffer = [0; 8192];
-    let mut tls_read_buffer = [0; 8192];
-    let mut tls_write_buffer = [0; 8192];
+// #[embassy_executor::task]
+// pub async fn get_time_from_service(stack: &'static Stack<cyw43::NetDriver<'static>>) {
+//     let mut rx_buffer = [0; 8192];
+//     let mut tls_read_buffer = [0; 8192];
+//     let mut tls_write_buffer = [0; 8192];
 
-    // see if we are connected to the network, if not, wait until we are
-    loop {
-        if stack.is_link_up() {
-            break;
-        }
-        Timer::after(Duration::from_millis(500)).await;
-    }
+//     // see if we are connected to the network, if not, wait until we are
+//     loop {
+//         if stack.is_link_up() {
+//             break;
+//         }
+//         Timer::after(Duration::from_millis(500)).await;
+//     }
 
-    stack.wait_config_up().await;
+//     stack.wait_config_up().await;
 
-    let client_state = TcpClientState::<1, 1024, 1024>::new();
-    let tcp_client = TcpClient::new(&stack, &client_state);
-    let dns_client = dns::DnsSocket::new(&stack);
-    let mut http_client = HttpClient::new(&tcp_client, &dns_client);
-    let url = "https://timeapi.io/api/Time/current/zone?timeZone=Europe/Berlin";
-    // Before the fix:
-    // let mut request = http_client
-    //     .request(Method::GET, url)
-    //     .await
-    //     .unwrap()
-    //     .send(&mut rx_buffer)
-    //     .await
-    //     .unwrap();
+//     let client_state = TcpClientState::<1, 1024, 1024>::new();
+//     let tcp_client = TcpClient::new(&stack, &client_state);
+//     let dns_client = dns::DnsSocket::new(&stack);
+//     let mut http_client = HttpClient::new(&tcp_client, &dns_client);
+//     let url = "https://timeapi.io/api/Time/current/zone?timeZone=Europe/Berlin";
+//     // Before the fix:
+//     // let mut request = http_client
+//     //     .request(Method::GET, url)
+//     //     .await
+//     //     .unwrap()
+//     //     .send(&mut rx_buffer)
+//     //     .await
+//     //     .unwrap();
 
-    // After the fix:
-    // First, separate the creation of the request from sending it.
-    let mut request_builder = http_client.request(Method::GET, url).await.unwrap();
+//     // After the fix:
+//     // First, separate the creation of the request from sending it.
+//     let mut request_builder = http_client.request(Method::GET, url).await.unwrap();
 
-    // Then, send the request and await the response.
-    let mut request = request_builder.send(&mut rx_buffer).await.unwrap();
+//     // Then, send the request and await the response.
+//     let mut request = request_builder.send(&mut rx_buffer).await.unwrap();
 
-    // Now you can safely use `request`.
-    let response = request.body().read_to_end().await.unwrap();
-    info!("Response: {:?}", response);
-}
+//     // Now you can safely use `request`.
+//     let response = request.body().read_to_end().await.unwrap();
+//     info!("Response: {:?}", response);
+// }
