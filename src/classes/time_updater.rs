@@ -186,7 +186,7 @@ pub async fn connect_and_update_rtc(
     let mut http_client = HttpClient::new_with_tls(&tcp_client, &dns_client, tls_config);
 
     info!("HttpClient created");
-    let url = "http://worldtimeapi.org/api/timezone/Europe/Berlin";
+    let url = wifi_manager.get_time_api_url();
 
     info!("Making request");
     let mut request = match http_client.request(Method::GET, url).await {
