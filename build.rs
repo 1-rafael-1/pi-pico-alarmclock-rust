@@ -96,9 +96,11 @@ fn time_api_config() -> io::Result<()> {
         .as_str()
         .expect("timezone not found in time_api.json file");
 
+    // Combine baseurl and timezone into a single string for TIME_SERVER_URL
+    let combined_url = format!("{}{}", baseurl, timezone);
+
     // Write the baseurl and timezone to time_api_secrets.rs
-    writeln!(f, "pub const TIME_SERVER_URL: &str = {:?};", baseurl)?;
-    writeln!(f, "pub const TIME_ZONE: &str = {:?};", timezone)?;
+    writeln!(f, "pub const TIME_SERVER_URL: &str = {:?};", combined_url)?;
     Ok(())
 }
 

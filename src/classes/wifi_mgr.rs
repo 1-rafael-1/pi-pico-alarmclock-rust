@@ -1,14 +1,18 @@
 #![allow(async_fn_in_trait)]
+include!(concat!(env!("OUT_DIR"), "/wifi_secrets.rs"));
+// populate constants SSID and PASSWORD
 // make sure to have a wifi_manager.json file in the config folder formatted as follows:
 // {
 //     "ssid": "some_ssid_here",
 //     "password": "some_password_here"
 // }
 // also make sure that build.rs loads the wifi_manager.json file and writes it to wifi_secrets.rs
-include!(concat!(env!("OUT_DIR"), "/wifi_secrets.rs"));
 
-use crate::utility::string_utils::StringUtils;
-use core::str::from_utf8;
+include!(concat!(env!("OUT_DIR"), "/time_api_config.rs"));
+// populate constant TIME_SERVER_URL
+// make sure to have a time_api_config.json file in the config folder formatted as follows:
+
+use core::{str::from_utf8, time};
 use cyw43_pio::PioSpi;
 use defmt::*;
 use embassy_executor::Spawner;
@@ -38,18 +42,21 @@ enum WifiState {
 
 pub struct WifiManager {
     state: WifiState,
-    ssid: Option<String<128>>,
-    password: Option<String<128>>,
+    ssid: &'static str,
+    password: &'static str,
+    time_api_url: &'static str,
 }
 
 impl WifiManager {
     pub fn new() -> Self {
         let mut manager = WifiManager {
             state: WifiState::Disconnected,
-            ssid: None,
-            password: None,
+            ssid: "",
+            password: "",
+            time_api_url: "",
         };
         manager.set_credentials();
+        manager.set_time_api_url();
         manager
     }
 
@@ -62,8 +69,20 @@ impl WifiManager {
     }
 
     fn set_credentials(&mut self) {
-        self.ssid = Some(StringUtils::convert_str_to_heapless_safe(SSID).unwrap());
-        self.password = Some(StringUtils::convert_str_to_heapless_safe(PASSWORD).unwrap());
+        self.ssid = SSID;
+        self.password = PASSWORD;
+    }
+
+    fn get_credentials(&self) -> (&str, &str) {
+        (self.ssid, self.password)
+    }
+
+    fn set_time_api_url(&mut self) {
+        self.time_api_url = TIME_SERVER_URL;
+    }
+
+    fn get_time_api_url(&self) -> &str {
+        self.time_api_url
     }
 }
 
@@ -99,15 +118,12 @@ pub async fn connect_wifi(
         .set_power_management(cyw43::PowerManagementMode::PowerSave)
         .await;
 
-    let ssid_str = StringUtils::unwrap_or_default_heapless_string(wifi_manager.ssid.clone());
-    let password_str =
-        StringUtils::unwrap_or_default_heapless_string(wifi_manager.password.clone());
-
+    let (ssid, password) = wifi_manager.get_credentials();
     info!(
         "Joining WPA2 network with SSID: {:?} and password: {:?}",
-        ssid_str, password_str
+        &ssid, &password
     );
-    match control.join_wpa2(&ssid_str, &password_str).await {
+    match control.join_wpa2(&ssid, &password).await {
         Ok(_) => {
             wifi_manager.set_state(WifiState::Connected);
             info!("Connected to wifi");
@@ -166,10 +182,13 @@ pub async fn connect_wifi(
         &mut tls_write_buffer,
         TlsVerify::None,
     );
-    //let mut http_client = HttpClient::new(&tcp_client, &dns_client); // -> seems to need tls
+
+    //let mut http_client = HttpClient::new(&tcp_client, &dns_client);
     let mut http_client = HttpClient::new_with_tls(&tcp_client, &dns_client, tls_config);
+
     info!("HttpClient created");
-    let url = "https://timeapi.io/api/Time/current/zone?timeZone=Europe/Berlin";
+    let url = "http://worldtimeapi.org/api/timezone/Europe/Berlin";
+
     info!("Making request");
     let mut request = match http_client.request(Method::GET, url).await {
         Ok(req) => req,

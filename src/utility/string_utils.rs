@@ -22,7 +22,7 @@ impl StringUtils {
         }
     }
 
-    /// This function concatenates two heapless::String<64> and <32> into a heapless::String<256>
+    /// This function concatenates two heapless::String<128> and <128> into a heapless::String<256>
     pub fn concatenate_heapless_strings(
         first_string: &heapless::String<128>,
         second_string: &heapless::String<128>,
