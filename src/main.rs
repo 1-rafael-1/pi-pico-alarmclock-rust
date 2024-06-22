@@ -2,7 +2,7 @@
 #![no_std]
 #![no_main]
 
-use crate::classes::wifi_mgr::WifiManager; // WifiManager
+use crate::classes::time_updater::TimeUpdater;
 use cyw43_pio::PioSpi; // for WiFi
 use defmt::*; // global logger
 use embassy_executor::Spawner; // executor
@@ -76,13 +76,13 @@ async fn main(spawner: Spawner) {
     });
 
     // Initialize WifiManager
-    let wifi_manager = WifiManager::new();
+    let time_updater = TimeUpdater::new();
 
     // Call connect_wifi with the necessary parameters
     spawner
-        .spawn(classes::wifi_mgr::connect_wifi(
+        .spawn(classes::time_updater::connect_and_update_rtc(
             spawner,
-            wifi_manager,
+            time_updater,
             pwr,
             spi,
         ))

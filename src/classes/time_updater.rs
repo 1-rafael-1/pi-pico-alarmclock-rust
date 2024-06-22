@@ -25,7 +25,6 @@ use embassy_rp::clocks::RoscRng;
 use embassy_rp::gpio::Output;
 use embassy_rp::peripherals::{DMA_CH0, PIO0};
 use embassy_time::{Duration, Timer};
-use heapless::String;
 use rand::RngCore;
 use reqwless::client::HttpClient;
 use reqwless::client::TlsConfig;
@@ -40,16 +39,16 @@ enum WifiState {
     Error,
 }
 
-pub struct WifiManager {
+pub struct TimeUpdater {
     state: WifiState,
     ssid: &'static str,
     password: &'static str,
     time_api_url: &'static str,
 }
 
-impl WifiManager {
+impl TimeUpdater {
     pub fn new() -> Self {
-        let mut manager = WifiManager {
+        let mut manager = TimeUpdater {
             state: WifiState::Disconnected,
             ssid: "",
             password: "",
@@ -64,7 +63,7 @@ impl WifiManager {
         self.state = new_state;
     }
 
-    pub fn get_state(&self) -> &WifiState {
+    fn get_state(&self) -> &WifiState {
         &self.state
     }
 
@@ -99,9 +98,9 @@ async fn net_task(stack: &'static Stack<cyw43::NetDriver<'static>>) -> ! {
 }
 
 #[embassy_executor::task]
-pub async fn connect_wifi(
+pub async fn connect_and_update_rtc(
     spawner: Spawner,
-    mut wifi_manager: WifiManager,
+    mut wifi_manager: TimeUpdater,
     pwr: Output<'static>,
     spi: PioSpi<'static, PIO0, 0, DMA_CH0>,
 ) {
