@@ -12,7 +12,7 @@ include!(concat!(env!("OUT_DIR"), "/time_api_config.rs"));
 // populate constant TIME_SERVER_URL
 // make sure to have a time_api_config.json file in the config folder formatted as follows:
 
-use core::{str::from_utf8, time};
+use core::str::from_utf8;
 use cyw43_pio::PioSpi;
 use defmt::*;
 use embassy_executor::Spawner;
@@ -24,14 +24,21 @@ use embassy_net::{
 use embassy_rp::clocks::RoscRng;
 use embassy_rp::gpio::Output;
 use embassy_rp::peripherals::{DMA_CH0, PIO0};
-use embassy_time::{Duration, Timer};
+use embassy_rp::rtc::Rtc;
+use embassy_time::{Duration, Instant, Timer};
 use rand::RngCore;
 use reqwless::client::HttpClient;
 use reqwless::client::TlsConfig;
 use reqwless::client::TlsVerify;
 use reqwless::request::Method;
+use serde_derive::Deserialize;
+use serde_json_core;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
+
+struct ApiResponse {
+    datetime: &'static str,
+}
 
 enum WifiState {
     Disconnected,
@@ -44,6 +51,8 @@ pub struct TimeUpdater {
     ssid: &'static str,
     password: &'static str,
     time_api_url: &'static str,
+    rtc_is_set: bool,
+    rtc_last_update: Instant,
 }
 
 impl TimeUpdater {
@@ -53,6 +62,8 @@ impl TimeUpdater {
             ssid: "",
             password: "",
             time_api_url: "",
+            rtc_is_set: false,
+            rtc_last_update: Instant::now(),
         };
         manager.set_credentials();
         manager.set_time_api_url();
@@ -117,22 +128,6 @@ pub async fn connect_and_update_rtc(
         .set_power_management(cyw43::PowerManagementMode::PowerSave)
         .await;
 
-    let (ssid, password) = wifi_manager.get_credentials();
-    info!(
-        "Joining WPA2 network with SSID: {:?} and password: {:?}",
-        &ssid, &password
-    );
-    match control.join_wpa2(&ssid, &password).await {
-        Ok(_) => {
-            wifi_manager.set_state(WifiState::Connected);
-            info!("Connected to wifi");
-        }
-        Err(e) => {
-            wifi_manager.set_state(WifiState::Error);
-            info!("Error connecting to wifi: {}", e.status);
-        }
-    }
-
     let config = Config::dhcpv4(Default::default());
     let mut rng = RoscRng;
     let seed = rng.next_u64();
@@ -148,55 +143,113 @@ pub async fn connect_and_update_rtc(
 
     unwrap!(spawner.spawn(net_task(stack)));
 
-    info!("waiting for DHCP...");
-    while !stack.is_config_up() {
-        Timer::after_millis(100).await;
-    }
-    info!("DHCP is now up!");
-
-    info!("waiting for link up...");
     loop {
-        if stack.is_link_up() {
-            break;
+        let (ssid, password) = wifi_manager.get_credentials();
+        info!(
+            "Joining WPA2 network with SSID: {:?} and password: {:?}",
+            &ssid, &password
+        );
+        match control.join_wpa2(&ssid, &password).await {
+            Ok(_) => {
+                wifi_manager.set_state(WifiState::Connected);
+                control.gpio_set(0, true).await; // Turn on the onboard LED
+                info!("Connected to wifi");
+            }
+            Err(e) => {
+                wifi_manager.set_state(WifiState::Error);
+                info!("Error connecting to wifi: {}", e.status);
+            }
         }
-        Timer::after(Duration::from_millis(500)).await;
+
+        info!("waiting for DHCP...");
+        while !stack.is_config_up() {
+            Timer::after_millis(100).await;
+        }
+        info!("DHCP is now up!");
+
+        info!("waiting for link up...");
+        loop {
+            if stack.is_link_up() {
+                break;
+            }
+            Timer::after(Duration::from_millis(500)).await;
+        }
+        info!("Link is up!");
+
+        info!("waiting for stack to be up...");
+        stack.wait_config_up().await;
+        info!("Stack is up!");
+
+        info!("Preparing request to timeapi.io");
+        let mut rx_buffer = [0; 8192];
+        let mut tls_read_buffer = [0; 16640];
+        let mut tls_write_buffer = [0; 16640];
+
+        let client_state = TcpClientState::<1, 1024, 1024>::new();
+        let tcp_client = TcpClient::new(stack, &client_state);
+        let dns_client = dns::DnsSocket::new(stack);
+        let tls_config = TlsConfig::new(
+            seed,
+            &mut tls_read_buffer,
+            &mut tls_write_buffer,
+            TlsVerify::None,
+        );
+
+        {
+            // create a new scope to limit the lifetime of the HttpClient and the request
+            // scope for request, response, and body. This is to ensure that the request is dropped before the next iteration of the loop.
+
+            let mut http_client = HttpClient::new_with_tls(&tcp_client, &dns_client, tls_config);
+            info!("HttpClient created");
+
+            let url = wifi_manager.get_time_api_url();
+
+            info!("Making request");
+            let mut request = match http_client.request(Method::GET, url).await {
+                Ok(req) => req,
+                Err(e) => {
+                    error!("Failed to make HTTP request: {:?}", e);
+                    return; // ToDo
+                }
+            };
+            //let response = request.send(&mut rx_buffer).await.unwrap();
+            let response = match request.send(&mut rx_buffer).await {
+                Ok(resp) => resp,
+                Err(e) => {
+                    error!("Failed to send HTTP request");
+                    return; // ToDo
+                }
+            };
+            //let body = from_utf8(response.body().read_to_end().await.unwrap()).unwrap();
+            let body = match from_utf8(response.body().read_to_end().await.unwrap()) {
+                Ok(b) => b,
+                Err(e) => {
+                    error!("Failed to read response body");
+                    return; // ToDo
+                }
+            };
+            info!("Response body: {:?}", &body);
+
+            // parse the response body and update the RTC
+            #[derive(Deserialize)]
+            struct ApiResponse<'a> {
+                datetime: &'a str,
+                // add other fields as needed
+            }
+
+            let bytes = body.as_bytes();
+            let output: ApiResponse<'_> = serde_json_core::de::from_slice(bytes).unwrap();
+
+            let datetime = output.datetime;
+        } // end of scope
+
+        control.leave().await;
+        wifi_manager.set_state(WifiState::Disconnected);
+        control.gpio_set(0, false).await; // Turn off the onboard LED
+        info!("Disconnected from wifi");
+
+        let secs_to_wait = 21600;
+        info!("Waiting for {:?} seconds before reconnecting", secs_to_wait);
+        Timer::after(Duration::from_secs(secs_to_wait)).await;
     }
-    info!("Link is up!");
-
-    info!("waiting for stack to be up...");
-    stack.wait_config_up().await;
-    info!("Stack is up!");
-
-    info!("Preparing request to timeapi.io");
-    let mut rx_buffer = [0; 8192];
-    let mut tls_read_buffer = [0; 16640];
-    let mut tls_write_buffer = [0; 16640];
-
-    let client_state = TcpClientState::<1, 1024, 1024>::new();
-    let tcp_client = TcpClient::new(stack, &client_state);
-    let dns_client = dns::DnsSocket::new(stack);
-    let tls_config = TlsConfig::new(
-        seed,
-        &mut tls_read_buffer,
-        &mut tls_write_buffer,
-        TlsVerify::None,
-    );
-
-    //let mut http_client = HttpClient::new(&tcp_client, &dns_client);
-    let mut http_client = HttpClient::new_with_tls(&tcp_client, &dns_client, tls_config);
-
-    info!("HttpClient created");
-    let url = wifi_manager.get_time_api_url();
-
-    info!("Making request");
-    let mut request = match http_client.request(Method::GET, url).await {
-        Ok(req) => req,
-        Err(e) => {
-            error!("Failed to make HTTP request: {:?}", e);
-            return; // ToDo
-        }
-    };
-    let response = request.send(&mut rx_buffer).await.unwrap();
-    let body = from_utf8(response.body().read_to_end().await.unwrap()).unwrap();
-    info!("Response body: {:?}", &body);
 }
