@@ -31,7 +31,7 @@ use reqwless::client::HttpClient;
 use reqwless::client::TlsConfig;
 use reqwless::client::TlsVerify;
 use reqwless::request::Method;
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use serde_json_core;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
@@ -238,9 +238,15 @@ pub async fn connect_and_update_rtc(
             }
 
             let bytes = body.as_bytes();
-            let output: ApiResponse<'_> = serde_json_core::de::from_slice(bytes).unwrap();
-
-            let datetime = output.datetime;
+            match serde_json_core::de::from_slice::<ApiResponse>(bytes) {
+                Ok((output, _used)) => {
+                    info!("Datetime: {:?}", output.datetime);
+                }
+                Err(e) => {
+                    error!("Failed to parse response body");
+                    return; // ToDo
+                }
+            }
         } // end of scope
 
         control.leave().await;
