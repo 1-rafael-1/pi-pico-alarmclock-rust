@@ -96,7 +96,7 @@ async fn net_task(stack: &'static Stack<cyw43::NetDriver<'static>>) -> ! {
 #[embassy_executor::task]
 pub async fn connect_and_update_rtc(
     spawner: Spawner,
-    mut wifi_manager: TimeUpdater,
+    mut time_updater: TimeUpdater,
     pwr: Output<'static>,
     spi: PioSpi<'static, PIO0, 0, DMA_CH0>,
 ) {
@@ -133,7 +133,7 @@ pub async fn connect_and_update_rtc(
     unwrap!(spawner.spawn(net_task(stack)));
 
     loop {
-        let (ssid, password) = wifi_manager.get_credentials();
+        let (ssid, password) = time_updater.get_credentials();
         info!(
             "Joining WPA2 network with SSID: {:?} and password: {:?}",
             &ssid, &password
@@ -224,7 +224,7 @@ pub async fn connect_and_update_rtc(
             let mut http_client = HttpClient::new_with_tls(&tcp_client, &dns_client, tls_config);
             info!("HttpClient created");
 
-            let url = wifi_manager.get_time_api_url();
+            let url = time_updater.get_time_api_url();
 
             info!("Making request");
             let mut request = match http_client.request(Method::GET, url).await {
