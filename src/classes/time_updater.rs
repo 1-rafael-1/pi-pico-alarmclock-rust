@@ -36,18 +36,12 @@ use serde_json_core;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
-struct ApiResponse {
-    datetime: &'static str,
-}
-
-enum WifiState {
-    Disconnected,
-    Connected,
-    Error,
+#[derive(Deserialize)]
+struct ApiResponse<'a> {
+    datetime: &'a str,
 }
 
 pub struct TimeUpdater {
-    state: WifiState,
     ssid: &'static str,
     password: &'static str,
     time_api_url: &'static str,
@@ -58,7 +52,6 @@ pub struct TimeUpdater {
 impl TimeUpdater {
     pub fn new() -> Self {
         let mut manager = TimeUpdater {
-            state: WifiState::Disconnected,
             ssid: "",
             password: "",
             time_api_url: "",
@@ -68,14 +61,6 @@ impl TimeUpdater {
         manager.set_credentials();
         manager.set_time_api_url();
         manager
-    }
-
-    fn set_state(&mut self, new_state: WifiState) {
-        self.state = new_state;
-    }
-
-    fn get_state(&self) -> &WifiState {
-        &self.state
     }
 
     fn set_credentials(&mut self) {
@@ -115,6 +100,9 @@ pub async fn connect_and_update_rtc(
     pwr: Output<'static>,
     spi: PioSpi<'static, PIO0, 0, DMA_CH0>,
 ) {
+    let secs_to_wait = 21600; // 6 hours
+    let secs_to_wait_retry = 30;
+
     let fw = unsafe { core::slice::from_raw_parts(0x10100000 as *const u8, 230321) };
     let clm = unsafe { core::slice::from_raw_parts(0x10140000 as *const u8, 4752) };
 
@@ -129,9 +117,10 @@ pub async fn connect_and_update_rtc(
         .await;
 
     let config = Config::dhcpv4(Default::default());
+    // random seed
     let mut rng = RoscRng;
     let seed = rng.next_u64();
-    // Initialize the stack
+    // Initialize the network stack
     static STACK: StaticCell<Stack<cyw43::NetDriver<'static>>> = StaticCell::new();
     static RESOURCES: StaticCell<StackResources<5>> = StaticCell::new();
     let stack = &*STACK.init(Stack::new(
@@ -151,28 +140,61 @@ pub async fn connect_and_update_rtc(
         );
         match control.join_wpa2(&ssid, &password).await {
             Ok(_) => {
-                wifi_manager.set_state(WifiState::Connected);
                 control.gpio_set(0, true).await; // Turn on the onboard LED
                 info!("Connected to wifi");
             }
             Err(e) => {
-                wifi_manager.set_state(WifiState::Error);
                 info!("Error connecting to wifi: {}", e.status);
+                control.leave().await;
+                control.gpio_set(0, false).await; // Turn off the onboard LED
+                info!(
+                    "Disconnected from wifi after error. Retrying in {:?} seconds",
+                    secs_to_wait_retry
+                );
+                Timer::after(Duration::from_secs(secs_to_wait_retry)).await;
+                continue;
             }
         }
 
         info!("waiting for DHCP...");
+        let mut timeout_counter = 0;
         while !stack.is_config_up() {
             Timer::after_millis(100).await;
+            timeout_counter += 1;
+            if timeout_counter > 100 {
+                break;
+            }
+        }
+        if !stack.is_config_up() {
+            control.leave().await;
+            control.gpio_set(0, false).await; // Turn off the onboard LED
+            info!(
+                "Disconnected from wifi after error. Retrying in {:?} seconds",
+                secs_to_wait_retry
+            );
+            Timer::after(Duration::from_secs(secs_to_wait_retry)).await;
+            continue;
         }
         info!("DHCP is now up!");
 
         info!("waiting for link up...");
-        loop {
-            if stack.is_link_up() {
+        timeout_counter = 0;
+        while !stack.is_link_up() {
+            Timer::after_millis(500).await;
+            timeout_counter += 1;
+            if timeout_counter > 100 {
                 break;
             }
-            Timer::after(Duration::from_millis(500)).await;
+        }
+        if !stack.is_link_up() {
+            control.leave().await;
+            control.gpio_set(0, false).await; // Turn off the onboard LED
+            info!(
+                "Disconnected from wifi after error. Retrying in {:?} seconds",
+                secs_to_wait_retry
+            );
+            Timer::after(Duration::from_secs(secs_to_wait_retry)).await;
+            continue;
         }
         info!("Link is up!");
 
@@ -209,34 +231,47 @@ pub async fn connect_and_update_rtc(
                 Ok(req) => req,
                 Err(e) => {
                     error!("Failed to make HTTP request: {:?}", e);
-                    return; // ToDo
+                    control.leave().await;
+                    control.gpio_set(0, false).await; // Turn off the onboard LED
+                    info!(
+                        "Disconnected from wifi after error. Retrying in {:?} seconds",
+                        secs_to_wait_retry
+                    );
+                    Timer::after(Duration::from_secs(secs_to_wait_retry)).await;
+                    continue;
                 }
             };
-            //let response = request.send(&mut rx_buffer).await.unwrap();
             let response = match request.send(&mut rx_buffer).await {
                 Ok(resp) => resp,
                 Err(e) => {
                     error!("Failed to send HTTP request");
-                    return; // ToDo
+                    control.leave().await;
+                    control.gpio_set(0, false).await; // Turn off the onboard LED
+                    info!(
+                        "Disconnected from wifi after error. Retrying in {:?} seconds",
+                        secs_to_wait_retry
+                    );
+                    Timer::after(Duration::from_secs(secs_to_wait_retry)).await;
+                    continue;
                 }
             };
-            //let body = from_utf8(response.body().read_to_end().await.unwrap()).unwrap();
             let body = match from_utf8(response.body().read_to_end().await.unwrap()) {
                 Ok(b) => b,
                 Err(e) => {
                     error!("Failed to read response body");
-                    return; // ToDo
+                    control.leave().await;
+                    control.gpio_set(0, false).await; // Turn off the onboard LED
+                    info!(
+                        "Disconnected from wifi after error. Retrying in {:?} seconds",
+                        secs_to_wait_retry
+                    );
+                    Timer::after(Duration::from_secs(secs_to_wait_retry)).await;
+                    continue;
                 }
             };
             info!("Response body: {:?}", &body);
 
             // parse the response body and update the RTC
-            #[derive(Deserialize)]
-            struct ApiResponse<'a> {
-                datetime: &'a str,
-                // add other fields as needed
-            }
-
             let bytes = body.as_bytes();
             match serde_json_core::de::from_slice::<ApiResponse>(bytes) {
                 Ok((output, _used)) => {
@@ -250,11 +285,9 @@ pub async fn connect_and_update_rtc(
         } // end of scope
 
         control.leave().await;
-        wifi_manager.set_state(WifiState::Disconnected);
         control.gpio_set(0, false).await; // Turn off the onboard LED
         info!("Disconnected from wifi");
 
-        let secs_to_wait = 21600;
         info!("Waiting for {:?} seconds before reconnecting", secs_to_wait);
         Timer::after(Duration::from_secs(secs_to_wait)).await;
     }
