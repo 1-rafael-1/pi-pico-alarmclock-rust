@@ -109,9 +109,11 @@ codegen-units = 1
 debug = 2
 debug-assertions = true
 incremental = false
-opt-level = 1
+opt-level = "z"
+#opt-level = 1
 overflow-checks = true
-lto = "off"
+#lto = "off"
+lto = true
 
 # cargo build/run --release
 [profile.release]

@@ -7,9 +7,10 @@ use cyw43_pio::PioSpi; // for WiFi
 use defmt::*; // global logger
 use embassy_executor::Spawner; // executor
 use embassy_rp::bind_interrupts;
-use embassy_rp::gpio::{self, Input}; // gpio
+use embassy_rp::gpio::{self, Input};
 use embassy_rp::peripherals::PIO0;
 use embassy_rp::pio::{InterruptHandler, Pio};
+use embassy_rp::rtc::Rtc;
 use embassy_time::{Duration, Timer}; // time
 use gpio::{Level, Output}; // gpio output
 use {defmt_rtt as _, panic_probe as _}; // panic handler
@@ -56,8 +57,8 @@ async fn main(spawner: Spawner) {
         ))
         .unwrap();
 
-    //wifi
-    // Setup for WiFi connection
+    // Real Time Clock
+    // Setup for WiFi connection and RTC update
     info!("init wifi");
     let pwr = Output::new(peripherals.PIN_23, Level::Low);
     let cs = Output::new(peripherals.PIN_25, Level::High);
@@ -71,11 +72,12 @@ async fn main(spawner: Spawner) {
         peripherals.PIN_29,
         peripherals.DMA_CH0,
     );
+    let rtc = Rtc::new(peripherals.RTC);
     bind_interrupts!(struct Irqs {
         PIO0_IRQ_0 => InterruptHandler<PIO0>;
     });
 
-    // Initialize WifiManager
+    // Initialize TimeUpdater
     let time_updater = TimeUpdater::new();
 
     // Call connect_wifi with the necessary parameters
@@ -85,6 +87,7 @@ async fn main(spawner: Spawner) {
             time_updater,
             pwr,
             spi,
+            rtc,
         ))
         .unwrap();
 

@@ -36,11 +36,6 @@ use serde_json_core;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
-#[derive(Deserialize)]
-struct ApiResponse<'a> {
-    datetime: &'a str,
-}
-
 pub struct TimeUpdater {
     ssid: &'static str,
     password: &'static str,
@@ -99,6 +94,7 @@ pub async fn connect_and_update_rtc(
     mut time_updater: TimeUpdater,
     pwr: Output<'static>,
     spi: PioSpi<'static, PIO0, 0, DMA_CH0>,
+    rtc: Rtc,
 ) {
     let secs_to_wait = 21600; // 6 hours
     let secs_to_wait_retry = 30;
@@ -272,10 +268,17 @@ pub async fn connect_and_update_rtc(
             info!("Response body: {:?}", &body);
 
             // parse the response body and update the RTC
+            #[derive(Deserialize)]
+            struct ApiResponse<'a> {
+                datetime: &'a str,
+            }
+
             let bytes = body.as_bytes();
             match serde_json_core::de::from_slice::<ApiResponse>(bytes) {
                 Ok((output, _used)) => {
                     info!("Datetime: {:?}", output.datetime);
+                    // set the RTC
+                    rtc.set_datetime(output.datetime).unwrap();
                 }
                 Err(e) => {
                     error!("Failed to parse response body");
