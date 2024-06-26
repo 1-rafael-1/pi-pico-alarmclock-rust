@@ -28,7 +28,7 @@ use embassy_rp::peripherals;
 use embassy_rp::peripherals::{DMA_CH0, PIO0};
 use embassy_rp::rtc::Rtc;
 use embassy_rp::{clocks::RoscRng, rtc::DateTime};
-use embassy_time::{Duration, Instant, Timer};
+use embassy_time::{Duration, Timer};
 use rand::RngCore;
 use reqwless::client::HttpClient;
 use reqwless::client::TlsConfig;
@@ -43,8 +43,6 @@ pub struct TimeUpdater {
     ssid: &'static str,
     password: &'static str,
     time_api_url: &'static str,
-    rtc_is_set: bool,
-    rtc_last_update: Instant,
 }
 
 impl TimeUpdater {
@@ -53,8 +51,6 @@ impl TimeUpdater {
             ssid: "",
             password: "",
             time_api_url: "",
-            rtc_is_set: false,
-            rtc_last_update: Instant::now(),
         };
         manager.set_credentials();
         manager.set_time_api_url();
@@ -94,7 +90,7 @@ async fn net_task(stack: &'static Stack<cyw43::NetDriver<'static>>) -> ! {
 #[embassy_executor::task]
 pub async fn connect_and_update_rtc(
     spawner: Spawner,
-    mut time_updater: TimeUpdater,
+    time_updater: TimeUpdater,
     pwr: Output<'static>,
     spi: PioSpi<'static, PIO0, 0, DMA_CH0>,
     rtc_ref: &'static RefCell<Rtc<'static, peripherals::RTC>>,
@@ -242,7 +238,7 @@ pub async fn connect_and_update_rtc(
             };
             let response = match request.send(&mut rx_buffer).await {
                 Ok(resp) => resp,
-                Err(e) => {
+                Err(_e) => {
                     error!("Failed to send HTTP request");
                     control.leave().await;
                     control.gpio_set(0, false).await; // Turn off the onboard LED
@@ -256,7 +252,7 @@ pub async fn connect_and_update_rtc(
             };
             let body = match from_utf8(response.body().read_to_end().await.unwrap()) {
                 Ok(b) => b,
-                Err(e) => {
+                Err(_e) => {
                     error!("Failed to read response body");
                     control.leave().await;
                     control.gpio_set(0, false).await; // Turn off the onboard LED
@@ -285,7 +281,7 @@ pub async fn connect_and_update_rtc(
                     dt = StringUtils::convert_str_to_datetime(output.datetime);
                     rtc_ref.borrow_mut().set_datetime(dt).unwrap();
                 }
-                Err(e) => {
+                Err(_e) => {
                     error!("Failed to parse response body");
                     return; // ToDo
                 }
