@@ -2,9 +2,8 @@
 #![no_std]
 #![no_main]
 
-use core::cell::RefCell;
-
 use crate::classes::time_updater::TimeUpdater;
+use core::cell::RefCell;
 use cyw43_pio::PioSpi; // for WiFi
 use defmt::*; // global logger
 use embassy_executor::Spawner; // executor
@@ -13,7 +12,6 @@ use embassy_rp::peripherals::PIO0;
 use embassy_rp::pio::{InterruptHandler, Pio};
 use embassy_rp::rtc::Rtc;
 use embassy_rp::{bind_interrupts, peripherals};
-use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_time::{Duration, Timer}; // time
 use gpio::{Level, Output};
 use static_cell::StaticCell; // gpio output
@@ -32,6 +30,10 @@ async fn main(spawner: Spawner) {
 
     // Initialize the peripherals for the RP2040
     let p = embassy_rp::init(Default::default());
+    // bind the interrupts
+    bind_interrupts!(struct Irqs {
+        PIO0_IRQ_0 => InterruptHandler<PIO0>;
+    });
 
     // buttons
     // green_button
@@ -74,9 +76,10 @@ async fn main(spawner: Spawner) {
         p.DMA_CH0,
     );
 
-    bind_interrupts!(struct Irqs {
-        PIO0_IRQ_0 => InterruptHandler<PIO0>;
-    });
+    // Initialize the RTC in a static cell to be used in the time_updater module
+    static RTC: StaticCell<RefCell<Rtc<'static, peripherals::RTC>>> = StaticCell::new();
+    let rtc_instance: Rtc<'static, peripherals::RTC> = Rtc::new(p.RTC);
+    let rtc_ref = RTC.init(RefCell::new(rtc_instance));
 
     // Initialize TimeUpdater
     let time_updater = TimeUpdater::new();
@@ -88,11 +91,18 @@ async fn main(spawner: Spawner) {
             time_updater,
             pwr,
             spi,
+            rtc_ref,
         ))
         .unwrap();
 
     loop {
         info!("main loop");
+        if let Ok(dt) = rtc_ref.borrow_mut().now() {
+            info!(
+                "Task A: Now: {}-{:02}-{:02} {}:{:02}:{:02}",
+                dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second,
+            );
+        }
         Timer::after(Duration::from_secs(10)).await;
     }
 }

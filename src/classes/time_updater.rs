@@ -12,6 +12,8 @@ include!(concat!(env!("OUT_DIR"), "/time_api_config.rs"));
 // populate constant TIME_SERVER_URL
 // make sure to have a time_api_config.json file in the config folder formatted as follows:
 
+use crate::utility::string_utils::StringUtils;
+use core::cell::RefCell;
 use core::str::from_utf8;
 use cyw43_pio::PioSpi;
 use defmt::*;
@@ -21,10 +23,11 @@ use embassy_net::{
     tcp::client::{TcpClient, TcpClientState},
     Config, Stack, StackResources,
 };
-use embassy_rp::clocks::RoscRng;
 use embassy_rp::gpio::Output;
+use embassy_rp::peripherals;
 use embassy_rp::peripherals::{DMA_CH0, PIO0};
 use embassy_rp::rtc::Rtc;
+use embassy_rp::{clocks::RoscRng, rtc::DateTime};
 use embassy_time::{Duration, Instant, Timer};
 use rand::RngCore;
 use reqwless::client::HttpClient;
@@ -94,6 +97,7 @@ pub async fn connect_and_update_rtc(
     mut time_updater: TimeUpdater,
     pwr: Output<'static>,
     spi: PioSpi<'static, PIO0, 0, DMA_CH0>,
+    rtc_ref: &'static RefCell<Rtc<'static, peripherals::RTC>>,
 ) {
     let secs_to_wait = 21600; // 6 hours
     let secs_to_wait_retry = 30;
@@ -277,7 +281,9 @@ pub async fn connect_and_update_rtc(
                 Ok((output, _used)) => {
                     info!("Datetime: {:?}", output.datetime);
                     // set the RTC
-                    // ToDo
+                    let dt: DateTime;
+                    dt = StringUtils::convert_str_to_datetime(output.datetime);
+                    rtc_ref.borrow_mut().set_datetime(dt).unwrap();
                 }
                 Err(e) => {
                     error!("Failed to parse response body");
