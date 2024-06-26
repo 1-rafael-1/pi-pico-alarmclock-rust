@@ -2,20 +2,26 @@
 #![no_std]
 #![no_main]
 
-//use crate::classes::irqs::Irqs;
+use crate::classes::time_updater::TimeUpdater;
+use core::cell::RefCell;
 use cyw43_pio::PioSpi; // for WiFi
 use defmt::*; // global logger
 use embassy_executor::Spawner; // executor
-use embassy_rp::bind_interrupts;
-use embassy_rp::gpio::{self, Input}; // gpio
+use embassy_rp::gpio::{self, Input};
 use embassy_rp::peripherals::PIO0;
 use embassy_rp::pio::{InterruptHandler, Pio};
+use embassy_rp::rtc::Rtc;
+use embassy_rp::{bind_interrupts, peripherals};
 use embassy_time::{Duration, Timer}; // time
-use gpio::{Level, Output}; // gpio output
+use gpio::{Level, Output};
+use static_cell::StaticCell; // gpio output
 use {defmt_rtt as _, panic_probe as _}; // panic handler
 
 // import the classes module (submodule of src)
 mod classes;
+
+// import the utility module (submodule of src)
+mod utility;
 
 // Entry point
 #[embassy_executor::main]
@@ -23,29 +29,30 @@ async fn main(spawner: Spawner) {
     info!("Program start");
 
     // Initialize the peripherals for the RP2040
-    let peripherals = embassy_rp::init(Default::default());
-
-    // Initialize one LED on pin 25
-    // let mut led = Output::new(peripherals.PIN_25, Level::Low);
+    let p = embassy_rp::init(Default::default());
+    // bind the interrupts
+    bind_interrupts!(struct Irqs {
+        PIO0_IRQ_0 => InterruptHandler<PIO0>;
+    });
 
     // buttons
     // green_button
     info!("init green button");
-    let green_button_input = Input::new(peripherals.PIN_20, gpio::Pull::Up);
+    let green_button_input = Input::new(p.PIN_20, gpio::Pull::Up);
     spawner
         .spawn(classes::btn_mgr::green_button(spawner, green_button_input))
         .unwrap();
 
     //blue_button
     info!("init blue button");
-    let blue_button_input = Input::new(peripherals.PIN_21, gpio::Pull::Up);
+    let blue_button_input = Input::new(p.PIN_21, gpio::Pull::Up);
     spawner
         .spawn(classes::btn_mgr::blue_button(spawner, blue_button_input))
         .unwrap();
 
     //yellow_button
     info!("init yellow button");
-    let yellow_button_input = Input::new(peripherals.PIN_22, gpio::Pull::Up);
+    let yellow_button_input = Input::new(p.PIN_22, gpio::Pull::Up);
     spawner
         .spawn(classes::btn_mgr::yellow_button(
             spawner,
@@ -53,38 +60,49 @@ async fn main(spawner: Spawner) {
         ))
         .unwrap();
 
-    //wifi
-    // Setup for WiFi connection
+    // Real Time Clock
+    // Setup for WiFi connection and RTC update
     info!("init wifi");
-    let pwr = Output::new(peripherals.PIN_23, Level::Low);
-    let cs = Output::new(peripherals.PIN_25, Level::High);
-    let mut pio = Pio::new(peripherals.PIO0, Irqs);
+    let pwr = Output::new(p.PIN_23, Level::Low);
+    let cs = Output::new(p.PIN_25, Level::High);
+    let mut pio = Pio::new(p.PIO0, Irqs);
     let spi = PioSpi::new(
         &mut pio.common,
         pio.sm0,
         pio.irq0,
         cs,
-        peripherals.PIN_24,
-        peripherals.PIN_29,
-        peripherals.DMA_CH0,
+        p.PIN_24,
+        p.PIN_29,
+        p.DMA_CH0,
     );
-    bind_interrupts!(struct Irqs {
-        PIO0_IRQ_0 => InterruptHandler<PIO0>;
-    });
+
+    // Initialize the RTC in a static cell to be used in the time_updater module
+    static RTC: StaticCell<RefCell<Rtc<'static, peripherals::RTC>>> = StaticCell::new();
+    let rtc_instance: Rtc<'static, peripherals::RTC> = Rtc::new(p.RTC);
+    let rtc_ref = RTC.init(RefCell::new(rtc_instance));
+
+    // Initialize TimeUpdater
+    let time_updater = TimeUpdater::new();
+
     // Call connect_wifi with the necessary parameters
     spawner
-        .spawn(classes::wifi_mgr::connect_wifi(spawner, pwr, spi))
+        .spawn(classes::time_updater::connect_and_update_rtc(
+            spawner,
+            time_updater,
+            pwr,
+            spi,
+            rtc_ref,
+        ))
         .unwrap();
 
     loop {
         info!("main loop");
+        if let Ok(dt) = rtc_ref.borrow_mut().now() {
+            info!(
+                "Task A: Now: {}-{:02}-{:02} {}:{:02}:{:02}",
+                dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second,
+            );
+        }
         Timer::after(Duration::from_secs(10)).await;
-        // info!("led on!");
-        // led.set_high();
-        // Timer::after(Duration::from_secs(20)).await;
-
-        // info!("led off!");
-        // led.set_low();
-        // Timer::after(Duration::from_secs(20)).await;
     }
 }

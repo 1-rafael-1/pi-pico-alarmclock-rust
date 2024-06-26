@@ -1,0 +1,6 @@
+{
+    "time api by zone": {
+        "baseurl": "http://worldtimeapi.org/api",
+        "timezone": "/timezone/Europe/Berlin"
+    }
+}

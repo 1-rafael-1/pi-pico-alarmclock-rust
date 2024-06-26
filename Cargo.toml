@@ -14,7 +14,7 @@ embassy-sync = { git = "https://github.com/embassy-rs/embassy", features = [
     "defmt",
 ] }
 embassy-executor = { git = "https://github.com/embassy-rs/embassy", features = [
-    "task-arena-size-32768",
+    "task-arena-size-98304",
     "arch-cortex-m",
     "executor-thread",
     "executor-interrupt",
@@ -41,6 +41,7 @@ embassy-net = { git = "https://github.com/embassy-rs/embassy", features = [
     "raw",
     "dhcpv4",
     "medium-ethernet",
+    "dns",
 ] }
 embassy-net-wiznet = { git = "https://github.com/embassy-rs/embassy", features = [
     "defmt",
@@ -62,7 +63,6 @@ defmt-test = "0.3"
 fixed = "1.23.1"
 fixed-macro = "1.2"
 
-#cortex-m = { version = "0.7.6", features = ["critical-section-single-core"] }
 cortex-m = { version = "0.7.6", features = ["inline-asm"] }
 cortex-m-rt = "0.7.0"
 critical-section = "1.1"
@@ -75,7 +75,8 @@ byte-slice-cast = { version = "1.2.0", default-features = false }
 smart-leds = "0.4.0"
 heapless = "0.8"
 usbd-hid = "0.7.0"
-
+serde = { version = "1.0.203", default-features = false, features = ["derive"] }
+serde-json-core = "0.5.1"
 embedded-hal-1 = { package = "embedded-hal", version = "1.0" }
 embedded-hal-async = "1.0"
 embedded-hal-bus = { version = "0.2.0", features = ["async"] }
@@ -88,6 +89,7 @@ pio-proc = "0.2"
 pio = "0.2.1"
 rand = { version = "0.8.5", default-features = false }
 embedded-sdmmc = "0.7.0"
+reqwless = { version = "0.12.0", features = ["defmt"] }
 
 [build-dependencies]
 serde = "1.0"
@@ -104,9 +106,11 @@ codegen-units = 1
 debug = 2
 debug-assertions = true
 incremental = false
-opt-level = 1
+opt-level = "z"
+#opt-level = 1
 overflow-checks = true
-lto = "off"
+#lto = "off"
+lto = true
 
 # cargo build/run --release
 [profile.release]
