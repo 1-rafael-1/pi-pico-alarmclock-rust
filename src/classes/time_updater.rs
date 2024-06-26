@@ -94,7 +94,6 @@ pub async fn connect_and_update_rtc(
     mut time_updater: TimeUpdater,
     pwr: Output<'static>,
     spi: PioSpi<'static, PIO0, 0, DMA_CH0>,
-    rtc: Rtc,
 ) {
     let secs_to_wait = 21600; // 6 hours
     let secs_to_wait_retry = 30;
@@ -278,7 +277,7 @@ pub async fn connect_and_update_rtc(
                 Ok((output, _used)) => {
                     info!("Datetime: {:?}", output.datetime);
                     // set the RTC
-                    rtc.set_datetime(output.datetime).unwrap();
+                    // ToDo
                 }
                 Err(e) => {
                     error!("Failed to parse response body");
