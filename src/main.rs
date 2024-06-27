@@ -96,10 +96,9 @@ async fn main(spawner: Spawner) {
         .unwrap();
 
     loop {
-        info!("main loop");
         if let Ok(dt) = rtc_ref.borrow_mut().now() {
             info!(
-                "Task A: Now: {}-{:02}-{:02} {}:{:02}:{:02}",
+                "Main loop: {}-{:02}-{:02} {}:{:02}:{:02}",
                 dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second,
             );
         }
