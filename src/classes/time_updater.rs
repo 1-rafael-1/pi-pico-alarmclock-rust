@@ -243,6 +243,7 @@ pub async fn connect_and_update_rtc(
                     continue;
                 }
             };
+
             let response = match request.send(&mut rx_buffer).await {
                 Ok(resp) => resp,
                 Err(_e) => {
@@ -257,6 +258,7 @@ pub async fn connect_and_update_rtc(
                     continue;
                 }
             };
+
             let body = match from_utf8(response.body().read_to_end().await.unwrap()) {
                 Ok(b) => b,
                 Err(_e) => {
