@@ -28,7 +28,7 @@ use embassy_rp::peripherals;
 use embassy_rp::peripherals::{DMA_CH0, PIO0};
 use embassy_rp::rtc::Rtc;
 use embassy_rp::{clocks::RoscRng, rtc::DateTime};
-use embassy_time::{Duration, Timer};
+use embassy_time::{with_timeout, Duration, Timer};
 use rand::RngCore;
 use reqwless::client::HttpClient;
 use reqwless::client::TlsConfig;
@@ -95,8 +95,9 @@ pub async fn connect_and_update_rtc(
     spi: PioSpi<'static, PIO0, 0, DMA_CH0>,
     rtc_ref: &'static RefCell<Rtc<'static, peripherals::RTC>>,
 ) {
-    let secs_to_wait = 21600; // 6 hours
+    let secs_to_wait = 60; // 6 hours
     let secs_to_wait_retry = 30;
+    let timeout_duration = Duration::from_secs(10);
 
     let fw = unsafe { core::slice::from_raw_parts(0x10100000 as *const u8, 230321) };
     let clm = unsafe { core::slice::from_raw_parts(0x10140000 as *const u8, 4752) };
@@ -133,19 +134,25 @@ pub async fn connect_and_update_rtc(
             "Joining WPA2 network with SSID: {:?} and password: {:?}",
             &ssid, &password
         );
-        match control.join_wpa2(&ssid, &password).await {
-            Ok(_) => {
+
+        // Join the network
+        let join_result = with_timeout(timeout_duration, control.join_wpa2(&ssid, &password)).await;
+        match join_result {
+            Ok(Ok(_)) => {
                 control.gpio_set(0, true).await; // Turn on the onboard LED
                 info!("Connected to wifi");
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 info!("Error connecting to wifi: {}", e.status);
                 control.leave().await;
                 control.gpio_set(0, false).await; // Turn off the onboard LED
-                info!(
-                    "Disconnected from wifi after error. Retrying in {:?} seconds",
-                    secs_to_wait_retry
-                );
+                Timer::after(Duration::from_secs(secs_to_wait_retry)).await;
+                continue;
+            }
+            Err(_) => {
+                info!("Timeout while trying to connect to wifi");
+                control.leave().await;
+                control.gpio_set(0, false).await; // Turn off the onboard LED
                 Timer::after(Duration::from_secs(secs_to_wait_retry)).await;
                 continue;
             }
