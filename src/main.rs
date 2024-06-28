@@ -23,6 +23,9 @@ mod tasks;
 // import the utility module (submodule of src)
 mod utility;
 
+// import the drivers module (submodule of src)
+mod drivers;
+
 // Entry point
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
