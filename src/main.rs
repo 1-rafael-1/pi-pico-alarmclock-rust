@@ -2,7 +2,7 @@
 #![no_std]
 #![no_main]
 
-use crate::classes::time_updater::TimeUpdater;
+use crate::tasks::time_updater::TimeUpdater;
 use core::cell::RefCell;
 use cyw43_pio::PioSpi; // for WiFi
 use defmt::*; // global logger
@@ -17,8 +17,8 @@ use gpio::{Level, Output};
 use static_cell::StaticCell; // gpio output
 use {defmt_rtt as _, panic_probe as _}; // panic handler
 
-// import the classes module (submodule of src)
-mod classes;
+// import the tasks module (submodule of src)
+mod tasks;
 
 // import the utility module (submodule of src)
 mod utility;
@@ -40,24 +40,21 @@ async fn main(spawner: Spawner) {
     info!("init green button");
     let green_button_input = Input::new(p.PIN_20, gpio::Pull::Up);
     spawner
-        .spawn(classes::btn_mgr::green_button(spawner, green_button_input))
+        .spawn(tasks::btn_mgr::green_button(spawner, green_button_input))
         .unwrap();
 
     //blue_button
     info!("init blue button");
     let blue_button_input = Input::new(p.PIN_21, gpio::Pull::Up);
     spawner
-        .spawn(classes::btn_mgr::blue_button(spawner, blue_button_input))
+        .spawn(tasks::btn_mgr::blue_button(spawner, blue_button_input))
         .unwrap();
 
     //yellow_button
     info!("init yellow button");
     let yellow_button_input = Input::new(p.PIN_22, gpio::Pull::Up);
     spawner
-        .spawn(classes::btn_mgr::yellow_button(
-            spawner,
-            yellow_button_input,
-        ))
+        .spawn(tasks::btn_mgr::yellow_button(spawner, yellow_button_input))
         .unwrap();
 
     // Real Time Clock
@@ -86,7 +83,7 @@ async fn main(spawner: Spawner) {
 
     // Call connect_wifi with the necessary parameters
     spawner
-        .spawn(classes::time_updater::connect_and_update_rtc(
+        .spawn(tasks::time_updater::connect_and_update_rtc(
             spawner,
             time_updater,
             pwr,
