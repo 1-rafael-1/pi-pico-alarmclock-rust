@@ -2,6 +2,7 @@
 #![no_std]
 #![no_main]
 
+use crate::drivers::ws2812::Ws2812; // for neopixel
 use crate::tasks::time_updater::TimeUpdater;
 use core::cell::RefCell;
 use cyw43_pio::PioSpi; // for WiFi
@@ -33,6 +34,7 @@ async fn main(spawner: Spawner) {
 
     // Initialize the peripherals for the RP2040
     let p = embassy_rp::init(Default::default());
+
     // bind the interrupts
     bind_interrupts!(struct Irqs {
         PIO0_IRQ_0 => InterruptHandler<PIO0>;
@@ -65,11 +67,11 @@ async fn main(spawner: Spawner) {
     info!("init wifi");
     let pwr = Output::new(p.PIN_23, Level::Low);
     let cs = Output::new(p.PIN_25, Level::High);
-    let mut pio = Pio::new(p.PIO0, Irqs);
+    let mut pio_wifi = Pio::new(p.PIO0, Irqs);
     let spi = PioSpi::new(
-        &mut pio.common,
-        pio.sm0,
-        pio.irq0,
+        &mut pio_wifi.common,
+        pio_wifi.sm0,
+        pio_wifi.irq0,
         cs,
         p.PIN_24,
         p.PIN_29,
@@ -95,6 +97,26 @@ async fn main(spawner: Spawner) {
         ))
         .unwrap();
 
+    // Neopixel alarm sequence
+    // we need to initialize the PIO0 peripheral to use the neopixel
+
+    //uncared for stuff that I need to figure out:
+    // let p = embassy_rp::init(Default::default());   --> i will not need this
+    // let Pio {
+    //     mut common, sm0, ..
+    // } = Pio::new(p.PIO0, irqs);
+
+    let Pio {
+        mut common, sm0, ..
+    } = Pio::new(p.PIO0, Irqs);
+    const N: usize = 16; // number of leds
+    let np_ring: Ws2812<'_, PIO0, 0, N> = Ws2812::new(&mut common, sm0, p.DMA_CH0, p.PIN_28);
+
+    spawner
+        .spawn(tasks::neopixel::alarm_sequence(spawner, np_ring))
+        .unwrap();
+
+    // Main loop, doing very little
     loop {
         if let Ok(dt) = rtc_ref.borrow_mut().now() {
             info!(

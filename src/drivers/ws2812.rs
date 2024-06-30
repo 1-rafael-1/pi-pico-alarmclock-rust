@@ -103,51 +103,38 @@ impl<'d, P: Instance, const S: usize, const N: usize> Ws2812<'d, P, S, N> {
 
         Timer::after_micros(55).await;
     }
-}
 
-/// Input a value 0 to 255 to get a color value
-/// The colours are a transition r - g - b - back to r.
-fn wheel(mut wheel_pos: u8) -> RGB8 {
-    wheel_pos = 255 - wheel_pos;
-    if wheel_pos < 85 {
-        return (255 - wheel_pos * 3, 0, wheel_pos * 3).into();
-    }
-    if wheel_pos < 170 {
-        wheel_pos -= 85;
-        return (0, wheel_pos * 3, 255 - wheel_pos * 3).into();
-    }
-    wheel_pos -= 170;
-    (wheel_pos * 3, 255 - wheel_pos * 3, 0).into()
-}
+    /// Function to set a single LED's color and brightness
+    pub async fn set_led_color_and_brightness(
+        &mut self,
+        data: &mut [RGB8],
+        index: usize,
+        color: RGB8,
+        brightness: u8,
+    ) {
+        // Check if index is within bounds
+        if index > data.len() {
+            return;
+        }
 
-/// Function to set a single LED's color and brightness
-async fn set_led_color_and_brightness(
-    data: &mut [RGB8],
-    index: usize,
-    color: RGB8,
-    brightness: u8,
-) {
-    // Check if index is within bounds
-    if index > data.len() {
-        return;
+        // Adjust color based on brightness
+        let adjusted_color = RGB8 {
+            r: (color.r as u16 * brightness as u16 / 255) as u8,
+            g: (color.g as u16 * brightness as u16 / 255) as u8,
+            b: (color.b as u16 * brightness as u16 / 255) as u8,
+        };
+        data[index] = adjusted_color;
     }
 
-    // Adjust color based on brightness
-    let adjusted_color = RGB8 {
-        r: (color.r as u16 * brightness as u16 / 255) as u8,
-        g: (color.g as u16 * brightness as u16 / 255) as u8,
-        b: (color.b as u16 * brightness as u16 / 255) as u8,
-    };
-    data[index] = adjusted_color;
-}
+    pub async fn set_led_off(&mut self, data: &mut [RGB8], index: usize) {
+        self.set_led_color_and_brightness(data, index, RGB8::default(), 0)
+            .await;
+    }
 
-async fn set_led_off(data: &mut [RGB8], index: usize) {
-    set_led_color_and_brightness(data, index, RGB8::default(), 0).await;
-}
-
-async fn set_all_leds_off(data: &mut [RGB8]) {
-    for i in 0..data.len() {
-        set_led_off(data, i).await;
+    pub async fn set_all_leds_off(&mut self, data: &mut [RGB8]) {
+        for i in 0..data.len() {
+            self.set_led_off(data, i).await;
+        }
     }
 }
 

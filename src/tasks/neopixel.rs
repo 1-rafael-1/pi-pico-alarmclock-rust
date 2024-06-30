@@ -1,3 +1,4 @@
+use crate::drivers::ws2812::{self, Ws2812};
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_rp::dma::{AnyChannel, Channel};
@@ -16,24 +17,25 @@ use {defmt_rtt as _, panic_probe as _};
 #[embassy_executor::task]
 async fn analog_clock(_spawner: Spawner) {}
 
-#[embassy_executor::task]
-async fn alarm_sequence(_spawner: Spawner) {
-    info!("Start");
-    let p = embassy_rp::init(Default::default());
+const S: usize = 0;
+const N: usize = 16;
 
-    let Pio {
-        mut common, sm0, ..
-    } = Pio::new(p.PIO0, Irqs);
+#[embassy_executor::task]
+pub async fn alarm_sequence(_spawner: Spawner, np_ring: Ws2812<'_, P, S, N>) {
+    info!("Start");
+    // let p = embassy_rp::init(Default::default());
+
+    // let Pio {
+    //     mut common, sm0, ..
+    // } = Pio::new(p.PIO0, irqs);
 
     // This is the number of leds in the string. Helpfully, the sparkfun thing plus and adafruit
     // feather boards for the 2040 both have one built in.
     const NUM_LEDS: usize = 16;
     let mut data = [RGB8::default(); NUM_LEDS];
 
-    // Common neopixel pins:
-    // Thing plus: 8
-    // Adafruit Feather: 16;  Adafruit Feather+RFM95: 4
-    let mut ws2812 = Ws2812::new(&mut common, sm0, p.DMA_CH0, p.PIN_28);
+    // initialize the neopixel ring
+    // let mut np_ring = Ws2812::new(&mut common, sm0, p.DMA_CH0, p.PIN_28);
 
     // // Loop forever making RGB values and pushing them out to the WS2812.
     // let mut ticker = Ticker::every(Duration::from_millis(10));
@@ -53,57 +55,6 @@ async fn alarm_sequence(_spawner: Spawner) {
     let mut ticker = Ticker::every(Duration::from_millis(1000));
     let brightness = 30;
     loop {
-        // // Set all leds off
-        // set_all_leds_off(&mut data).await;
-        // ws2812.write(&data).await;
-
-        // ticker.next().await;
-
-        // // Set all leds to red at 50% brightness
-        // for i in 0..NUM_LEDS {
-        //     set_led_color_and_brightness(&mut data, i, RGB8::new(255, 0, 0), brightness).await;
-        // }
-        // ws2812.write(&data).await;
-
-        // ticker.next().await;
-
-        // // Set all leds to green at 50% brightness
-        // for i in 0..NUM_LEDS {
-        //     set_led_color_and_brightness(&mut data, i, RGB8::new(0, 255, 0), brightness).await;
-        // }
-        // ws2812.write(&data).await;
-
-        // ticker.next().await;
-
-        // // Set all leds to blue at 50% brightness
-        // for i in 0..NUM_LEDS {
-        //     set_led_color_and_brightness(&mut data, i, RGB8::new(0, 0, 255), brightness).await;
-        // }
-        // ws2812.write(&data).await;
-
-        // ticker.next().await;
-
-        // // Set all leds to white at 50% brightness
-        // for i in 0..NUM_LEDS {
-        //     set_led_color_and_brightness(&mut data, i, RGB8::new(255, 255, 255), brightness).await;
-        // }
-        // ws2812.write(&data).await;
-
-        // ticker.next().await;
-
-        // // let a red pixel chase the tail of a green pixel
-        // for i in 0..NUM_LEDS {
-        //     set_led_off(&mut data, i).await;
-        // }
-        // for i in 0..NUM_LEDS {
-        //     set_led_color_and_brightness(&mut data, (i + 1) % NUM_LEDS, RGB8::new(0, 255, 0),brightness).await;
-        //     set_led_color_and_brightness(&mut data, i, RGB8::new(255, 0, 0),brightness).await;
-        //     ws2812.write(&data).await;
-        //     Timer::after(Duration::from_millis(100)).await;
-        // }
-
-        // ticker.next().await;
-
         // simumlate a sunrise: start with all leds off, then slowly add leds while all leds that are already used slowly change color from red to warm white
         // sunrise
         info!("Sunrise");
@@ -115,8 +66,8 @@ async fn alarm_sequence(_spawner: Spawner) {
         let duration_secs: u64 = 60; // seconds
         let start_time = Instant::now();
 
-        set_all_leds_off(&mut data).await;
-        ws2812.write(&data).await;
+        np_ring.set_all_leds_off(&mut data).await;
+        np_ring.write(&data).await;
 
         // loop for duration seconds
         while Instant::now() - start_time < Duration::from_secs(duration_secs) {
@@ -156,10 +107,12 @@ async fn alarm_sequence(_spawner: Spawner) {
 
             // set the leds
             for i in 0..current_leds {
-                set_led_color_and_brightness(&mut data, i, current_color, current_brightness).await;
+                np_ring
+                    .set_led_color_and_brightness(&mut data, i, current_color, current_brightness)
+                    .await;
             }
             // write the leds
-            ws2812.write(&data).await;
+            np_ring.write(&data).await;
             Timer::after(Duration::from_millis(100)).await;
         }
 
