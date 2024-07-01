@@ -282,19 +282,25 @@ pub async fn connect_and_update_rtc(
             }
 
             let bytes = body.as_bytes();
-            match serde_json_core::de::from_slice::<ApiResponse>(bytes) {
+            let response: ApiResponse = match serde_json_core::de::from_slice::<ApiResponse>(bytes)
+            {
                 Ok((output, _used)) => {
                     info!("Datetime: {:?}", output.datetime);
+                    output
                     // set the RTC
-                    let dt: DateTime;
-                    dt = StringUtils::convert_str_to_datetime(output.datetime);
-                    rtc_ref.borrow_mut().set_datetime(dt).unwrap();
+                    // let dt: DateTime;
+                    // dt = StringUtils::convert_str_to_datetime(output.datetime);
+                    // rtc_ref.borrow_mut().set_datetime(dt).unwrap();
                 }
                 Err(_e) => {
                     error!("Failed to parse response body");
                     return; // ToDo
                 }
-            }
+            };
+
+            let dt: DateTime;
+            dt = StringUtils::convert_str_to_datetime(response.datetime);
+            rtc_ref.borrow_mut().set_datetime(dt).unwrap();
         } // end of scope
 
         control.leave().await;

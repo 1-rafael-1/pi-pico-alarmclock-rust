@@ -2,7 +2,8 @@
 #![no_std]
 #![no_main]
 
-use crate::drivers::ws2812::Ws2812; // for neopixel
+//use crate::drivers::ws2812::Ws2812; // for neopixel
+use crate::tasks::neopixel::Ws2812; // for neopixel
 use crate::tasks::time_updater::TimeUpdater;
 use core::cell::RefCell;
 use cyw43_pio::PioSpi; // for WiFi
@@ -106,14 +107,17 @@ async fn main(spawner: Spawner) {
     //     mut common, sm0, ..
     // } = Pio::new(p.PIO0, irqs);
 
-    let Pio {
-        mut common, sm0, ..
-    } = Pio::new(p.PIO0, Irqs);
-    const N: usize = 16; // number of leds
-    let np_ring: Ws2812<'_, PIO0, 0, N> = Ws2812::new(&mut common, sm0, p.DMA_CH0, p.PIN_28);
+    // let Pio {
+    //     mut common, sm0, ..
+    // } = Pio::new(p.PIO0, Irqs);
+    // const N: usize = 16; // number of leds
+    // let np_ring: Ws2812<'_, PIO0, 0, N> = Ws2812::new(&mut common, sm0, p.DMA_CH0, p.PIN_28);
 
     spawner
-        .spawn(tasks::neopixel::alarm_sequence(spawner, np_ring))
+        .spawn(tasks::neopixel::alarm_sequence(
+            spawner,
+            Pio::new(p.PIO0, Irqs),
+        ))
         .unwrap();
 
     // Main loop, doing very little
