@@ -287,10 +287,6 @@ pub async fn connect_and_update_rtc(
                 Ok((output, _used)) => {
                     info!("Datetime: {:?}", output.datetime);
                     output
-                    // set the RTC
-                    // let dt: DateTime;
-                    // dt = StringUtils::convert_str_to_datetime(output.datetime);
-                    // rtc_ref.borrow_mut().set_datetime(dt).unwrap();
                 }
                 Err(_e) => {
                     error!("Failed to parse response body");
@@ -298,6 +294,7 @@ pub async fn connect_and_update_rtc(
                 }
             };
 
+            // set the RTC
             let dt: DateTime;
             dt = StringUtils::convert_str_to_datetime(response.datetime);
             rtc_ref.borrow_mut().set_datetime(dt).unwrap();
