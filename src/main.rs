@@ -13,10 +13,15 @@ use embassy_rp::gpio::{self, Input};
 use embassy_rp::peripherals::PIO0;
 use embassy_rp::pio::{InterruptHandler, Pio};
 use embassy_rp::rtc::Rtc;
+use embassy_rp::spi::{Config, Phase, Polarity, Spi};
 use embassy_rp::{bind_interrupts, peripherals};
+use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
+use embassy_sync::blocking_mutex::ThreadModeMutex;
+use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer}; // time
 use gpio::{Level, Output};
-use static_cell::StaticCell; // gpio output
+use static_cell::StaticCell;
+use ws2812_async::Ws2812; // gpio output
 use {defmt_rtt as _, panic_probe as _}; // panic handler
 
 // import the tasks module (submodule of src)
@@ -34,7 +39,7 @@ async fn main(spawner: Spawner) {
     info!("Program start");
 
     // Initialize the peripherals for the RP2040
-    let p = embassy_rp::init(Default::default());
+    let mut p = embassy_rp::init(Default::default());
 
     // bind the interrupts
     bind_interrupts!(struct Irqs {
@@ -69,7 +74,7 @@ async fn main(spawner: Spawner) {
     let pwr = Output::new(p.PIN_23, Level::Low);
     let cs = Output::new(p.PIN_25, Level::High);
     let mut pio_wifi = Pio::new(p.PIO0, Irqs);
-    let spi = PioSpi::new(
+    let spi_wifi = PioSpi::new(
         &mut pio_wifi.common,
         pio_wifi.sm0,
         pio_wifi.irq0,
@@ -93,32 +98,38 @@ async fn main(spawner: Spawner) {
             spawner,
             time_updater,
             pwr,
-            spi,
+            spi_wifi,
             rtc_ref,
         ))
         .unwrap();
 
-    // Neopixel alarm sequence
-    // we need to initialize the PIO0 peripheral to use the neopixel
+    // Neopixel
+    // Spi configuration for the neopixel
+    let mut config = Config::default();
+    config.frequency = 3_800_000;
+    config.phase = Phase::CaptureOnFirstTransition;
+    config.polarity = Polarity::IdleLow;
+    let spi_np = Spi::new_txonly(p.SPI0, p.PIN_18, p.PIN_19, p.DMA_CH1, config);
 
-    //uncared for stuff that I need to figure out:
-    // let p = embassy_rp::init(Default::default());   --> i will not need this
-    // let Pio {
-    //     mut common, sm0, ..
-    // } = Pio::new(p.PIO0, irqs);
+    // Initialize the mutex for the spi_np, to be used in the neopixel module
+    static SPI_NP: tasks::neopixel::SpiType = Mutex::new(None);
+    static NP_MGR: tasks::neopixel::NeopixelManagerType = Mutex::new(None);
 
-    // let Pio {
-    //     mut common, sm0, ..
-    // } = Pio::new(p.PIO0, Irqs);
-    // const N: usize = 16; // number of leds
-    // let np_ring: Ws2812<'_, PIO0, 0, N> = Ws2812::new(&mut common, sm0, p.DMA_CH0, p.PIN_28);
+    let mut neopixel_mgr = tasks::neopixel::NeopixelManager::new(100, 10);
 
-    // spawner
-    //     .spawn(tasks::neopixel::alarm_sequence(
-    //         spawner,
-    //         Pio::new(p.PIO0, Irqs),
-    //     ))
-    //     .unwrap();
+    {
+        // Lock the mutex to access its content
+        *(SPI_NP.lock().await) = Some(spi_np);
+        *(NP_MGR.lock().await) = Some(neopixel_mgr);
+    }
+
+    // spawn the neopixel tasks
+    spawner
+        .spawn(tasks::neopixel::analog_clock(spawner, &SPI_NP, &NP_MGR))
+        .unwrap();
+    spawner
+        .spawn(tasks::neopixel::sunrise(spawner, &SPI_NP, &NP_MGR))
+        .unwrap();
 
     // Main loop, doing very little
     loop {
