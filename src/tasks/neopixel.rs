@@ -1,15 +1,12 @@
-use core::borrow::{Borrow, BorrowMut};
 
 use defmt::*;
-use embassy_embedded_hal::shared_bus::asynch::spi;
 use embassy_executor::Spawner;
 use embassy_rp::peripherals;
-use embassy_rp::spi::{Config, Phase, Polarity, Spi};
+use embassy_rp::spi::{Spi};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
-use embassy_sync::blocking_mutex::ThreadModeMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer};
-use smart_leds::{brightness, RGB, RGB8};
+use smart_leds::{brightness, RGB8};
 use ws2812_async::Ws2812;
 use {defmt_rtt as _, panic_probe as _};
 
@@ -65,7 +62,7 @@ pub async fn analog_clock(
 
     // Check if the mutex actually contains a NeopixelManager object
     let np_mgr: NeopixelManager;
-    if let Some(mut np_mgr_inner) = neopixel_mgr_guard.take() {
+    if let Some(np_mgr_inner) = neopixel_mgr_guard.take() {
         np_mgr = np_mgr_inner;
     } else {
         return; // Handle the case where the NeopixelManager object was not available (e.g., already taken or never set)
@@ -73,7 +70,7 @@ pub async fn analog_clock(
 
     // Check if the mutex actually contains an Spi object
     let mut spi: Spi<'static, peripherals::SPI0, embassy_rp::spi::Async>;
-    if let Some(mut spi_inner) = spi_np_guard.take() {
+    if let Some(spi_inner) = spi_np_guard.take() {
         info!("SPI object was available in the mutex.");
         spi = spi_inner;
     } else {
@@ -119,7 +116,7 @@ pub async fn sunrise(
 
     // Check if the mutex actually contains a NeopixelManager object
     let np_mgr: NeopixelManager;
-    if let Some(mut np_mgr_inner) = neopixel_mgr_guard.take() {
+    if let Some(np_mgr_inner) = neopixel_mgr_guard.take() {
         np_mgr = np_mgr_inner;
     } else {
         return; // Handle the case where the NeopixelManager object was not available (e.g., already taken or never set)
@@ -127,7 +124,7 @@ pub async fn sunrise(
 
     // Check if the mutex actually contains an Spi object
     let mut spi: Spi<'static, peripherals::SPI0, embassy_rp::spi::Async>;
-    if let Some(mut spi_inner) = spi_np_guard.take() {
+    if let Some(spi_inner) = spi_np_guard.take() {
         info!("SPI object was available in the mutex.");
         spi = spi_inner;
     } else {

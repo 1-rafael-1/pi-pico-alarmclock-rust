@@ -13,13 +13,11 @@ use embassy_rp::pio::{InterruptHandler, Pio};
 use embassy_rp::rtc::Rtc;
 use embassy_rp::spi::{Config, Phase, Polarity, Spi};
 use embassy_rp::{bind_interrupts, peripherals};
-use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
-use embassy_sync::blocking_mutex::ThreadModeMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer}; // time
 use gpio::{Level, Output};
 use static_cell::StaticCell;
-use ws2812_async::Ws2812; // gpio output
+ // gpio output
 use {defmt_rtt as _, panic_probe as _}; // panic handler
 
 // import the tasks module (submodule of src)
@@ -37,7 +35,7 @@ async fn main(spawner: Spawner) {
     info!("Program start");
 
     // Initialize the peripherals for the RP2040
-    let mut p = embassy_rp::init(Default::default());
+    let p = embassy_rp::init(Default::default());
 
     // bind the interrupts
     bind_interrupts!(struct Irqs {
@@ -113,7 +111,7 @@ async fn main(spawner: Spawner) {
     static SPI_NP: tasks::neopixel::SpiType = Mutex::new(None);
     static NP_MGR: tasks::neopixel::NeopixelManagerType = Mutex::new(None);
 
-    let mut neopixel_mgr = tasks::neopixel::NeopixelManager::new(100, 10);
+    let neopixel_mgr = tasks::neopixel::NeopixelManager::new(100, 10);
 
     {
         // Lock the mutex to access its content
