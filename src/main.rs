@@ -2,8 +2,6 @@
 #![no_std]
 #![no_main]
 
-//use crate::drivers::ws2812::Ws2812; // for neopixel
-//use crate::tasks::neopixel::Ws2812; // for neopixel
 use crate::tasks::time_updater::TimeUpdater;
 use core::cell::RefCell;
 use cyw43_pio::PioSpi; // for WiFi
