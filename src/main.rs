@@ -17,7 +17,7 @@ use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer}; // time
 use gpio::{Level, Output};
 use static_cell::StaticCell;
- // gpio output
+// gpio output
 use {defmt_rtt as _, panic_probe as _}; // panic handler
 
 // import the tasks module (submodule of src)
@@ -25,9 +25,6 @@ mod tasks;
 
 // import the utility module (submodule of src)
 mod utility;
-
-// import the drivers module (submodule of src)
-mod drivers;
 
 // Entry point
 #[embassy_executor::main]
