@@ -11,6 +11,12 @@ include!(concat!(env!("OUT_DIR"), "/wifi_secrets.rs"));
 include!(concat!(env!("OUT_DIR"), "/time_api_config.rs"));
 // populate constant TIME_SERVER_URL
 // make sure to have a time_api_config.json file in the config folder formatted as follows:
+// {
+//     "time api by zone": {
+//         "baseurl": "http://worldtimeapi.org/api",
+//         "timezone": "/timezone/Europe/Berlin"
+//     }
+// }
 
 use crate::utility::string_utils::StringUtils;
 use core::cell::RefCell;
@@ -43,6 +49,9 @@ pub struct TimeUpdater {
     ssid: &'static str,
     password: &'static str,
     time_api_url: &'static str,
+    refresh_after_secs: u64,
+    retry_after_secs: u64,
+    timeout_duration: Duration,
 }
 
 impl TimeUpdater {
@@ -51,6 +60,9 @@ impl TimeUpdater {
             ssid: "",
             password: "",
             time_api_url: "",
+            refresh_after_secs: 21_600, // 6 hours
+            retry_after_secs: 30,
+            timeout_duration: Duration::from_secs(10),
         };
         manager.set_credentials();
         manager.set_time_api_url();
@@ -62,7 +74,7 @@ impl TimeUpdater {
         self.password = PASSWORD;
     }
 
-    fn get_credentials(&self) -> (&str, &str) {
+    fn credentials(&self) -> (&str, &str) {
         (self.ssid, self.password)
     }
 
@@ -70,7 +82,7 @@ impl TimeUpdater {
         self.time_api_url = TIME_SERVER_URL;
     }
 
-    fn get_time_api_url(&self) -> &str {
+    fn time_api_url(&self) -> &str {
         self.time_api_url
     }
 }
@@ -95,10 +107,6 @@ pub async fn connect_and_update_rtc(
     spi: PioSpi<'static, PIO0, 0, DMA_CH0>,
     rtc_ref: &'static RefCell<Rtc<'static, peripherals::RTC>>,
 ) {
-    let secs_to_wait = 60; // 6 hours
-    let secs_to_wait_retry = 30;
-    let timeout_duration = Duration::from_secs(10);
-
     let fw = unsafe { core::slice::from_raw_parts(0x10100000 as *const u8, 230321) };
     let clm = unsafe { core::slice::from_raw_parts(0x10140000 as *const u8, 4752) };
 
@@ -129,14 +137,17 @@ pub async fn connect_and_update_rtc(
     unwrap!(spawner.spawn(net_task(stack)));
 
     loop {
-        let (ssid, password) = time_updater.get_credentials();
+        let (ssid, password) = time_updater.credentials();
         info!(
             "Joining WPA2 network with SSID: {:?} and password: {:?}",
             &ssid, &password
         );
-
         // Join the network
-        let join_result = with_timeout(timeout_duration, control.join_wpa2(&ssid, &password)).await;
+        let join_result = with_timeout(
+            time_updater.timeout_duration,
+            control.join_wpa2(&ssid, &password),
+        )
+        .await;
         match join_result {
             Ok(Ok(_)) => {
                 control.gpio_set(0, true).await; // Turn on the onboard LED
@@ -146,14 +157,14 @@ pub async fn connect_and_update_rtc(
                 info!("Error connecting to wifi: {}", e.status);
                 control.leave().await;
                 control.gpio_set(0, false).await; // Turn off the onboard LED
-                Timer::after(Duration::from_secs(secs_to_wait_retry)).await;
+                Timer::after(Duration::from_secs(time_updater.retry_after_secs)).await;
                 continue;
             }
             Err(_) => {
                 info!("Timeout while trying to connect to wifi");
                 control.leave().await;
                 control.gpio_set(0, false).await; // Turn off the onboard LED
-                Timer::after(Duration::from_secs(secs_to_wait_retry)).await;
+                Timer::after(Duration::from_secs(time_updater.retry_after_secs)).await;
                 continue;
             }
         }
@@ -172,9 +183,9 @@ pub async fn connect_and_update_rtc(
             control.gpio_set(0, false).await; // Turn off the onboard LED
             info!(
                 "Disconnected from wifi after error. Retrying in {:?} seconds",
-                secs_to_wait_retry
+                time_updater.retry_after_secs
             );
-            Timer::after(Duration::from_secs(secs_to_wait_retry)).await;
+            Timer::after(Duration::from_secs(time_updater.retry_after_secs)).await;
             continue;
         }
         info!("DHCP is now up!");
@@ -193,9 +204,9 @@ pub async fn connect_and_update_rtc(
             control.gpio_set(0, false).await; // Turn off the onboard LED
             info!(
                 "Disconnected from wifi after error. Retrying in {:?} seconds",
-                secs_to_wait_retry
+                time_updater.retry_after_secs
             );
-            Timer::after(Duration::from_secs(secs_to_wait_retry)).await;
+            Timer::after(Duration::from_secs(time_updater.retry_after_secs)).await;
             continue;
         }
         info!("Link is up!");
@@ -226,7 +237,7 @@ pub async fn connect_and_update_rtc(
             let mut http_client = HttpClient::new_with_tls(&tcp_client, &dns_client, tls_config);
             info!("HttpClient created");
 
-            let url = time_updater.get_time_api_url();
+            let url = time_updater.time_api_url();
 
             info!("Making request");
             let mut request = match http_client.request(Method::GET, url).await {
@@ -237,9 +248,9 @@ pub async fn connect_and_update_rtc(
                     control.gpio_set(0, false).await; // Turn off the onboard LED
                     info!(
                         "Disconnected from wifi after error. Retrying in {:?} seconds",
-                        secs_to_wait_retry
+                        time_updater.retry_after_secs
                     );
-                    Timer::after(Duration::from_secs(secs_to_wait_retry)).await;
+                    Timer::after(Duration::from_secs(time_updater.retry_after_secs)).await;
                     continue;
                 }
             };
@@ -252,9 +263,9 @@ pub async fn connect_and_update_rtc(
                     control.gpio_set(0, false).await; // Turn off the onboard LED
                     info!(
                         "Disconnected from wifi after error. Retrying in {:?} seconds",
-                        secs_to_wait_retry
+                        time_updater.retry_after_secs
                     );
-                    Timer::after(Duration::from_secs(secs_to_wait_retry)).await;
+                    Timer::after(Duration::from_secs(time_updater.retry_after_secs)).await;
                     continue;
                 }
             };
@@ -267,9 +278,9 @@ pub async fn connect_and_update_rtc(
                     control.gpio_set(0, false).await; // Turn off the onboard LED
                     info!(
                         "Disconnected from wifi after error. Retrying in {:?} seconds",
-                        secs_to_wait_retry
+                        time_updater.retry_after_secs
                     );
-                    Timer::after(Duration::from_secs(secs_to_wait_retry)).await;
+                    Timer::after(Duration::from_secs(time_updater.retry_after_secs)).await;
                     continue;
                 }
             };
@@ -304,7 +315,10 @@ pub async fn connect_and_update_rtc(
         control.gpio_set(0, false).await; // Turn off the onboard LED
         info!("Disconnected from wifi");
 
-        info!("Waiting for {:?} seconds before reconnecting", secs_to_wait);
-        Timer::after(Duration::from_secs(secs_to_wait)).await;
+        info!(
+            "Waiting for {:?} seconds before reconnecting",
+            time_updater.refresh_after_secs
+        );
+        Timer::after(Duration::from_secs(time_updater.refresh_after_secs)).await;
     }
 }
