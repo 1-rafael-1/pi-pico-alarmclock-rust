@@ -1,13 +1,17 @@
-
+use crate::task::alarm_mgr;
+use cortex_m::register::control;
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_rp::peripherals;
-use embassy_rp::spi::{Spi};
-use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
+use embassy_rp::spi::Spi;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
+use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, channel::Receiver};
 use embassy_time::{Duration, Timer};
+use serde::de;
 use smart_leds::{brightness, RGB8};
 use ws2812_async::Ws2812;
+
 use {defmt_rtt as _, panic_probe as _};
 
 const NUM_LEDS: usize = 16;
@@ -53,6 +57,7 @@ pub async fn analog_clock(
     _spawner: Spawner,
     spi_np: &'static SpiType,
     neopixel_mgr: &'static NeopixelManagerType,
+    control: Receiver<'static, CriticalSectionRawMutex, alarm_mgr::AlarmState, 1>,
 ) {
     info!("Analog clock task start");
 
@@ -79,23 +84,33 @@ pub async fn analog_clock(
 
     let mut np: Ws2812<_, { 12 * NUM_LEDS }> = Ws2812::new(&mut spi); // Use the SPI object to create Ws2812
 
-    info!("Switching all LEDs off");
-    let data = [RGB8::default(); 16];
-    np.write(brightness(data.iter().cloned(), np_mgr.alarm_brightness()))
-        .await
-        .ok();
+    loop {
+        info!("Switching all LEDs off");
+        let data = [RGB8::default(); 16];
+        np.write(brightness(data.iter().cloned(), np_mgr.alarm_brightness()))
+            .await
+            .ok();
+        Timer::after(Duration::from_secs(1)).await;
 
-    info!("Setting all LEDs to red");
-    let red = np_mgr.rgb_to_grb((255, 0, 0));
-    let data = [red; 16];
-    let _ = np
-        .write(brightness(data.iter().cloned(), np_mgr.clock_brightness()))
-        .await;
-    Timer::after(Duration::from_secs(3)).await;
+        info!("Setting all LEDs to red");
+        let red = np_mgr.rgb_to_grb((255, 0, 0));
+        let data = [red; 16];
+        let _ = np
+            .write(brightness(data.iter().cloned(), np_mgr.clock_brightness()))
+            .await;
+        Timer::after(Duration::from_secs(1)).await;
 
-    info!("Switching all LEDs off");
-    let data = [RGB8::default(); 16];
-    let _ = np.write(brightness(data.iter().cloned(), 0)).await;
+        info!("Switching all LEDs off");
+        let data = [RGB8::default(); 16];
+        let _ = np.write(brightness(data.iter().cloned(), 0)).await;
+
+        let received_state = control.receive().await;
+        info!("Received state: {:?}", received_state);
+        if received_state == alarm_mgr::AlarmState::Idle {
+            info!("Received idle signal");
+            break;
+        }
+    }
 
     info!("hand back objects to the mutex");
     // put the objects back into the Mutex for future use
@@ -108,6 +123,7 @@ pub async fn sunrise(
     _spawner: Spawner,
     spi_np: &'static SpiType,
     neopixel_mgr: &'static NeopixelManagerType,
+    control: Receiver<'static, CriticalSectionRawMutex, alarm_mgr::AlarmState, 1>,
 ) {
     info!("Sunrise task start");
     // Lock the mutex asynchronously
@@ -133,23 +149,33 @@ pub async fn sunrise(
 
     let mut np: Ws2812<_, { 12 * NUM_LEDS }> = Ws2812::new(&mut spi); // Use the SPI object to create Ws2812
 
-    info!("Switching all LEDs off");
-    let data = [RGB8::default(); 16];
-    np.write(brightness(data.iter().cloned(), np_mgr.alarm_brightness()))
-        .await
-        .ok();
+    loop {
+        info!("Switching all LEDs off");
+        let data = [RGB8::default(); 16];
+        np.write(brightness(data.iter().cloned(), np_mgr.alarm_brightness()))
+            .await
+            .ok();
+        Timer::after(Duration::from_secs(1)).await;
 
-    info!("Setting all LEDs to green");
-    let red = np_mgr.rgb_to_grb((0, 255, 0));
-    let data = [red; 16];
-    let _ = np
-        .write(brightness(data.iter().cloned(), np_mgr.clock_brightness()))
-        .await;
-    Timer::after(Duration::from_secs(3)).await;
+        info!("Setting all LEDs to green");
+        let red = np_mgr.rgb_to_grb((0, 255, 0));
+        let data = [red; 16];
+        let _ = np
+            .write(brightness(data.iter().cloned(), np_mgr.clock_brightness()))
+            .await;
+        Timer::after(Duration::from_secs(1)).await;
 
-    info!("Switching all LEDs off");
-    let data = [RGB8::default(); 16];
-    let _ = np.write(brightness(data.iter().cloned(), 0)).await;
+        info!("Switching all LEDs off");
+        let data = [RGB8::default(); 16];
+        let _ = np.write(brightness(data.iter().cloned(), 0)).await;
+
+        let received_state = control.receive().await;
+        info!("Received state: {:?}", received_state);
+        if received_state == alarm_mgr::AlarmState::Armed {
+            info!("Received armed signal");
+            break;
+        }
+    }
 
     info!("hand back objects to the mutex");
     // put the objects back into the Mutex for future use
