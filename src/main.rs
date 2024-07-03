@@ -127,8 +127,13 @@ async fn main(spawner: Spawner) {
     // spawn the neopixel tasks, on core1 as opposed to the other tasks
     static mut CORE1_STACK: Stack<4096> = Stack::new();
     static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
-    static ALARM_CHANNEL: Channel<CriticalSectionRawMutex, task::alarm_mgr::AlarmState, 1> =
+    static ALARM_IDLE_CHANNEL: Channel<CriticalSectionRawMutex, task::alarm_mgr::AlarmState, 1> =
         Channel::new();
+    static ALARM_TRIGGERED_CHANNEL: Channel<
+        CriticalSectionRawMutex,
+        task::alarm_mgr::AlarmState,
+        1,
+    > = Channel::new();
 
     spawn_core1(
         p.CORE1,
@@ -141,7 +146,7 @@ async fn main(spawner: Spawner) {
                         spawner,
                         &SPI_NP,
                         &NP_MGR,
-                        ALARM_CHANNEL.receiver(),
+                        ALARM_IDLE_CHANNEL.receiver(),
                     ))
                     .unwrap();
                 spawner
@@ -149,7 +154,7 @@ async fn main(spawner: Spawner) {
                         spawner,
                         &SPI_NP,
                         &NP_MGR,
-                        ALARM_CHANNEL.receiver(),
+                        ALARM_TRIGGERED_CHANNEL.receiver(),
                     ))
                     .unwrap();
             });
@@ -167,17 +172,17 @@ async fn main(spawner: Spawner) {
         Timer::after(Duration::from_secs(10)).await;
 
         info!("Sending idle signal to neopixel tasks");
-        ALARM_CHANNEL
+        ALARM_IDLE_CHANNEL
             .sender()
             .send(alarm_mgr::AlarmState::Idle)
             .await;
 
         Timer::after(Duration::from_secs(10)).await;
 
-        info!("Sending armed signal to neopixel tasks");
-        ALARM_CHANNEL
+        info!("Sending triggered signal to neopixel tasks");
+        ALARM_TRIGGERED_CHANNEL
             .sender()
-            .send(alarm_mgr::AlarmState::Armed)
+            .send(alarm_mgr::AlarmState::Triggered)
             .await;
     }
 }
