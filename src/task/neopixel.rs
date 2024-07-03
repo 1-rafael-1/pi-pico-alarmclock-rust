@@ -1,5 +1,4 @@
 use crate::task::alarm_mgr;
-use cortex_m::register::control;
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_rp::peripherals;
@@ -8,7 +7,6 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, channel::Receiver};
 use embassy_time::{Duration, Timer};
-use serde::de;
 use smart_leds::{brightness, RGB8};
 use ws2812_async::Ws2812;
 

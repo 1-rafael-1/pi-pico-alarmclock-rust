@@ -45,7 +45,7 @@ async fn main(spawner: Spawner) {
     });
 
     // Alarm Manager
-    let mut alarm_mgr = AlarmManager::new();
+    let alarm_mgr = AlarmManager::new();
 
     // buttons
     // green_button
