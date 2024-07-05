@@ -10,13 +10,17 @@ use defmt::*; // global logger
 use embassy_executor::Executor;
 use embassy_executor::Spawner; // executor
 use embassy_rp::gpio::{self, Input};
+use embassy_rp::i2c::Async;
+use embassy_rp::i2c::{Config as I2cConfig, I2c, InterruptHandler as I2cInterruptHandler};
 use embassy_rp::multicore::{spawn_core1, Stack};
+use embassy_rp::peripherals::I2C0;
 use embassy_rp::peripherals::PIO0;
 use embassy_rp::pio::{InterruptHandler, Pio};
 use embassy_rp::rtc::Rtc;
 use embassy_rp::spi::{Config, Phase, Polarity, Spi};
 use embassy_rp::{bind_interrupts, peripherals};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer}; // time
@@ -42,6 +46,7 @@ async fn main(spawner: Spawner) {
     // bind the interrupts
     bind_interrupts!(struct Irqs {
         PIO0_IRQ_0 => InterruptHandler<PIO0>;
+        I2C0_IRQ => I2cInterruptHandler<I2C0>;
     });
 
     // Alarm Manager
@@ -106,11 +111,11 @@ async fn main(spawner: Spawner) {
 
     // Neopixel
     // Spi configuration for the neopixel
-    let mut config = Config::default();
-    config.frequency = 3_800_000;
-    config.phase = Phase::CaptureOnFirstTransition;
-    config.polarity = Polarity::IdleLow;
-    let spi_np = Spi::new_txonly(p.SPI0, p.PIN_18, p.PIN_19, p.DMA_CH1, config);
+    let mut spi_config = Config::default();
+    spi_config.frequency = 3_800_000;
+    spi_config.phase = Phase::CaptureOnFirstTransition;
+    spi_config.polarity = Polarity::IdleLow;
+    let spi_np = Spi::new_txonly(p.SPI0, p.PIN_18, p.PIN_19, p.DMA_CH1, spi_config);
 
     // Initialize the mutex for the spi_np, to be used in the neopixel module
     static SPI_NP: task::neopixel::SpiType = Mutex::new(None);
@@ -160,6 +165,19 @@ async fn main(spawner: Spawner) {
             });
         },
     );
+
+    // Display
+    static I2C_BUS_CELL: StaticCell<Mutex<NoopRawMutex, I2c<I2C0, Async>>> = StaticCell::new();
+    let scl = p.PIN_13;
+    let sda = p.PIN_12;
+    let mut i2c_config = I2cConfig::default();
+    i2c_config.frequency = 400_000;
+    let i2c_dsp = I2c::new_async(p.I2C0, scl, sda, Irqs, i2c_config);
+    let i2c_dsp_bus: &'static _ = I2C_BUS_CELL.init(Mutex::<NoopRawMutex, _>::new(i2c_dsp));
+
+    spawner
+        .spawn(task::display::display(spawner, i2c_dsp_bus))
+        .unwrap();
 
     // Main loop, doing very little
     loop {
