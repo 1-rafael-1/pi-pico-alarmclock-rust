@@ -1,5 +1,6 @@
 # Navigate to the cyw43-firmware directory
-Set-Location -Path "C:\Users\rafae\git\pi-pico-alarmclock-rust\cargo-generate\cyw43-firmware"
+Set-Location -Path "C:\Users\rafae\git\pi-pico-alarmclock-rust\wifi-firmware
+\cyw43-firmware"
 
 # Download firmware using probe-rs
 Write-Host "Downloading firmware..."
