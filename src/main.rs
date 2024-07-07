@@ -6,33 +6,21 @@ use crate::task::alarm_mgr::AlarmManager;
 use crate::task::btn_mgr::{blue_button, green_button, yellow_button};
 use crate::task::peripherals::{
     AssignedResources, ButtonResourcesBlue, ButtonResourcesGreen, ButtonResourcesYellow,
-    DisplayResources, Irqs, NeopixelResources, RtcResources, WifiResources,
+    DisplayResources, NeopixelResources, RtcResources, WifiResources,
 };
 use crate::task::time_updater::connect_and_update_rtc;
-use crate::task::time_updater::TimeUpdater;
-use assign_resources::assign_resources;
 use core::cell::RefCell;
-use cyw43_pio::PioSpi; // for WiFi
+ // for WiFi
 use defmt::*; // global logger
 use embassy_executor::Executor;
 use embassy_executor::Spawner;
-use embassy_rp::gpio::Pin;
-use embassy_rp::gpio::{self, Input};
-use embassy_rp::i2c::Async;
-use embassy_rp::i2c::{Config as I2cConfig, I2c, InterruptHandler as I2cInterruptHandler};
+use embassy_rp::gpio::{self};
 use embassy_rp::multicore::{spawn_core1, Stack};
-use embassy_rp::peripherals::I2C0;
-use embassy_rp::peripherals::PIO0;
-use embassy_rp::pio::{InterruptHandler, Pio};
 use embassy_rp::rtc::Rtc;
-use embassy_rp::spi::{Config, Phase, Polarity, Spi};
-use embassy_rp::{bind_interrupts, peripherals};
+use embassy_rp::{peripherals};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Channel;
-use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer};
-use gpio::{Level, Output};
 use static_cell::StaticCell;
 use task::alarm_mgr;
 use {defmt_rtt as _, panic_probe as _};

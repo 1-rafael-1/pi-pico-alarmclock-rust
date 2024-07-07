@@ -2,7 +2,7 @@ use defmt::info;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::Spawner;
 use embassy_rp::i2c::Async;
-use embassy_rp::i2c::{Config, I2c, InterruptHandler};
+use embassy_rp::i2c::{I2c};
 use embassy_rp::peripherals::I2C0;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::mutex::Mutex;
@@ -10,7 +10,7 @@ use embassy_time::{Duration, Timer};
 use embedded_graphics::{
     image::Image,
     mono_font::{ascii::FONT_9X18_BOLD, MonoTextStyleBuilder},
-    pixelcolor::{BinaryColor, Gray8, Rgb565},
+    pixelcolor::{BinaryColor, Gray8},
     prelude::*,
     text::{Baseline, Text},
 };

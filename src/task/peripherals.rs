@@ -1,12 +1,9 @@
 use assign_resources::assign_resources;
-use core::cell::RefCell;
-use embassy_rp::i2c::{Config as I2cConfig, I2c, InterruptHandler as I2cInterruptHandler};
+use embassy_rp::i2c::{InterruptHandler as I2cInterruptHandler};
 use embassy_rp::peripherals::PIO0;
-use embassy_rp::peripherals::{I2C0, RTC};
-use embassy_rp::pio::{InterruptHandler, Pio};
-use embassy_rp::rtc::Rtc;
+use embassy_rp::peripherals::{I2C0};
+use embassy_rp::pio::{InterruptHandler};
 use embassy_rp::{bind_interrupts, peripherals};
-use static_cell::StaticCell;
 
 // Assign the resources to the peripherals
 assign_resources! {
