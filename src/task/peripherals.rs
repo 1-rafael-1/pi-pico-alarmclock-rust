@@ -30,6 +30,12 @@ assign_resources! {
     rtc: RtcResources {
         rtc_inst: RTC,
     },
+    neopixel: NeopixelResources {
+        inner_spi: SPI0,
+        clk_pin: PIN_18,
+        mosi_pin: PIN_19,
+        tx_dma_ch: DMA_CH1,
+    },
     display: DisplayResources {
         scl: PIN_13,
         sda: PIN_12,

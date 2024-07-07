@@ -6,7 +6,7 @@ use crate::task::alarm_mgr::AlarmManager;
 use crate::task::btn_mgr::{blue_button, green_button, yellow_button};
 use crate::task::peripherals::{
     AssignedResources, ButtonResourcesBlue, ButtonResourcesGreen, ButtonResourcesYellow,
-    DisplayResources, Irqs, RtcResources, WifiResources,
+    DisplayResources, Irqs, NeopixelResources, RtcResources, WifiResources,
 };
 use crate::task::time_updater::connect_and_update_rtc;
 use crate::task::time_updater::TimeUpdater;
@@ -73,6 +73,37 @@ async fn main(spawner: Spawner) {
         .spawn(connect_and_update_rtc(spawner, r.wifi, rtc_ref))
         .unwrap();
 
+    // Neopixel
+    // Note! -> we may need more than one neopixel task eventually, in that case we will need mutexes around the resources
+    // i want to keep it simple for now
+    // best case will be to have a single task that somehow can handle analog clock, as well as alarm light as well as staying idle
+    // maybe we can have a channel to send "a state has changed" signal to the neopixel task and then the task can decide what to do
+
+    // spawn the neopixel tasks, on core1 as opposed to the other tasks
+    static mut CORE1_STACK: Stack<4096> = Stack::new();
+    static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
+
+    // Channel to send the idle signal to the neopixel tasks
+    static ALARM_IDLE_CHANNEL: Channel<CriticalSectionRawMutex, task::alarm_mgr::AlarmState, 1> =
+        Channel::new();
+
+    spawn_core1(
+        p.CORE1,
+        unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
+        move || {
+            let executor1 = EXECUTOR1.init(Executor::new());
+            executor1.run(|spawner| {
+                spawner
+                    .spawn(task::neopixel::analog_clock(
+                        spawner,
+                        r.neopixel,
+                        ALARM_IDLE_CHANNEL.receiver(),
+                    ))
+                    .unwrap();
+            });
+        },
+    );
+
     // Display
     // let irqs_display = Irqs;
     // let scl = p.PIN_13;
@@ -92,63 +123,6 @@ async fn main(spawner: Spawner) {
     //     .spawn(task::display::display(spawner, i2c_dsp_bus))
     //     .unwrap();
 
-    // Neopixel
-    // Spi configuration for the neopixel
-    let mut spi_config = Config::default();
-    spi_config.frequency = 3_800_000;
-    spi_config.phase = Phase::CaptureOnFirstTransition;
-    spi_config.polarity = Polarity::IdleLow;
-    let spi_np = Spi::new_txonly(p.SPI0, p.PIN_18, p.PIN_19, p.DMA_CH1, spi_config);
-
-    // Initialize the mutex for the spi_np, to be used in the neopixel module
-    static SPI_NP: task::neopixel::SpiType = Mutex::new(None);
-    static NP_MGR: task::neopixel::NeopixelManagerType = Mutex::new(None);
-
-    let neopixel_mgr = task::neopixel::NeopixelManager::new(100, 10);
-
-    {
-        // Lock the mutex to access its content
-        *(SPI_NP.lock().await) = Some(spi_np);
-        *(NP_MGR.lock().await) = Some(neopixel_mgr);
-    }
-
-    // spawn the neopixel tasks, on core1 as opposed to the other tasks
-    static mut CORE1_STACK: Stack<4096> = Stack::new();
-    static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
-    static ALARM_IDLE_CHANNEL: Channel<CriticalSectionRawMutex, task::alarm_mgr::AlarmState, 1> =
-        Channel::new();
-    static ALARM_TRIGGERED_CHANNEL: Channel<
-        CriticalSectionRawMutex,
-        task::alarm_mgr::AlarmState,
-        1,
-    > = Channel::new();
-
-    spawn_core1(
-        p.CORE1,
-        unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
-        move || {
-            let executor1 = EXECUTOR1.init(Executor::new());
-            executor1.run(|spawner| {
-                spawner
-                    .spawn(task::neopixel::analog_clock(
-                        spawner,
-                        &SPI_NP,
-                        &NP_MGR,
-                        ALARM_IDLE_CHANNEL.receiver(),
-                    ))
-                    .unwrap();
-                spawner
-                    .spawn(task::neopixel::sunrise(
-                        spawner,
-                        &SPI_NP,
-                        &NP_MGR,
-                        ALARM_TRIGGERED_CHANNEL.receiver(),
-                    ))
-                    .unwrap();
-            });
-        },
-    );
-
     // Main loop, doing very little
     loop {
         if let Ok(dt) = rtc_ref.borrow_mut().now() {
@@ -166,29 +140,5 @@ async fn main(spawner: Spawner) {
             .await;
 
         Timer::after(Duration::from_secs(10)).await;
-
-        info!("Sending triggered signal to neopixel tasks");
-        ALARM_TRIGGERED_CHANNEL
-            .sender()
-            .send(alarm_mgr::AlarmState::Triggered)
-            .await;
     }
 }
-
-// async fn initialize_display(
-//     spawner: &Spawner,
-//     scl: PIN_13,
-//     sda: PIN_12,
-//     i2c0: embassy_rp::Peripherals::I2C0,
-//     irqs_display: Irqs,
-// ) {
-//     static I2C_BUS_CELL: StaticCell<Mutex<NoopRawMutex, I2c<I2C0, Async>>> = StaticCell::new();
-//     let mut i2c_config = I2cConfig::default();
-//     i2c_config.frequency = 400_000;
-//     let i2c_dsp = I2c::new_async(i2c0, scl, sda, irqs_display, i2c_config);
-//     let i2c_dsp_bus: &'static _ = I2C_BUS_CELL.init(Mutex::<NoopRawMutex, _>::new(i2c_dsp));
-
-//     spawner
-//         .spawn(task::display::display(*spawner, i2c_dsp_bus))
-//         .unwrap();
-// }
