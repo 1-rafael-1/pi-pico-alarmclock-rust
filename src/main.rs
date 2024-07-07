@@ -3,12 +3,20 @@
 #![no_main]
 
 use crate::task::alarm_mgr::AlarmManager;
+use crate::task::btn_mgr::{blue_button, green_button, yellow_button};
+use crate::task::peripherals::{
+    AssignedResources, ButtonResourcesBlue, ButtonResourcesGreen, ButtonResourcesYellow,
+    DisplayResources, Irqs, RtcResources, WifiResources,
+};
+use crate::task::time_updater::connect_and_update_rtc;
 use crate::task::time_updater::TimeUpdater;
+use assign_resources::assign_resources;
 use core::cell::RefCell;
 use cyw43_pio::PioSpi; // for WiFi
 use defmt::*; // global logger
 use embassy_executor::Executor;
-use embassy_executor::Spawner; // executor
+use embassy_executor::Spawner;
+use embassy_rp::gpio::Pin;
 use embassy_rp::gpio::{self, Input};
 use embassy_rp::i2c::Async;
 use embassy_rp::i2c::{Config as I2cConfig, I2c, InterruptHandler as I2cInterruptHandler};
@@ -23,11 +31,11 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
-use embassy_time::{Duration, Timer}; // time
+use embassy_time::{Duration, Timer};
 use gpio::{Level, Output};
 use static_cell::StaticCell;
 use task::alarm_mgr;
-use {defmt_rtt as _, panic_probe as _}; // panic handler
+use {defmt_rtt as _, panic_probe as _};
 
 // import the task module (submodule of src)
 mod task;
@@ -42,72 +50,47 @@ async fn main(spawner: Spawner) {
 
     // Initialize the peripherals for the RP2040
     let p = embassy_rp::init(Default::default());
-
-    // bind the interrupts
-    bind_interrupts!(struct Irqs {
-        PIO0_IRQ_0 => InterruptHandler<PIO0>;
-        I2C0_IRQ => I2cInterruptHandler<I2C0>;
-    });
+    // and assign the peripherals to the places, where we will use them
+    let r = split_resources!(p);
 
     // Alarm Manager
     let alarm_mgr = AlarmManager::new();
 
-    // buttons
-    // green_button
-    info!("init green button");
-    let green_button_input = Input::new(p.PIN_20, gpio::Pull::Up);
-    spawner
-        .spawn(task::btn_mgr::green_button(spawner, green_button_input))
-        .unwrap();
+    // Buttons
+    spawner.spawn(green_button(spawner, r.btn_green)).unwrap();
+    spawner.spawn(blue_button(spawner, r.btn_blue)).unwrap();
+    spawner.spawn(yellow_button(spawner, r.btn_yellow)).unwrap();
 
-    //blue_button
-    info!("init blue button");
-    let blue_button_input = Input::new(p.PIN_21, gpio::Pull::Up);
-    spawner
-        .spawn(task::btn_mgr::blue_button(spawner, blue_button_input))
-        .unwrap();
+    // RTC
 
-    //yellow_button
-    info!("init yellow button");
-    let yellow_button_input = Input::new(p.PIN_22, gpio::Pull::Up);
-    spawner
-        .spawn(task::btn_mgr::yellow_button(spawner, yellow_button_input))
-        .unwrap();
-
-    // Real Time Clock
-    // Setup for WiFi connection and RTC update
-    info!("init wifi");
-    let pwr = Output::new(p.PIN_23, Level::Low);
-    let cs = Output::new(p.PIN_25, Level::High);
-    let mut pio_wifi = Pio::new(p.PIO0, Irqs);
-    let spi_wifi = PioSpi::new(
-        &mut pio_wifi.common,
-        pio_wifi.sm0,
-        pio_wifi.irq0,
-        cs,
-        p.PIN_24,
-        p.PIN_29,
-        p.DMA_CH0,
-    );
-
-    // Initialize the RTC in a static cell to be used in the time_updater module
+    // Initialize the RTC in a static cell, we will need it in multiple places
     static RTC: StaticCell<RefCell<Rtc<'static, peripherals::RTC>>> = StaticCell::new();
-    let rtc_instance: Rtc<'static, peripherals::RTC> = Rtc::new(p.RTC);
+    let rtc_instance: Rtc<'static, peripherals::RTC> = Rtc::new(r.rtc.rtc_inst);
     let rtc_ref = RTC.init(RefCell::new(rtc_instance));
 
-    // Initialize TimeUpdater
-    let time_updater = TimeUpdater::new();
-
-    // Call connect_wifi with the necessary parameters
+    // update the RTC
     spawner
-        .spawn(task::time_updater::connect_and_update_rtc(
-            spawner,
-            time_updater,
-            pwr,
-            spi_wifi,
-            rtc_ref,
-        ))
+        .spawn(connect_and_update_rtc(spawner, r.wifi, rtc_ref))
         .unwrap();
+
+    // Display
+    // let irqs_display = Irqs;
+    // let scl = p.PIN_13;
+    // let sda = p.PIN_12;
+    // let i2c0 = p.I2C0;
+    // initialize_display(&spawner, scl, sda, i2c0, irqs_display).await;
+
+    // static I2C_BUS_CELL: StaticCell<Mutex<NoopRawMutex, I2c<I2C0, Async>>> = StaticCell::new();
+    // let scl = p.PIN_13;
+    // let sda = p.PIN_12;
+    // let mut i2c_config = I2cConfig::default();
+    // i2c_config.frequency = 400_000;
+    // let i2c_dsp = I2c::new_async(p.I2C0, scl, sda, Irqs, i2c_config);
+    // let i2c_dsp_bus: &'static _ = I2C_BUS_CELL.init(Mutex::<NoopRawMutex, _>::new(i2c_dsp));
+
+    // spawner
+    //     .spawn(task::display::display(spawner, i2c_dsp_bus))
+    //     .unwrap();
 
     // Neopixel
     // Spi configuration for the neopixel
@@ -166,19 +149,6 @@ async fn main(spawner: Spawner) {
         },
     );
 
-    // Display
-    static I2C_BUS_CELL: StaticCell<Mutex<NoopRawMutex, I2c<I2C0, Async>>> = StaticCell::new();
-    let scl = p.PIN_13;
-    let sda = p.PIN_12;
-    let mut i2c_config = I2cConfig::default();
-    i2c_config.frequency = 400_000;
-    let i2c_dsp = I2c::new_async(p.I2C0, scl, sda, Irqs, i2c_config);
-    let i2c_dsp_bus: &'static _ = I2C_BUS_CELL.init(Mutex::<NoopRawMutex, _>::new(i2c_dsp));
-
-    spawner
-        .spawn(task::display::display(spawner, i2c_dsp_bus))
-        .unwrap();
-
     // Main loop, doing very little
     loop {
         if let Ok(dt) = rtc_ref.borrow_mut().now() {
@@ -204,3 +174,21 @@ async fn main(spawner: Spawner) {
             .await;
     }
 }
+
+// async fn initialize_display(
+//     spawner: &Spawner,
+//     scl: PIN_13,
+//     sda: PIN_12,
+//     i2c0: embassy_rp::Peripherals::I2C0,
+//     irqs_display: Irqs,
+// ) {
+//     static I2C_BUS_CELL: StaticCell<Mutex<NoopRawMutex, I2c<I2C0, Async>>> = StaticCell::new();
+//     let mut i2c_config = I2cConfig::default();
+//     i2c_config.frequency = 400_000;
+//     let i2c_dsp = I2c::new_async(i2c0, scl, sda, irqs_display, i2c_config);
+//     let i2c_dsp_bus: &'static _ = I2C_BUS_CELL.init(Mutex::<NoopRawMutex, _>::new(i2c_dsp));
+
+//     spawner
+//         .spawn(task::display::display(*spawner, i2c_dsp_bus))
+//         .unwrap();
+// }

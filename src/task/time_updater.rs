@@ -18,7 +18,9 @@ include!(concat!(env!("OUT_DIR"), "/time_api_config.rs"));
 //     }
 // }
 
+use crate::task::peripherals::Irqs;
 use crate::utility::string_utils::StringUtils;
+use crate::WifiResources;
 use core::cell::RefCell;
 use core::str::from_utf8;
 use cyw43_pio::PioSpi;
@@ -29,9 +31,11 @@ use embassy_net::{
     tcp::client::{TcpClient, TcpClientState},
     Config, Stack, StackResources,
 };
+use embassy_rp::gpio::Level;
 use embassy_rp::gpio::Output;
 use embassy_rp::peripherals;
 use embassy_rp::peripherals::{DMA_CH0, PIO0};
+use embassy_rp::pio::Pio;
 use embassy_rp::rtc::Rtc;
 use embassy_rp::{clocks::RoscRng, rtc::DateTime};
 use embassy_time::{with_timeout, Duration, Timer};
@@ -98,21 +102,36 @@ async fn wifi_task(
 async fn net_task(stack: &'static Stack<cyw43::NetDriver<'static>>) -> ! {
     stack.run().await
 }
-
 #[embassy_executor::task]
 pub async fn connect_and_update_rtc(
     spawner: Spawner,
-    time_updater: TimeUpdater,
-    pwr: Output<'static>,
-    spi: PioSpi<'static, PIO0, 0, DMA_CH0>,
+    r: WifiResources,
     rtc_ref: &'static RefCell<Rtc<'static, peripherals::RTC>>,
 ) {
+    info!("init wifi");
+    let pwr = Output::new(r.pwr_pin, Level::Low);
+    let cs = Output::new(r.cs_pin, Level::High);
+    let mut pio = Pio::new(r.pio_sm, Irqs);
+    let spi = PioSpi::new(
+        &mut pio.common,
+        pio.sm0,
+        pio.irq0,
+        cs,
+        r.dio_pin,
+        r.clk_pin,
+        r.dma_ch,
+    );
+
+    let time_updater = TimeUpdater::new();
+
     let fw = unsafe { core::slice::from_raw_parts(0x10100000 as *const u8, 230321) };
     let clm = unsafe { core::slice::from_raw_parts(0x10140000 as *const u8, 4752) };
 
     static STATE: StaticCell<cyw43::State> = StaticCell::new();
     let state = STATE.init(cyw43::State::new());
+
     let (net_device, mut control, runner) = cyw43::new(state, pwr, spi, fw).await;
+
     unwrap!(spawner.spawn(wifi_task(runner)));
 
     control.init(clm).await;
@@ -121,9 +140,11 @@ pub async fn connect_and_update_rtc(
         .await;
 
     let config = Config::dhcpv4(Default::default());
+
     // random seed
     let mut rng = RoscRng;
     let seed = rng.next_u64();
+
     // Initialize the network stack
     static STACK: StaticCell<Stack<cyw43::NetDriver<'static>>> = StaticCell::new();
     static RESOURCES: StaticCell<StackResources<5>> = StaticCell::new();

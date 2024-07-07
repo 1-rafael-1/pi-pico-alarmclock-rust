@@ -62,7 +62,6 @@ defmt-rtt = "0.4"
 defmt-test = "0.3"
 fixed = "1.23.1"
 fixed-macro = "1.2"
-
 cortex-m = { version = "0.7.6", features = ["inline-asm"] }
 cortex-m-rt = "0.7.0"
 critical-section = "1.1"
@@ -93,6 +92,7 @@ rand = { version = "0.8.5", default-features = false }
 embedded-sdmmc = "0.7.0"
 reqwless = { version = "0.12.0", features = ["defmt"] }
 tinybmp = "0.6.0"
+assign-resources = { git = "https://github.com/adamgreig/assign-resources" }
 
 
 [build-dependencies]
