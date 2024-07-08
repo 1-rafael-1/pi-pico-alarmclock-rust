@@ -2,7 +2,6 @@
 #![no_std]
 #![no_main]
 
-use crate::task::alarm_mgr::AlarmManager;
 use crate::task::btn_mgr::{blue_button, green_button, yellow_button};
 use crate::task::peripherals::{
     AssignedResources, ButtonResourcesBlue, ButtonResourcesGreen, ButtonResourcesYellow,
@@ -10,19 +9,15 @@ use crate::task::peripherals::{
 };
 use crate::task::time_updater::connect_and_update_rtc;
 use core::cell::RefCell;
- // for WiFi
+// for WiFi
 use defmt::*; // global logger
 use embassy_executor::Executor;
 use embassy_executor::Spawner;
-use embassy_rp::gpio::{self};
 use embassy_rp::multicore::{spawn_core1, Stack};
+use embassy_rp::peripherals;
 use embassy_rp::rtc::Rtc;
-use embassy_rp::{peripherals};
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::channel::Channel;
 use embassy_time::{Duration, Timer};
 use static_cell::StaticCell;
-use task::alarm_mgr;
 use {defmt_rtt as _, panic_probe as _};
 
 // import the task module (submodule of src)
@@ -40,9 +35,6 @@ async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
     // and assign the peripherals to the places, where we will use them
     let r = split_resources!(p);
-
-    // Alarm Manager
-    let alarm_mgr = AlarmManager::new();
 
     // Buttons
     spawner.spawn(green_button(spawner, r.btn_green)).unwrap();
@@ -71,10 +63,6 @@ async fn main(spawner: Spawner) {
     static mut CORE1_STACK: Stack<4096> = Stack::new();
     static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 
-    // Channel to send the idle signal to the neopixel tasks
-    static ALARM_IDLE_CHANNEL: Channel<CriticalSectionRawMutex, task::alarm_mgr::AlarmState, 1> =
-        Channel::new();
-
     spawn_core1(
         p.CORE1,
         unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
@@ -82,11 +70,7 @@ async fn main(spawner: Spawner) {
             let executor1 = EXECUTOR1.init(Executor::new());
             executor1.run(|spawner| {
                 spawner
-                    .spawn(task::neopixel::analog_clock(
-                        spawner,
-                        r.neopixel,
-                        ALARM_IDLE_CHANNEL.receiver(),
-                    ))
+                    .spawn(task::neopixel::analog_clock(spawner, r.neopixel))
                     .unwrap();
             });
         },
@@ -119,14 +103,6 @@ async fn main(spawner: Spawner) {
                 dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second,
             );
         }
-        Timer::after(Duration::from_secs(10)).await;
-
-        info!("Sending idle signal to neopixel tasks");
-        ALARM_IDLE_CHANNEL
-            .sender()
-            .send(alarm_mgr::AlarmState::Idle)
-            .await;
-
         Timer::after(Duration::from_secs(10)).await;
     }
 }

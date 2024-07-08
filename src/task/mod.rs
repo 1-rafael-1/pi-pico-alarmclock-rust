@@ -1,4 +1,3 @@
-pub mod alarm_mgr;
 pub mod btn_mgr;
 pub mod display;
 pub mod neopixel;

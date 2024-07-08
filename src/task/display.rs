@@ -2,7 +2,7 @@ use defmt::info;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::Spawner;
 use embassy_rp::i2c::Async;
-use embassy_rp::i2c::{I2c};
+use embassy_rp::i2c::I2c;
 use embassy_rp::peripherals::I2C0;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::mutex::Mutex;
@@ -19,7 +19,7 @@ use tinybmp::Bmp;
 
 #[embassy_executor::task]
 pub async fn display(
-    spawner: Spawner,
+    _spawner: Spawner,
     i2c_dsp_bus: &'static Mutex<NoopRawMutex, I2c<'_, I2C0, Async>>,
 ) {
     info!("Display task started");

@@ -1,12 +1,7 @@
-use crate::task::alarm_mgr;
 use crate::task::peripherals::NeopixelResources;
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_rp::peripherals::{self};
 use embassy_rp::spi::{Config, Phase, Polarity, Spi};
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::mutex::Mutex;
-use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, channel::Receiver};
 use embassy_time::{Duration, Timer};
 use smart_leds::{brightness, RGB8};
 use ws2812_async::Ws2812;
@@ -19,11 +14,6 @@ pub struct NeopixelManager {
     alarm_brightness: u8,
     clock_brightness: u8,
 }
-
-pub type SpiType =
-    Mutex<ThreadModeRawMutex, Option<Spi<'static, peripherals::SPI0, embassy_rp::spi::Async>>>;
-
-pub type NeopixelManagerType = Mutex<ThreadModeRawMutex, Option<NeopixelManager>>;
 
 impl NeopixelManager {
     pub fn new(alarm_brightness: u8, clock_brightness: u8) -> Self {
@@ -52,11 +42,7 @@ impl NeopixelManager {
 }
 
 #[embassy_executor::task]
-pub async fn analog_clock(
-    _spawner: Spawner,
-    r: NeopixelResources,
-    control: Receiver<'static, CriticalSectionRawMutex, alarm_mgr::AlarmState, 1>,
-) {
+pub async fn analog_clock(_spawner: Spawner, r: NeopixelResources) {
     info!("Analog clock task start");
 
     // Spi configuration for the neopixel
@@ -69,19 +55,7 @@ pub async fn analog_clock(
     let mut np: Ws2812<_, { 12 * NUM_LEDS }> = Ws2812::new(spi);
 
     loop {
-        // await the control signal and check if it is idle
-        // if it is idle, continue with the sunrise
-        // if it is not idle, restart the loop
-        // we do not really need to read & check the state, but it is nice to know what is happening
-        let received_state = control.receive().await;
-        info!("Received state: {:?}", received_state);
-        if received_state == alarm_mgr::AlarmState::Idle {
-            info!("Received Idle signal");
-        } else {
-            info!("Received other signal");
-            continue;
-        }
-
+        // Set all LEDs to off
         let data = [RGB8::default(); 16];
         np.write(brightness(
             data.iter().cloned(),

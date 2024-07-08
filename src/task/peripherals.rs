@@ -1,8 +1,8 @@
 use assign_resources::assign_resources;
-use embassy_rp::i2c::{InterruptHandler as I2cInterruptHandler};
+use embassy_rp::i2c::InterruptHandler as I2cInterruptHandler;
+use embassy_rp::peripherals::I2C0;
 use embassy_rp::peripherals::PIO0;
-use embassy_rp::peripherals::{I2C0};
-use embassy_rp::pio::{InterruptHandler};
+use embassy_rp::pio::InterruptHandler;
 use embassy_rp::{bind_interrupts, peripherals};
 
 // Assign the resources to the peripherals
