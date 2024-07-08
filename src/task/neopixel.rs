@@ -1,4 +1,4 @@
-use crate::task::peripherals::NeopixelResources;
+use crate::task::resources::NeopixelResources;
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_rp::spi::{Config, Phase, Polarity, Spi};
@@ -64,7 +64,9 @@ pub async fn analog_clock(_spawner: Spawner, r: NeopixelResources) {
         .await
         .ok();
 
-        // Set all LEDs to blue for 3 seconds
+        Timer::after(Duration::from_secs(1)).await;
+
+        // Set all LEDs to blue
         let blue = neopixel_mgr.rgb_to_grb((0, 0, 255));
         let data = [blue; 16];
         let _ = np
@@ -73,7 +75,8 @@ pub async fn analog_clock(_spawner: Spawner, r: NeopixelResources) {
                 neopixel_mgr.clock_brightness(),
             ))
             .await;
-        Timer::after(Duration::from_secs(3)).await;
+
+        Timer::after(Duration::from_secs(1)).await;
 
         // Set all LEDs to off
         let data = [RGB8::default(); 16];

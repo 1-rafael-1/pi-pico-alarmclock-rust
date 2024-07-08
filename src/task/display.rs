@@ -1,11 +1,7 @@
+use crate::task::resources::{DisplayResources, Irqs};
 use defmt::info;
-use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::Spawner;
-use embassy_rp::i2c::Async;
-use embassy_rp::i2c::I2c;
-use embassy_rp::peripherals::I2C0;
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use embassy_sync::mutex::Mutex;
+use embassy_rp::i2c::{Config, I2c};
 use embassy_time::{Duration, Timer};
 use embedded_graphics::{
     image::Image,
@@ -18,13 +14,16 @@ use ssd1306_async::{prelude::*, I2CDisplayInterface, Ssd1306};
 use tinybmp::Bmp;
 
 #[embassy_executor::task]
-pub async fn display(
-    _spawner: Spawner,
-    i2c_dsp_bus: &'static Mutex<NoopRawMutex, I2c<'_, I2C0, Async>>,
-) {
+pub async fn display(_spawner: Spawner, r: DisplayResources) {
     info!("Display task started");
 
-    let interface = I2CDisplayInterface::new(I2cDevice::new(i2c_dsp_bus));
+    let scl = r.scl;
+    let sda = r.sda;
+    let mut config = Config::default();
+    config.frequency = 400_000;
+    let i2c = I2c::new_async(r.i2c0, scl, sda, Irqs, config);
+
+    let interface = I2CDisplayInterface::new(i2c);
     let mut display = Ssd1306::new(interface, DisplaySize128x64, DisplayRotation::Rotate0)
         .into_buffered_graphics_mode();
     display.init().await.unwrap();

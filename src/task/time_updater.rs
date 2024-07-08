@@ -18,7 +18,7 @@ include!(concat!(env!("OUT_DIR"), "/time_api_config.rs"));
 //     }
 // }
 
-use crate::task::peripherals::Irqs;
+use crate::task::resources::Irqs;
 use crate::utility::string_utils::StringUtils;
 use crate::WifiResources;
 use core::cell::RefCell;
@@ -122,18 +122,23 @@ pub async fn connect_and_update_rtc(
         r.dma_ch,
     );
 
+    info!("init time updater");
     let time_updater = TimeUpdater::new();
 
     let fw = unsafe { core::slice::from_raw_parts(0x10100000 as *const u8, 230321) };
     let clm = unsafe { core::slice::from_raw_parts(0x10140000 as *const u8, 4752) };
 
+    info!("init cyw43");
     static STATE: StaticCell<cyw43::State> = StaticCell::new();
     let state = STATE.init(cyw43::State::new());
 
+    info!("apply cyw43");
     let (net_device, mut control, runner) = cyw43::new(state, pwr, spi, fw).await;
 
+    info!("spawning wifi task");
     unwrap!(spawner.spawn(wifi_task(runner)));
 
+    info!("init control");
     control.init(clm).await;
     control
         .set_power_management(cyw43::PowerManagementMode::PowerSave)
@@ -145,6 +150,7 @@ pub async fn connect_and_update_rtc(
     let mut rng = RoscRng;
     let seed = rng.next_u64();
 
+    info!("init stack");
     // Initialize the network stack
     static STACK: StaticCell<Stack<cyw43::NetDriver<'static>>> = StaticCell::new();
     static RESOURCES: StaticCell<StackResources<5>> = StaticCell::new();
@@ -155,8 +161,10 @@ pub async fn connect_and_update_rtc(
         seed,
     ));
 
+    info!("spawning net task");
     unwrap!(spawner.spawn(net_task(stack)));
 
+    info!("starting loop");
     loop {
         let (ssid, password) = time_updater.credentials();
         info!(

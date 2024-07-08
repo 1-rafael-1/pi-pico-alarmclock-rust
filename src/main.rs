@@ -3,7 +3,8 @@
 #![no_main]
 
 use crate::task::btn_mgr::{blue_button, green_button, yellow_button};
-use crate::task::peripherals::{
+use crate::task::display::display;
+use crate::task::resources::{
     AssignedResources, ButtonResourcesBlue, ButtonResourcesGreen, ButtonResourcesYellow,
     DisplayResources, NeopixelResources, RtcResources, WifiResources,
 };
@@ -56,9 +57,8 @@ async fn main(spawner: Spawner) {
     // Neopixel
     // Note! -> we may need more than one neopixel task eventually, in that case we will need mutexes around the resources
     // i want to keep it simple for now
-    // best case will be to have a single task that somehow can handle analog clock, as well as alarm light as well as staying idle
-    // maybe we can have a channel to send "a state has changed" signal to the neopixel task and then the task can decide what to do
 
+    // the neopixel task will be spawned on core1, because it will run in parallel to the other tasks and it may block
     // spawn the neopixel tasks, on core1 as opposed to the other tasks
     static mut CORE1_STACK: Stack<4096> = Stack::new();
     static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
@@ -77,23 +77,8 @@ async fn main(spawner: Spawner) {
     );
 
     // Display
-    // let irqs_display = Irqs;
-    // let scl = p.PIN_13;
-    // let sda = p.PIN_12;
-    // let i2c0 = p.I2C0;
-    // initialize_display(&spawner, scl, sda, i2c0, irqs_display).await;
 
-    // static I2C_BUS_CELL: StaticCell<Mutex<NoopRawMutex, I2c<I2C0, Async>>> = StaticCell::new();
-    // let scl = p.PIN_13;
-    // let sda = p.PIN_12;
-    // let mut i2c_config = I2cConfig::default();
-    // i2c_config.frequency = 400_000;
-    // let i2c_dsp = I2c::new_async(p.I2C0, scl, sda, Irqs, i2c_config);
-    // let i2c_dsp_bus: &'static _ = I2C_BUS_CELL.init(Mutex::<NoopRawMutex, _>::new(i2c_dsp));
-
-    // spawner
-    //     .spawn(task::display::display(spawner, i2c_dsp_bus))
-    //     .unwrap();
+    spawner.spawn(display(spawner, r.display)).unwrap();
 
     // Main loop, doing very little
     loop {

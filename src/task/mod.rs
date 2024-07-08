@@ -1,5 +1,5 @@
 pub mod btn_mgr;
 pub mod display;
 pub mod neopixel;
-pub mod peripherals;
+pub mod resources;
 pub mod time_updater;
