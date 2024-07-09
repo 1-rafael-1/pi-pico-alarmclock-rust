@@ -20,8 +20,8 @@ assign_resources! {
         pwr_pin: PIN_23,
         cs_pin: PIN_25,
         pio_sm: PIO0,
-        dio_pin: PIN_26,
-        clk_pin: PIN_27,
+        dio_pin: PIN_24,
+        clk_pin: PIN_29,
         dma_ch: DMA_CH0,
     },
     rtc: RtcResources {
