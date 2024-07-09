@@ -62,7 +62,6 @@ defmt-rtt = "0.4"
 defmt-test = "0.3"
 fixed = "1.23.1"
 fixed-macro = "1.2"
-
 cortex-m = { version = "0.7.6", features = ["inline-asm"] }
 cortex-m-rt = "0.7.0"
 critical-section = "1.1"
@@ -73,7 +72,7 @@ st7789 = "0.7.0"
 display-interface = "0.5.0"
 byte-slice-cast = { version = "1.2.0", default-features = false }
 smart-leds = "0.4.0"
-#attention, in version 0.2.0 of ws2812-async there is a bug requiring to interchange red and green in the color struct
+ssd1306-async = { git = "https://github.com/kalkyl/ssd1306-async" }
 ws2812-async = "0.2.0"
 heapless = "0.8"
 usbd-hid = "0.7.0"
@@ -92,6 +91,9 @@ pio = "0.2.1"
 rand = { version = "0.8.5", default-features = false }
 embedded-sdmmc = "0.7.0"
 reqwless = { version = "0.12.0", features = ["defmt"] }
+tinybmp = "0.6.0"
+assign-resources = { git = "https://github.com/adamgreig/assign-resources", rev = "94ad10e2729afdf0fd5a77cd12e68409a982f58a" }
+
 
 [build-dependencies]
 serde = "1.0"

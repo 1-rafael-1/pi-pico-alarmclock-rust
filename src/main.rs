@@ -2,28 +2,24 @@
 #![no_std]
 #![no_main]
 
-use crate::task::alarm_mgr::AlarmManager;
-use crate::task::time_updater::TimeUpdater;
+use crate::task::btn_mgr::{blue_button, green_button, yellow_button};
+use crate::task::display::display;
+use crate::task::resources::{
+    AssignedResources, BlueButtonResources, DisplayResources, GreenButtonResources,
+    NeopixelResources, RtcResources, WifiResources, YellowButtonResources,
+};
+use crate::task::time_updater::connect_and_update_rtc;
 use core::cell::RefCell;
-use cyw43_pio::PioSpi; // for WiFi
+// for WiFi
 use defmt::*; // global logger
 use embassy_executor::Executor;
-use embassy_executor::Spawner; // executor
-use embassy_rp::gpio::{self, Input};
+use embassy_executor::Spawner;
 use embassy_rp::multicore::{spawn_core1, Stack};
-use embassy_rp::peripherals::PIO0;
-use embassy_rp::pio::{InterruptHandler, Pio};
+use embassy_rp::peripherals;
 use embassy_rp::rtc::Rtc;
-use embassy_rp::spi::{Config, Phase, Polarity, Spi};
-use embassy_rp::{bind_interrupts, peripherals};
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::channel::Channel;
-use embassy_sync::mutex::Mutex;
-use embassy_time::{Duration, Timer}; // time
-use gpio::{Level, Output};
+use embassy_time::{Duration, Timer};
 use static_cell::StaticCell;
-use task::alarm_mgr;
-use {defmt_rtt as _, panic_probe as _}; // panic handler
+use {defmt_rtt as _, panic_probe as _};
 
 // import the task module (submodule of src)
 mod task;
@@ -38,102 +34,34 @@ async fn main(spawner: Spawner) {
 
     // Initialize the peripherals for the RP2040
     let p = embassy_rp::init(Default::default());
+    // and assign the peripherals to the places, where we will use them
+    let r = split_resources!(p);
 
-    // bind the interrupts
-    bind_interrupts!(struct Irqs {
-        PIO0_IRQ_0 => InterruptHandler<PIO0>;
-    });
+    // Buttons
+    spawner.spawn(green_button(spawner, r.btn_green)).unwrap();
+    spawner.spawn(blue_button(spawner, r.btn_blue)).unwrap();
+    spawner.spawn(yellow_button(spawner, r.btn_yellow)).unwrap();
 
-    // Alarm Manager
-    let alarm_mgr = AlarmManager::new();
+    // RTC
 
-    // buttons
-    // green_button
-    info!("init green button");
-    let green_button_input = Input::new(p.PIN_20, gpio::Pull::Up);
-    spawner
-        .spawn(task::btn_mgr::green_button(spawner, green_button_input))
-        .unwrap();
-
-    //blue_button
-    info!("init blue button");
-    let blue_button_input = Input::new(p.PIN_21, gpio::Pull::Up);
-    spawner
-        .spawn(task::btn_mgr::blue_button(spawner, blue_button_input))
-        .unwrap();
-
-    //yellow_button
-    info!("init yellow button");
-    let yellow_button_input = Input::new(p.PIN_22, gpio::Pull::Up);
-    spawner
-        .spawn(task::btn_mgr::yellow_button(spawner, yellow_button_input))
-        .unwrap();
-
-    // Real Time Clock
-    // Setup for WiFi connection and RTC update
-    info!("init wifi");
-    let pwr = Output::new(p.PIN_23, Level::Low);
-    let cs = Output::new(p.PIN_25, Level::High);
-    let mut pio_wifi = Pio::new(p.PIO0, Irqs);
-    let spi_wifi = PioSpi::new(
-        &mut pio_wifi.common,
-        pio_wifi.sm0,
-        pio_wifi.irq0,
-        cs,
-        p.PIN_24,
-        p.PIN_29,
-        p.DMA_CH0,
-    );
-
-    // Initialize the RTC in a static cell to be used in the time_updater module
+    // Initialize the RTC in a static cell, we will need it in multiple places
     static RTC: StaticCell<RefCell<Rtc<'static, peripherals::RTC>>> = StaticCell::new();
-    let rtc_instance: Rtc<'static, peripherals::RTC> = Rtc::new(p.RTC);
+    let rtc_instance: Rtc<'static, peripherals::RTC> = Rtc::new(r.rtc.rtc_inst);
     let rtc_ref = RTC.init(RefCell::new(rtc_instance));
 
-    // Initialize TimeUpdater
-    let time_updater = TimeUpdater::new();
-
-    // Call connect_wifi with the necessary parameters
+    // update the RTC
     spawner
-        .spawn(task::time_updater::connect_and_update_rtc(
-            spawner,
-            time_updater,
-            pwr,
-            spi_wifi,
-            rtc_ref,
-        ))
+        .spawn(connect_and_update_rtc(spawner, r.wifi, rtc_ref))
         .unwrap();
 
     // Neopixel
-    // Spi configuration for the neopixel
-    let mut config = Config::default();
-    config.frequency = 3_800_000;
-    config.phase = Phase::CaptureOnFirstTransition;
-    config.polarity = Polarity::IdleLow;
-    let spi_np = Spi::new_txonly(p.SPI0, p.PIN_18, p.PIN_19, p.DMA_CH1, config);
+    // Note! -> we may need more than one neopixel task eventually, in that case we will need mutexes around the resources
+    // i want to keep it simple for now
 
-    // Initialize the mutex for the spi_np, to be used in the neopixel module
-    static SPI_NP: task::neopixel::SpiType = Mutex::new(None);
-    static NP_MGR: task::neopixel::NeopixelManagerType = Mutex::new(None);
-
-    let neopixel_mgr = task::neopixel::NeopixelManager::new(100, 10);
-
-    {
-        // Lock the mutex to access its content
-        *(SPI_NP.lock().await) = Some(spi_np);
-        *(NP_MGR.lock().await) = Some(neopixel_mgr);
-    }
-
+    // the neopixel task will be spawned on core1, because it will run in parallel to the other tasks and it may block
     // spawn the neopixel tasks, on core1 as opposed to the other tasks
     static mut CORE1_STACK: Stack<4096> = Stack::new();
     static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
-    static ALARM_IDLE_CHANNEL: Channel<CriticalSectionRawMutex, task::alarm_mgr::AlarmState, 1> =
-        Channel::new();
-    static ALARM_TRIGGERED_CHANNEL: Channel<
-        CriticalSectionRawMutex,
-        task::alarm_mgr::AlarmState,
-        1,
-    > = Channel::new();
 
     spawn_core1(
         p.CORE1,
@@ -142,24 +70,15 @@ async fn main(spawner: Spawner) {
             let executor1 = EXECUTOR1.init(Executor::new());
             executor1.run(|spawner| {
                 spawner
-                    .spawn(task::neopixel::analog_clock(
-                        spawner,
-                        &SPI_NP,
-                        &NP_MGR,
-                        ALARM_IDLE_CHANNEL.receiver(),
-                    ))
-                    .unwrap();
-                spawner
-                    .spawn(task::neopixel::sunrise(
-                        spawner,
-                        &SPI_NP,
-                        &NP_MGR,
-                        ALARM_TRIGGERED_CHANNEL.receiver(),
-                    ))
+                    .spawn(task::neopixel::analog_clock(spawner, r.neopixel))
                     .unwrap();
             });
         },
     );
+
+    // Display
+
+    spawner.spawn(display(spawner, r.display)).unwrap();
 
     // Main loop, doing very little
     loop {
@@ -170,19 +89,5 @@ async fn main(spawner: Spawner) {
             );
         }
         Timer::after(Duration::from_secs(10)).await;
-
-        info!("Sending idle signal to neopixel tasks");
-        ALARM_IDLE_CHANNEL
-            .sender()
-            .send(alarm_mgr::AlarmState::Idle)
-            .await;
-
-        Timer::after(Duration::from_secs(10)).await;
-
-        info!("Sending triggered signal to neopixel tasks");
-        ALARM_TRIGGERED_CHANNEL
-            .sender()
-            .send(alarm_mgr::AlarmState::Triggered)
-            .await;
     }
 }

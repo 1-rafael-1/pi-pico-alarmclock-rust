@@ -1,9 +1,13 @@
+use crate::{BlueButtonResources, YellowButtonResources, GreenButtonResources};
 use defmt::info;
 use embassy_executor::Spawner;
-use embassy_rp::gpio::{Input, Level};
+use embassy_rp::gpio::{self, Input, Level};
 use embassy_time::{with_deadline, Duration, Instant, Timer};
 use {defmt_rtt as _, panic_probe as _};
 
+// Button Manager
+// Handles button press, hold, and long hold
+// Debounces button press
 pub struct ButtonManager<'a> {
     input: Input<'a>,
     debounce_duration: Duration,
@@ -11,10 +15,10 @@ pub struct ButtonManager<'a> {
 }
 
 impl<'a> ButtonManager<'a> {
-    pub fn new(input: Input<'a>, debounce_duration: Duration, id: &'a str) -> Self {
+    pub fn new(input: Input<'a>, id: &'a str) -> Self {
         Self {
             input,
-            debounce_duration,
+            debounce_duration: Duration::from_millis(100),
             id,
         }
     }
@@ -73,22 +77,25 @@ impl<'a> ButtonManager<'a> {
 }
 
 #[embassy_executor::task]
-pub async fn green_button(_spawner: Spawner, input: Input<'static>) {
-    let mut btn = ButtonManager::new(input, Duration::from_millis(100), "green_button");
+pub async fn green_button(_spawner: Spawner, r: GreenButtonResources) {
+    let input = gpio::Input::new(r.button_pin, gpio::Pull::Up);
+    let mut btn = ButtonManager::new(input, "green_button");
     info!("{} task started", btn.id);
     btn.handle_button_press().await;
 }
 
 #[embassy_executor::task]
-pub async fn yellow_button(_spawner: Spawner, input: Input<'static>) {
-    let mut btn = ButtonManager::new(input, Duration::from_millis(100), "yellow_button");
+pub async fn blue_button(_spawner: Spawner, r: BlueButtonResources) {
+    let input = gpio::Input::new(r.button_pin, gpio::Pull::Up);
+    let mut btn = ButtonManager::new(input, "blue_button");
     info!("{} task started", btn.id);
     btn.handle_button_press().await;
 }
 
 #[embassy_executor::task]
-pub async fn blue_button(_spawner: Spawner, input: Input<'static>) {
-    let mut btn = ButtonManager::new(input, Duration::from_millis(100), "blue_button");
+pub async fn yellow_button(_spawner: Spawner, r: YellowButtonResources) {
+    let input = gpio::Input::new(r.button_pin, gpio::Pull::Up);
+    let mut btn = ButtonManager::new(input, "yellow_button");
     info!("{} task started", btn.id);
     btn.handle_button_press().await;
 }
