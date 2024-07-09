@@ -53,7 +53,7 @@ pub async fn display(_spawner: Spawner, r: DisplayResources) {
         display.flush().await.unwrap();
 
         Timer::after(Duration::from_millis(1_000)).await;
-        info!("Tick");
+
         display.clear();
         im.draw(&mut display.color_converted()).unwrap();
         display.flush().await.unwrap();

@@ -1,4 +1,4 @@
-use crate::{ButtonResourcesBlue, ButtonResourcesGreen, ButtonResourcesYellow};
+use crate::{BlueButtonResources, YellowButtonResources, GreenButtonResources};
 use defmt::info;
 use embassy_executor::Spawner;
 use embassy_rp::gpio::{self, Input, Level};
@@ -77,7 +77,7 @@ impl<'a> ButtonManager<'a> {
 }
 
 #[embassy_executor::task]
-pub async fn green_button(_spawner: Spawner, r: ButtonResourcesGreen) {
+pub async fn green_button(_spawner: Spawner, r: GreenButtonResources) {
     let input = gpio::Input::new(r.button_pin, gpio::Pull::Up);
     let mut btn = ButtonManager::new(input, "green_button");
     info!("{} task started", btn.id);
@@ -85,7 +85,7 @@ pub async fn green_button(_spawner: Spawner, r: ButtonResourcesGreen) {
 }
 
 #[embassy_executor::task]
-pub async fn blue_button(_spawner: Spawner, r: ButtonResourcesBlue) {
+pub async fn blue_button(_spawner: Spawner, r: BlueButtonResources) {
     let input = gpio::Input::new(r.button_pin, gpio::Pull::Up);
     let mut btn = ButtonManager::new(input, "blue_button");
     info!("{} task started", btn.id);
@@ -93,7 +93,7 @@ pub async fn blue_button(_spawner: Spawner, r: ButtonResourcesBlue) {
 }
 
 #[embassy_executor::task]
-pub async fn yellow_button(_spawner: Spawner, r: ButtonResourcesYellow) {
+pub async fn yellow_button(_spawner: Spawner, r: YellowButtonResources) {
     let input = gpio::Input::new(r.button_pin, gpio::Pull::Up);
     let mut btn = ButtonManager::new(input, "yellow_button");
     info!("{} task started", btn.id);

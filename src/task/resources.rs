@@ -5,15 +5,16 @@ use embassy_rp::peripherals::PIO0;
 use embassy_rp::pio::InterruptHandler;
 use embassy_rp::{bind_interrupts, peripherals};
 
-// Assign the resources to the peripherals
+// group the peripherlas into resources, to be used in the tasks
+// the resources are assigned to the tasks in main.rs
 assign_resources! {
-    btn_green: ButtonResourcesGreen {
+    btn_green: GreenButtonResources {
         button_pin: PIN_20,
     },
-    btn_blue: ButtonResourcesBlue {
+    btn_blue: BlueButtonResources {
         button_pin: PIN_21,
     },
-    btn_yellow: ButtonResourcesYellow {
+    btn_yellow: YellowButtonResources {
         button_pin: PIN_22,
     },
     wifi: WifiResources {
