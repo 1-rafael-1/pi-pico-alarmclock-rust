@@ -5,8 +5,7 @@ use embassy_rp::peripherals::PIO0;
 use embassy_rp::peripherals::UART0;
 use embassy_rp::pio::InterruptHandler;
 use embassy_rp::uart::{
-    Async, BufferedInterruptHandler, Config, InterruptHandler as UartInterruptHandler, UartRx,
-    UartTx,
+    BufferedInterruptHandler,
 };
 use embassy_rp::{bind_interrupts, peripherals};
 

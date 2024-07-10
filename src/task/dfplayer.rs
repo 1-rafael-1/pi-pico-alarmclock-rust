@@ -1,13 +1,10 @@
 use crate::task::resources::{DfPlayerResources, Irqs};
-use defmt::*;
-use dfplayer_serial::{Command, DfPlayer, Equalizer, PlayBackMode, PlayBackSource};
+use dfplayer_serial::{DfPlayer, Equalizer, PlayBackSource};
 use embassy_executor::Spawner;
-use embassy_rp::uart::Mode;
 use embassy_rp::uart::{
-    Async, Blocking, BufferedUart, Config, DataBits, InterruptHandler, Parity, StopBits, Uart,
+    BufferedUart, Config, DataBits, Parity, StopBits,
 };
 use embassy_time::{Duration, Timer};
-use embedded_io_async::{Read, ReadReady, Write};
 
 #[embassy_executor::task]
 pub async fn sound(_spawner: Spawner, r: DfPlayerResources) {
