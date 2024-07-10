@@ -5,8 +5,8 @@
 use crate::task::btn_mgr::{blue_button, green_button, yellow_button};
 use crate::task::display::display;
 use crate::task::resources::{
-    AssignedResources, BlueButtonResources, DisplayResources, GreenButtonResources,
-    NeopixelResources, RtcResources, WifiResources, YellowButtonResources,
+    AssignedResources, BlueButtonResources, DfPlayerResources, DisplayResources,
+    GreenButtonResources, NeopixelResources, RtcResources, WifiResources, YellowButtonResources,
 };
 use crate::task::time_updater::connect_and_update_rtc;
 use core::cell::RefCell;
