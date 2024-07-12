@@ -3,6 +3,7 @@
 #![no_main]
 
 use crate::task::btn_mgr::{blue_button, green_button, yellow_button};
+use crate::task::dfplayer::sound;
 use crate::task::display::display;
 use crate::task::resources::{
     AssignedResources, BlueButtonResources, DfPlayerResources, DisplayResources,
@@ -10,8 +11,7 @@ use crate::task::resources::{
 };
 use crate::task::time_updater::connect_and_update_rtc;
 use core::cell::RefCell;
-// for WiFi
-use defmt::*; // global logger
+use defmt::*;
 use embassy_executor::Executor;
 use embassy_executor::Spawner;
 use embassy_rp::multicore::{spawn_core1, Stack};
@@ -43,7 +43,6 @@ async fn main(spawner: Spawner) {
     spawner.spawn(yellow_button(spawner, r.btn_yellow)).unwrap();
 
     // RTC
-
     // Initialize the RTC in a static cell, we will need it in multiple places
     static RTC: StaticCell<RefCell<Rtc<'static, peripherals::RTC>>> = StaticCell::new();
     let rtc_instance: Rtc<'static, peripherals::RTC> = Rtc::new(r.rtc.rtc_inst);
@@ -77,8 +76,10 @@ async fn main(spawner: Spawner) {
     );
 
     // Display
-
     spawner.spawn(display(spawner, r.display)).unwrap();
+
+    // DFPlayer
+    spawner.spawn(sound(spawner, r.dfplayer)).unwrap();
 
     // Main loop, doing very little
     loop {

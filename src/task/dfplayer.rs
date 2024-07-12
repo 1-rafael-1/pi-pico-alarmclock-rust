@@ -1,18 +1,20 @@
 use crate::task::resources::{DfPlayerResources, Irqs};
+use defmt::info;
 use dfplayer_serial::{DfPlayer, Equalizer, PlayBackSource};
 use embassy_executor::Spawner;
-use embassy_rp::uart::{
-    BufferedUart, Config, DataBits, Parity, StopBits,
-};
+use embassy_rp::gpio::{Level, Output};
+use embassy_rp::uart::{BufferedUart, Config, DataBits, Parity, StopBits};
 use embassy_time::{Duration, Timer};
 
 #[embassy_executor::task]
 pub async fn sound(_spawner: Spawner, r: DfPlayerResources) {
+    info!("Sound task started");
+
     let mut config = Config::default();
     config.baudrate = 9600;
-    config.stop_bits = StopBits::STOP1;
-    config.data_bits = DataBits::DataBits8;
-    config.parity = Parity::ParityNone;
+    //config.data_bits = DataBits::DataBits8;
+    //config.parity = Parity::ParityNone;
+    //config.stop_bits = StopBits::STOP1;
 
     let mut tx_buffer = [0; 256];
     let mut rx_buffer = [0; 256];
@@ -30,21 +32,36 @@ pub async fn sound(_spawner: Spawner, r: DfPlayerResources) {
     let feedback_enable = true;
     let timeout = Duration::from_secs(1);
     let reset_duration_override = None;
-    //    let dfp = DfPlayer::try_new(&mut uart, feedback_enable, timeout, reset_duration_override);
-    // let mut dfp = DfPlayer::try_new(&mut uart, feedback_enable, timeout, reset_duration_override);
 
     let mut dfp_result =
         DfPlayer::try_new(&mut uart, feedback_enable, timeout, reset_duration_override).await;
 
+    // power pin, not a part of the dfplayer, using a mosfet to control power to the dfplayer because it draws too much current when idle
+    let mut pwr = Output::new(r.power_pin, Level::Low);
+
     loop {
+        // power on the dfplayer
+        info!("Powering on the dfplayer");
+        pwr.set_high();
+        Timer::after(Duration::from_secs(3)).await;
+        info!("Powered on the dfplayer");
+
+        info!("Playing sound");
         if let Ok(ref mut dfp) = dfp_result {
-            let _ = dfp.volume(30).await;
+            let _ = dfp.volume(10).await;
             let _ = dfp.equalizer(Equalizer::Classic).await;
-            let _ = dfp.playback_source(PlayBackSource::SDCard).await;
+            //let _ = dfp.playback_source(PlayBackSource::SDCard).await;
             let _ = dfp.play(1).await;
         } else {
             // Handle the error appropriately
         }
-        Timer::after(Duration::from_secs(60)).await;
+        Timer::after(Duration::from_secs(10)).await;
+
+        // power off the dfplayer
+        info!("Powering off the dfplayer");
+        pwr.set_low();
+        Timer::after(Duration::from_secs(1)).await;
+
+        Timer::after(Duration::from_secs(10)).await;
     }
 }
