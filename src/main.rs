@@ -7,7 +7,8 @@ use crate::task::dfplayer::sound;
 use crate::task::display::display;
 use crate::task::resources::{
     AssignedResources, BlueButtonResources, DfPlayerResources, DisplayResources,
-    GreenButtonResources, NeopixelResources, RtcResources, WifiResources, YellowButtonResources,
+    GreenButtonResources, NeopixelResources, RtcResources, TaskConfig, WifiResources,
+    YellowButtonResources,
 };
 use crate::task::time_updater::connect_and_update_rtc;
 use core::cell::RefCell;
@@ -37,10 +38,26 @@ async fn main(spawner: Spawner) {
     // and assign the peripherals to the places, where we will use them
     let r = split_resources!(p);
 
+    // configure, which tasks to spawn. For a production build we need all tasks, for troubleshooting we can disable some
+    let mut task_config = TaskConfig::new();
+    task_config.spawn_connect_and_update_rtc = false;
+    task_config.spawn_btn_green = false;
+    task_config.spawn_btn_blue = false;
+    task_config.spawn_btn_yellow = false;
+    task_config.spawn_neopixel = false;
+    task_config.spawn_display = false;
+    task_config.spawn_dfplayer = true;
+
     // Buttons
-    spawner.spawn(green_button(spawner, r.btn_green)).unwrap();
-    spawner.spawn(blue_button(spawner, r.btn_blue)).unwrap();
-    spawner.spawn(yellow_button(spawner, r.btn_yellow)).unwrap();
+    if task_config.spawn_btn_green {
+        spawner.spawn(green_button(spawner, r.btn_green)).unwrap();
+    };
+    if task_config.spawn_btn_blue {
+        spawner.spawn(blue_button(spawner, r.btn_blue)).unwrap();
+    };
+    if task_config.spawn_btn_yellow {
+        spawner.spawn(yellow_button(spawner, r.btn_yellow)).unwrap();
+    };
 
     // RTC
     // Initialize the RTC in a static cell, we will need it in multiple places
@@ -49,9 +66,11 @@ async fn main(spawner: Spawner) {
     let rtc_ref = RTC.init(RefCell::new(rtc_instance));
 
     // update the RTC
-    spawner
-        .spawn(connect_and_update_rtc(spawner, r.wifi, rtc_ref))
-        .unwrap();
+    if task_config.spawn_connect_and_update_rtc {
+        spawner
+            .spawn(connect_and_update_rtc(spawner, r.wifi, rtc_ref))
+            .unwrap();
+    }
 
     // Neopixel
     // Note! -> we may need more than one neopixel task eventually, in that case we will need mutexes around the resources
@@ -68,18 +87,24 @@ async fn main(spawner: Spawner) {
         move || {
             let executor1 = EXECUTOR1.init(Executor::new());
             executor1.run(|spawner| {
-                spawner
-                    .spawn(task::neopixel::analog_clock(spawner, r.neopixel))
-                    .unwrap();
+                if task_config.spawn_neopixel {
+                    spawner
+                        .spawn(task::neopixel::analog_clock(spawner, r.neopixel))
+                        .unwrap();
+                }
             });
         },
     );
 
     // Display
-    spawner.spawn(display(spawner, r.display)).unwrap();
+    if task_config.spawn_display {
+        spawner.spawn(display(spawner, r.display)).unwrap();
+    }
 
     // DFPlayer
-    spawner.spawn(sound(spawner, r.dfplayer)).unwrap();
+    if task_config.spawn_dfplayer {
+        spawner.spawn(sound(spawner, r.dfplayer)).unwrap();
+    }
 
     // Main loop, doing very little
     loop {

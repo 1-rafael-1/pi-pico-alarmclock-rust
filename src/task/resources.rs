@@ -58,3 +58,33 @@ bind_interrupts!(pub struct Irqs {
     // UART0_IRQ => UartInterruptHandler<UART0>;
     UART1_IRQ => BufferedInterruptHandler<UART1>;
 });
+
+pub struct TaskConfig {
+    pub spawn_btn_green: bool,
+    pub spawn_btn_blue: bool,
+    pub spawn_btn_yellow: bool,
+    pub spawn_connect_and_update_rtc: bool,
+    pub spawn_neopixel: bool,
+    pub spawn_display: bool,
+    pub spawn_dfplayer: bool,
+}
+
+impl Default for TaskConfig {
+    fn default() -> Self {
+        TaskConfig {
+            spawn_btn_green: true,
+            spawn_btn_blue: true,
+            spawn_btn_yellow: true,
+            spawn_connect_and_update_rtc: true,
+            spawn_neopixel: true,
+            spawn_display: true,
+            spawn_dfplayer: true,
+        }
+    }
+}
+
+impl TaskConfig {
+    pub fn new() -> Self {
+        TaskConfig::default()
+    }
+}
