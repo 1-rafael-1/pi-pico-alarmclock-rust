@@ -12,9 +12,6 @@ pub async fn sound(_spawner: Spawner, r: DfPlayerResources) {
 
     let mut config = Config::default();
     config.baudrate = 9600;
-    //config.data_bits = DataBits::DataBits8;
-    //config.parity = Parity::ParityNone;
-    //config.stop_bits = StopBits::STOP1;
 
     let mut tx_buffer = [0; 256];
     let mut rx_buffer = [0; 256];
@@ -29,9 +26,9 @@ pub async fn sound(_spawner: Spawner, r: DfPlayerResources) {
         config,
     );
 
-    let feedback_enable = true;
+    let feedback_enable = false; // fails to acknoweledge when enabled
     let timeout = Duration::from_secs(1);
-    let reset_duration_override = None;
+    let reset_duration_override = Some(Duration::from_millis(1000));
 
     // power pin, not a part of the dfplayer, using a mosfet to control power to the dfplayer because it draws too much current when idle
     let mut pwr = Output::new(r.power_pin, Level::Low);
@@ -40,7 +37,7 @@ pub async fn sound(_spawner: Spawner, r: DfPlayerResources) {
         // power on the dfplayer
         info!("Powering on the dfplayer");
         pwr.set_high();
-        Timer::after(Duration::from_secs(3)).await;
+        Timer::after(Duration::from_secs(1)).await;
         info!("Powered on the dfplayer");
 
         let mut dfp_result =
@@ -56,12 +53,16 @@ pub async fn sound(_spawner: Spawner, r: DfPlayerResources) {
 
         info!("Playing sound");
         if let Ok(ref mut dfp) = dfp_result {
-            let _ = dfp.volume(10).await;
+            let _ = dfp.volume(5).await;
+            Timer::after(Duration::from_millis(100)).await;
             let _ = dfp.equalizer(Equalizer::Classic).await;
+            Timer::after(Duration::from_millis(100)).await;
             let _ = dfp.playback_source(PlayBackSource::SDCard).await;
+            Timer::after(Duration::from_millis(100)).await;
             let _ = dfp.play(1).await;
+            Timer::after(Duration::from_secs(100)).await;
         } else {
-            info!("DfPlayer not initialized, skipping sound playback");
+            info!("DfPlayer not initialized, skipping sound playback.");
         }
         Timer::after(Duration::from_secs(10)).await;
 

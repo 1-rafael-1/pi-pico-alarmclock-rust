@@ -39,6 +39,8 @@ async fn main(spawner: Spawner) {
     let r = split_resources!(p);
 
     // configure, which tasks to spawn. For a production build we need all tasks, for troubleshooting we can disable some
+    // the tasks are all spawned in main.rs, so we can disable them here
+    // clutter in the output aside, the binary size is conveniently reduced by disabling tasks
     let mut task_config = TaskConfig::new();
     task_config.spawn_connect_and_update_rtc = false;
     task_config.spawn_btn_green = false;
