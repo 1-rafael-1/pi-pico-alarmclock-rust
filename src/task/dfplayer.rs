@@ -1,5 +1,5 @@
 use crate::task::resources::{DfPlayerResources, Irqs};
-use defmt::info;
+use defmt::{info, Debug2Format};
 use dfplayer_serial::{DfPlayer, Equalizer, PlayBackSource};
 use embassy_executor::Spawner;
 use embassy_rp::gpio::{Level, Output};
@@ -33,9 +33,6 @@ pub async fn sound(_spawner: Spawner, r: DfPlayerResources) {
     let timeout = Duration::from_secs(1);
     let reset_duration_override = None;
 
-    let mut dfp_result =
-        DfPlayer::try_new(&mut uart, feedback_enable, timeout, reset_duration_override).await;
-
     // power pin, not a part of the dfplayer, using a mosfet to control power to the dfplayer because it draws too much current when idle
     let mut pwr = Output::new(r.power_pin, Level::Low);
 
@@ -46,14 +43,25 @@ pub async fn sound(_spawner: Spawner, r: DfPlayerResources) {
         Timer::after(Duration::from_secs(3)).await;
         info!("Powered on the dfplayer");
 
+        let mut dfp_result =
+            DfPlayer::try_new(&mut uart, feedback_enable, timeout, reset_duration_override).await;
+
+        match dfp_result {
+            Ok(_) => info!("DfPlayer initialized successfully"),
+            Err(ref e) => info!(
+                "DfPlayer initialization failed with error {:?}",
+                Debug2Format(&e)
+            ),
+        }
+
         info!("Playing sound");
         if let Ok(ref mut dfp) = dfp_result {
             let _ = dfp.volume(10).await;
             let _ = dfp.equalizer(Equalizer::Classic).await;
-            //let _ = dfp.playback_source(PlayBackSource::SDCard).await;
+            let _ = dfp.playback_source(PlayBackSource::SDCard).await;
             let _ = dfp.play(1).await;
         } else {
-            // Handle the error appropriately
+            info!("DfPlayer not initialized, skipping sound playback");
         }
         Timer::after(Duration::from_secs(10)).await;
 
