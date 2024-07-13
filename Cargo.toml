@@ -78,10 +78,10 @@ heapless = "0.8"
 usbd-hid = "0.7.0"
 serde = { version = "1.0.203", default-features = false, features = ["derive"] }
 serde-json-core = "0.5.1"
-embedded-hal-1 = { package = "embedded-hal", version = "1.0" }
+embedded-hal = "1.0"
 embedded-hal-async = "1.0"
 embedded-hal-bus = { version = "0.2.0", features = ["async"] }
-embedded-io-async = { version = "0.6.1", features = ["defmt-03"] }
+embedded-io-async = { version = "0.6.0", features = ["defmt-03"] }
 embedded-storage = { version = "0.3" }
 static_cell = "2"
 portable-atomic = { version = "1.5", features = ["critical-section"] }
@@ -93,6 +93,7 @@ embedded-sdmmc = "0.7.0"
 reqwless = { version = "0.12.0", features = ["defmt"] }
 tinybmp = "0.6.0"
 assign-resources = { git = "https://github.com/adamgreig/assign-resources", rev = "94ad10e2729afdf0fd5a77cd12e68409a982f58a" }
+dfplayer-serial = { git = "https://github.com/1-rafael-1/dfplayer-serial" }
 
 
 [build-dependencies]

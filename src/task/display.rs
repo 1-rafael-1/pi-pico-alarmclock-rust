@@ -1,5 +1,5 @@
 use crate::task::resources::{DisplayResources, Irqs};
-use defmt::info;
+use defmt::*;
 use embassy_executor::Spawner;
 use embassy_rp::i2c::{Config, I2c};
 use embassy_time::{Duration, Timer};
@@ -154,7 +154,7 @@ impl<'a> Images<'a> {
             "bat_100" => self.bat_100 = Image::new(&bmps.bat_100, new_position),
             "bat_mains" => self.bat_mains = Image::new(&bmps.bat_mains, new_position),
             "settings" => self.settings = Image::new(&bmps.settings, new_position),
-            _ => panic!("Unknown image name: {}", image_name),
+            _ => self::panic!("Unknown image name: {}", image_name),
         }
     }
 }
