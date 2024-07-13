@@ -42,13 +42,13 @@ async fn main(spawner: Spawner) {
     // the tasks are all spawned in main.rs, so we can disable them here
     // clutter in the output aside, the binary size is conveniently reduced by disabling tasks
     let mut task_config = TaskConfig::new();
-    task_config.spawn_connect_and_update_rtc = false;
-    task_config.spawn_btn_green = false;
-    task_config.spawn_btn_blue = false;
-    task_config.spawn_btn_yellow = false;
-    task_config.spawn_neopixel = false;
-    task_config.spawn_display = false;
-    task_config.spawn_dfplayer = true;
+    // task_config.spawn_connect_and_update_rtc = false;
+    // task_config.spawn_btn_green = false;
+    // task_config.spawn_btn_blue = false;
+    // task_config.spawn_btn_yellow = false;
+    // task_config.spawn_neopixel = false;
+    // task_config.spawn_display = false;
+    // task_config.spawn_dfplayer = true;
 
     // Buttons
     if task_config.spawn_btn_green {

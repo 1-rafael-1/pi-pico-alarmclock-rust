@@ -3,7 +3,7 @@ use defmt::{info, Debug2Format};
 use dfplayer_serial::{DfPlayer, Equalizer, PlayBackSource};
 use embassy_executor::Spawner;
 use embassy_rp::gpio::{Level, Output};
-use embassy_rp::uart::{BufferedUart, Config, DataBits, Parity, StopBits};
+use embassy_rp::uart::{BufferedUart, Config};
 use embassy_time::{Duration, Timer};
 
 #[embassy_executor::task]
