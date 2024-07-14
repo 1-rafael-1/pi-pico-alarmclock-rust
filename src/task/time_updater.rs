@@ -1,3 +1,6 @@
+/// This module contains the task that updates the RTC using a time API.
+/// 
+/// The task is responsible for connecting to a wifi network, making a request to a time API, parsing the response, and updating the RTC.
 #![allow(async_fn_in_trait)]
 include!(concat!(env!("OUT_DIR"), "/wifi_secrets.rs"));
 // populate constants SSID and PASSWORD

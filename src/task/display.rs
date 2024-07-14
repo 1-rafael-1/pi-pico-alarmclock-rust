@@ -1,3 +1,6 @@
+/// This module contains the task that displays information on the OLED display.
+///
+/// The task is responsible for initializing the display, displaying images and text, and updating the display.
 use crate::task::resources::{DisplayResources, Irqs};
 use defmt::*;
 use embassy_executor::Spawner;

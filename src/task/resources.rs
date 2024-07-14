@@ -1,3 +1,6 @@
+/// this module is used to define the resources that will be used in the tasks
+///
+/// the resources are defined in the main.rs file, and assigned to the tasks in the main.rs file
 use assign_resources::assign_resources;
 use embassy_rp::i2c::InterruptHandler as I2cInterruptHandler;
 use embassy_rp::peripherals::I2C0;

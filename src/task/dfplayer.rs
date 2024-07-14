@@ -1,3 +1,6 @@
+/// This module contains the task that plays sound using the DFPlayer Mini module.
+///
+/// The task is responsible for initializing the DFPlayer Mini module, powering it on, playing a sound, and powering it off.
 use crate::task::resources::{DfPlayerResources, Irqs};
 use defmt::{info, Debug2Format};
 use dfplayer_serial::{DfPlayer, Equalizer, PlayBackSource};
