@@ -1,7 +1,4 @@
-/// This module contains the task that updates the RTC using a time API.
-/// 
-/// The task is responsible for connecting to a wifi network, making a request to a time API, parsing the response, and updating the RTC.
-#![allow(async_fn_in_trait)]
+#[allow(async_fn_in_trait)]
 include!(concat!(env!("OUT_DIR"), "/wifi_secrets.rs"));
 // populate constants SSID and PASSWORD
 // make sure to have a wifi_manager.json file in the config folder formatted as follows:
@@ -21,6 +18,9 @@ include!(concat!(env!("OUT_DIR"), "/time_api_config.rs"));
 //     }
 // }
 
+/// This module contains the task that updates the RTC using a time API.
+///
+/// The task is responsible for connecting to a wifi network, making a request to a time API, parsing the response, and updating the RTC.
 use crate::task::resources::Irqs;
 use crate::utility::string_utils::StringUtils;
 use crate::WifiResources;
