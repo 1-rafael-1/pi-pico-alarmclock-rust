@@ -1,4 +1,4 @@
-use crate::{BlueButtonResources, YellowButtonResources, GreenButtonResources};
+use crate::{BlueButtonResources, GreenButtonResources, YellowButtonResources};
 use defmt::info;
 use embassy_executor::Spawner;
 use embassy_rp::gpio::{self, Input, Level};

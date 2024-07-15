@@ -1,4 +1,4 @@
-pub mod btn_mgr;
+pub mod buttons;
 pub mod dfplayer;
 pub mod display;
 pub mod neopixel;

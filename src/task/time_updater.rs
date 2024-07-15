@@ -1,4 +1,3 @@
-#[allow(async_fn_in_trait)]
 include!(concat!(env!("OUT_DIR"), "/wifi_secrets.rs"));
 // populate constants SSID and PASSWORD
 // make sure to have a wifi_manager.json file in the config folder formatted as follows:
