@@ -33,6 +33,19 @@ pub enum State {
     SystemInfo,
 }
 
+impl State {
+    pub fn toggle_alarm_active(&mut self) {
+        match self {
+            State::Alarm => {
+                *self = State::Idle;
+            }
+            _ => {
+                *self = State::Alarm;
+            }
+        }
+    }
+}
+
 /// options for the menu
 #[derive(PartialEq, Debug, Format)]
 pub enum Menu {
@@ -82,24 +95,26 @@ pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stati
     info!("Orchestrate task started");
 
     loop {
-        let blue_btn_future = blue_btn_receiver.receive().into_future();
-        let green_btn_future = green_btn_receiver.receive().into_future();
-        let yellow_btn_future = yellow_btn_receiver.receive().into_future();
-        let _ = async {
-            match select3(blue_btn_future, green_btn_future, yellow_btn_future).await {
-                Either3::First(_) => {
-                    info!("Blue button pressed");
-                }
-                Either3::Second(_) => {
-                    info!("Green button pressed");
-                }
-                Either3::Third(_) => {
-                    info!("Yellow button pressed");
-                }
+        // determine the state of the system by checking the button presses
+        let blue_btn_future = blue_btn_receiver.receive();
+        let green_btn_future = green_btn_receiver.receive();
+        let yellow_btn_future = yellow_btn_receiver.receive();
+
+        match select3(blue_btn_future, green_btn_future, yellow_btn_future).await {
+            Either3::First(_) => {
+                info!("Blue button pressed");
+            }
+            Either3::Second(_) => {
+                info!("Green button pressed");
+                state_manager.state.toggle_alarm_active();
+            }
+            Either3::Third(_) => {
+                info!("Yellow button pressed");
             }
         };
 
         info!("StateMansger: {:?}", state_manager);
+
         if let Ok(dt) = rtc_ref.borrow_mut().now() {
             info!(
                 "orhestrate loop: {}-{:02}-{:02} {}:{:02}:{:02}",
@@ -107,6 +122,6 @@ pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stati
             );
         }
 
-        Timer::after(Duration::from_secs(10)).await;
+        //Timer::after(Duration::from_secs(10)).await;
     }
 }
