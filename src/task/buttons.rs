@@ -1,7 +1,10 @@
-use crate::{BlueButtonResources, GreenButtonResources, YellowButtonResources};
+use crate::task::resources::{BlueButtonResources, GreenButtonResources, YellowButtonResources};
+use crate::task::state::{BLUE_BTN_CHANNEL, GREEN_BTN_CHANNEL, YELLOW_BTN_CHANNEL};
 use defmt::info;
 use embassy_executor::Spawner;
 use embassy_rp::gpio::{self, Input, Level};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::channel::Sender;
 use embassy_time::{with_deadline, Duration, Instant, Timer};
 use {defmt_rtt as _, panic_probe as _};
 
@@ -80,22 +83,28 @@ impl<'a> ButtonManager<'a> {
 pub async fn green_button(_spawner: Spawner, r: GreenButtonResources) {
     let input = gpio::Input::new(r.button_pin, gpio::Pull::Up);
     let mut btn = ButtonManager::new(input, "green_button");
+    let sender = GREEN_BTN_CHANNEL.sender();
     info!("{} task started", btn.id);
     btn.handle_button_press().await;
+    sender.send(1).await;
 }
 
 #[embassy_executor::task]
 pub async fn blue_button(_spawner: Spawner, r: BlueButtonResources) {
     let input = gpio::Input::new(r.button_pin, gpio::Pull::Up);
     let mut btn = ButtonManager::new(input, "blue_button");
+    let sender = BLUE_BTN_CHANNEL.sender();
     info!("{} task started", btn.id);
     btn.handle_button_press().await;
+    sender.send(1).await;
 }
 
 #[embassy_executor::task]
 pub async fn yellow_button(_spawner: Spawner, r: YellowButtonResources) {
     let input = gpio::Input::new(r.button_pin, gpio::Pull::Up);
     let mut btn = ButtonManager::new(input, "yellow_button");
+    let sender = YELLOW_BTN_CHANNEL.sender();
     info!("{} task started", btn.id);
     btn.handle_button_press().await;
+    sender.send(1).await;
 }

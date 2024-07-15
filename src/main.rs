@@ -5,12 +5,8 @@
 use crate::task::buttons::{blue_button, green_button, yellow_button};
 use crate::task::dfplayer::sound;
 use crate::task::display::display;
-use crate::task::resources::{
-    AssignedResources, BlueButtonResources, DfPlayerResources, DisplayResources,
-    GreenButtonResources, NeopixelResources, RtcResources, TaskConfig, WifiResources,
-    YellowButtonResources,
-};
-use crate::task::state::orchestrate;
+use crate::task::resources::*;
+use crate::task::state::*;
 use crate::task::time_updater::connect_and_update_rtc;
 use core::cell::RefCell;
 use defmt::*;
