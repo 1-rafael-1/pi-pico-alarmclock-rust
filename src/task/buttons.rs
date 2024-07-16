@@ -15,14 +15,20 @@ pub struct ButtonManager<'a> {
     input: Input<'a>,
     debounce_duration: Duration,
     id: &'a str,
+    sender: Sender<'a, CriticalSectionRawMutex, u8, 1>,
 }
 
 impl<'a> ButtonManager<'a> {
-    pub fn new(input: Input<'a>, id: &'a str) -> Self {
+    pub fn new(
+        input: Input<'a>,
+        id: &'a str,
+        sender: Sender<'a, CriticalSectionRawMutex, u8, 1>,
+    ) -> Self {
         Self {
             input,
-            debounce_duration: Duration::from_millis(100),
+            debounce_duration: Duration::from_millis(100), // hardcoding, all buttons have the same debounce duration
             id,
+            sender,
         }
     }
 
@@ -32,6 +38,10 @@ impl<'a> ButtonManager<'a> {
             let _debounce = self.debounce().await;
             let start = Instant::now();
             info!("{} Press", self.id);
+
+            // send button press to channel -> this is a ToDo, we will want to do this reacting to the length of the press somehow
+            // maybe we need a pipe instead of a channel to stream the button presses to the orchestrator
+            self.sender.send(1).await;
 
             match with_deadline(start + Duration::from_secs(1), self.debounce()).await {
                 // Button Released < 1s
@@ -82,29 +92,26 @@ impl<'a> ButtonManager<'a> {
 #[embassy_executor::task]
 pub async fn green_button(_spawner: Spawner, r: GreenButtonResources) {
     let input = gpio::Input::new(r.button_pin, gpio::Pull::Up);
-    let mut btn = ButtonManager::new(input, "green_button");
     let sender = GREEN_BTN_CHANNEL.sender();
+    let mut btn = ButtonManager::new(input, "green_button", sender);
     info!("{} task started", btn.id);
     btn.handle_button_press().await;
-    sender.send(1).await;
 }
 
 #[embassy_executor::task]
 pub async fn blue_button(_spawner: Spawner, r: BlueButtonResources) {
     let input = gpio::Input::new(r.button_pin, gpio::Pull::Up);
-    let mut btn = ButtonManager::new(input, "blue_button");
     let sender = BLUE_BTN_CHANNEL.sender();
+    let mut btn = ButtonManager::new(input, "blue_button", sender);
     info!("{} task started", btn.id);
     btn.handle_button_press().await;
-    sender.send(1).await;
 }
 
 #[embassy_executor::task]
 pub async fn yellow_button(_spawner: Spawner, r: YellowButtonResources) {
     let input = gpio::Input::new(r.button_pin, gpio::Pull::Up);
-    let mut btn = ButtonManager::new(input, "yellow_button");
     let sender = YELLOW_BTN_CHANNEL.sender();
+    let mut btn = ButtonManager::new(input, "yellow_button", sender);
     info!("{} task started", btn.id);
     btn.handle_button_press().await;
-    sender.send(1).await;
 }
