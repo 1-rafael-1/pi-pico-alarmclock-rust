@@ -1,3 +1,6 @@
+/// This module contains the tasks that control the neopixel LED ring.
+///
+/// The tasks are responsible for initializing the neopixel, setting the colors of the LEDs, and updating the LEDs.
 use crate::task::resources::NeopixelResources;
 use defmt::*;
 use embassy_executor::Spawner;
