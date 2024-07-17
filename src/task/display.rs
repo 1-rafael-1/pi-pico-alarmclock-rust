@@ -176,6 +176,7 @@ pub async fn display(_spawner: Spawner, r: DisplayResources) {
     let mut display = Ssd1306::new(interface, DisplaySize128x64, DisplayRotation::Rotate0)
         .into_buffered_graphics_mode();
     display.init().await.unwrap();
+    display.set_brightness(Brightness::DIMMEST).await.unwrap();
 
     // Load BMP images from media
     let bmps = Bmps::new();
