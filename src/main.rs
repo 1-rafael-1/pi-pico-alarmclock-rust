@@ -36,15 +36,15 @@ async fn main(spawner: Spawner) {
     // configure, which tasks to spawn. For a production build we need all tasks, for troubleshooting we can disable some
     // the tasks are all spawned in main.rs, so we can disable them here
     // clutter in the output aside, the binary size is conveniently reduced by disabling tasks
-    // let task_config = TaskConfig::new();
-    let mut task_config = TaskConfig::new();
-    task_config.spawn_connect_and_update_rtc = false;
+    let task_config = TaskConfig::new();
+    // let mut task_config = TaskConfig::new();
+    // task_config.spawn_connect_and_update_rtc = false;
     // task_config.spawn_btn_green = false;
     // task_config.spawn_btn_blue = false;
     // task_config.spawn_btn_yellow = false;
-    task_config.spawn_neopixel = false;
-    task_config.spawn_display = false;
-    task_config.spawn_dfplayer = false;
+    // task_config.spawn_neopixel = false;
+    // task_config.spawn_display = false;
+    // task_config.spawn_dfplayer = false;
 
     // RTC
     // Initialize the RTC in a static cell, we will need it in multiple places
