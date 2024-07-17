@@ -52,6 +52,13 @@ assign_resources! {
         tx_dma_ch: DMA_CH3,
         power_pin: PIN_8, // not a part of the dfplayer, using a mosfet to control power to the dfplayer because it draws too much current when idle
     },
+    usb_power: UsbPowerResources {
+        vbus_pin: PIN_24, // this is the pin that is connected to the USB power, high when USB is connected
+    },
+    vsys_adc: VsysPowerResources {
+        adc: ADC,
+        vsys_pin: PIN_29, // this is the pin that is connected to vsys, adc reading of the input voltage
+    },
 }
 
 // bind the interrupts, on a global scope, until i find a better way
