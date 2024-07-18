@@ -18,11 +18,11 @@ include!(concat!(env!("OUT_DIR"), "/time_api_config.rs"));
 // }
 
 use crate::utility::string_utils::StringUtils;
-use crate::WifiResources;
 /// This module contains the task that updates the RTC using a time API.
 ///
 /// The task is responsible for connecting to a wifi network, making a request to a time API, parsing the response, and updating the RTC.
 use crate::{task::resources::Irqs, VSYS_PINS};
+use crate::{VsysPins, WifiResources};
 use core::cell::RefCell;
 use core::str::from_utf8;
 use cyw43_pio::PioSpi;
@@ -113,15 +113,21 @@ pub async fn connect_and_update_rtc(
     info!("init time updater");
     let time_updater = TimeUpdater::new();
 
-    // we need an outer loop to handle the scope of the mutex guard, when we have made a connect attempt, we need
-    // to drop the guard to release the pins, so that other tasks can use them
-    loop {
+    'outer: loop {
         // get cs and clk pins from the mutex, locking them for the duration of the scope
         let mut vsys_pins_guard = VSYS_PINS.lock().await;
-        if let Some(ref mut vsys_pins) = *vsys_pins_guard {
-            let cs_pin_borrow = &mut vsys_pins.cs_pin;
-            let clk_pin_borrow = &vsys_pins.vsys_pin;
 
+        let mut vsys_pins: VsysPins;
+        if let Some(vsys_pins_inner) = vsys_pins_guard.take() {
+            vsys_pins = vsys_pins_inner;
+        } else {
+            return;
+        };
+
+        let cs_pin_borrow: peripherals::PIN_25 = vsys_pins.cs_pin.into();
+        let clk_pin_borrow: peripherals::PIN_29 = vsys_pins.vsys_pin.into();
+
+        {
             let pwr = Output::new(r.pwr_pin, Level::Low);
             let cs = Output::new(cs_pin_borrow, Level::High);
             let mut pio = Pio::new(r.pio_sm, Irqs);
@@ -131,7 +137,7 @@ pub async fn connect_and_update_rtc(
                 pio.irq0,
                 cs,
                 r.dio_pin,
-                *clk_pin_borrow,
+                clk_pin_borrow,
                 r.dma_ch,
             );
 
@@ -175,7 +181,7 @@ pub async fn connect_and_update_rtc(
             unwrap!(spawner.spawn(net_task(stack)));
 
             info!("starting loop");
-            loop {
+            'inner: loop {
                 let (ssid, password) = time_updater.credentials();
                 info!(
                     "Joining WPA2 network with SSID: {:?} and password: {:?}",
@@ -349,20 +355,26 @@ pub async fn connect_and_update_rtc(
                     let dt: DateTime;
                     dt = StringUtils::convert_str_to_datetime(response.datetime);
                     rtc_ref.borrow_mut().set_datetime(dt).unwrap();
-                } // end of scope
+                } // end of scope for request, response, and body
 
                 control.leave().await;
                 control.gpio_set(0, false).await; // Turn off the onboard LED
                 info!("Disconnected from wifi");
+
+                // wait before reconnecting
+                // this should drop the mutex guard and release the resources for other tasks
+                info!(
+                    "Waiting for {:?} seconds before reconnecting",
+                    time_updater.refresh_after_secs
+                );
             }
+            // // break the inner loop to reconnect
+            break;
         }
 
-        // wait before reconnecting
-        // this should drop the mutex guard and release the resources for other tasks
-        info!(
-            "Waiting for {:?} seconds before reconnecting",
-            time_updater.refresh_after_secs
-        );
+        *vsys_pins_guard = Some(vsys_pins);
+
         Timer::after(Duration::from_secs(time_updater.refresh_after_secs)).await;
-    }
+        continue 'outer;
+    } // end of outer loop
 }

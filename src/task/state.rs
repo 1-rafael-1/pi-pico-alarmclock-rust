@@ -1,13 +1,11 @@
-use core::{cell::RefCell, future::IntoFuture};
+use core::cell::RefCell;
 use defmt::*;
-use embassy_embedded_hal::shared_bus::asynch;
 use embassy_executor::Spawner;
-use embassy_futures::select::{self, select3, select_array, Either3, Select3};
+use embassy_futures::select::select_array;
 use embassy_rp::peripherals::RTC;
 use embassy_rp::rtc::Rtc;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
-use embassy_time::{Duration, Timer};
 
 /// Channels for the events that we want to react to
 /// we will need more channels for the other events, and we may need to use pipes instead of channels in some cases
@@ -127,7 +125,7 @@ pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stati
         // determine the state of the system by checking the power state
         let vbus_future = vbus_receiver.receive();
 
-        let mut futures = [
+        let futures = [
             blue_btn_future,
             green_btn_future,
             yellow_btn_future,
