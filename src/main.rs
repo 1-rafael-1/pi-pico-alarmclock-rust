@@ -52,6 +52,18 @@ async fn main(spawner: Spawner) {
     let rtc_instance: Rtc<'static, peripherals::RTC> = Rtc::new(r.rtc.rtc_inst);
     let rtc_ref = RTC.init(RefCell::new(rtc_instance));
 
+    // VSYS
+    // Initialize the VSYS pins in a mutex, we will need it mutable in multiple places
+    let vsys_pins = VsysPins {
+        cs_pin: p.PIN_25,
+        vsys_pin: p.PIN_29,
+    };
+    // assign the pins to the mutex in an inner scope, so that the mutex guard is dropped after the assignment
+    {
+        *(VSYS_PINS.lock().await) = Some(vsys_pins);
+    }
+
+    // Orchestrate
     // there is no main loop, the tasks are spawned and run in parallel
     // orchestrating the tasks is done here:
     spawner.spawn(orchestrate(spawner, rtc_ref)).unwrap();

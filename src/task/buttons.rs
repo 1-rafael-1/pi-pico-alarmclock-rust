@@ -1,5 +1,5 @@
 use crate::task::resources::{BlueButtonResources, GreenButtonResources, YellowButtonResources};
-use crate::task::state::{BLUE_BTN_CHANNEL, GREEN_BTN_CHANNEL, YELLOW_BTN_CHANNEL};
+use crate::task::state::{StateManager, BLUE_BTN_CHANNEL, GREEN_BTN_CHANNEL, YELLOW_BTN_CHANNEL};
 use defmt::info;
 use embassy_executor::Spawner;
 use embassy_rp::gpio::{self, Input, Level};
