@@ -143,15 +143,16 @@ pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stati
             (_, 2) => {
                 info!("YELLOW");
             }
-            (_, 3) => {
+            (vbus_value, 3) => {
                 info!("VBUS");
+                info!("VBUS value: {}", vbus_value);
             }
             _ => {
                 info!("unreachable");
             }
         }
 
-        info!("StateMansger: {:?}", state_manager);
+        info!("StateManager: {:?}", state_manager);
 
         if let Ok(dt) = rtc_ref.borrow_mut().now() {
             info!(
