@@ -17,12 +17,12 @@ include!(concat!(env!("OUT_DIR"), "/time_api_config.rs"));
 //     }
 // }
 
-use crate::utility::string_utils::StringUtils;
 /// This module contains the task that updates the RTC using a time API.
 ///
 /// The task is responsible for connecting to a wifi network, making a request to a time API, parsing the response, and updating the RTC.
+use crate::utility::string_utils::StringUtils;
+use crate::VsysPins;
 use crate::{task::resources::Irqs, VSYS_PINS};
-use crate::{VsysPins, WifiResources};
 use core::cell::RefCell;
 use core::str::from_utf8;
 use cyw43_pio::PioSpi;
@@ -104,41 +104,45 @@ async fn wifi_task(
 async fn net_task(stack: &'static Stack<cyw43::NetDriver<'static>>) -> ! {
     stack.run().await
 }
+
 #[embassy_executor::task]
 pub async fn connect_and_update_rtc(
     spawner: Spawner,
-    r: WifiResources,
     rtc_ref: &'static RefCell<Rtc<'static, peripherals::RTC>>,
 ) {
     info!("init time updater");
     let time_updater = TimeUpdater::new();
 
     'outer: loop {
-        // get cs and clk pins from the mutex, locking them for the duration of the scope
-        let mut vsys_pins_guard = VSYS_PINS.lock().await;
+        'scope: {
+            // get cs and clk pins from the mutex, locking them for the duration of the scope
+            let mut vsys_pins_guard = VSYS_PINS.lock().await;
 
-        let mut vsys_pins: VsysPins;
-        if let Some(vsys_pins_inner) = vsys_pins_guard.take() {
-            vsys_pins = vsys_pins_inner;
-        } else {
-            return;
-        };
+            let mut vsys_pins: VsysPins;
+            if let Some(vsys_pins_inner) = vsys_pins_guard.take() {
+                vsys_pins = vsys_pins_inner;
+            } else {
+                return;
+            };
 
-        let cs_pin_borrow: peripherals::PIN_25 = vsys_pins.cs_pin.into();
-        let clk_pin_borrow: peripherals::PIN_29 = vsys_pins.vsys_pin.into();
+            let cs_pin_borrow: peripherals::PIN_25 = vsys_pins.cs_pin.into();
+            let clk_pin_borrow: peripherals::PIN_29 = vsys_pins.vsys_clk_pin.into();
+            let pwr_pin: peripherals::PIN_23 = vsys_pins.pwr_pin.into();
+            let pio_sm: PIO0 = vsys_pins.pio_sm;
+            let dma_ch: DMA_CH0 = vsys_pins.dma_ch;
+            let dio_pin: peripherals::PIN_24 = vsys_pins.dio_pin.into();
 
-        {
-            let pwr = Output::new(r.pwr_pin, Level::Low);
+            let pwr = Output::new(pwr_pin, Level::Low);
             let cs = Output::new(cs_pin_borrow, Level::High);
-            let mut pio = Pio::new(r.pio_sm, Irqs);
+            let mut pio = Pio::new(pio_sm, Irqs);
             let spi = PioSpi::new(
                 &mut pio.common,
                 pio.sm0,
                 pio.irq0,
                 cs,
-                r.dio_pin,
+                dio_pin,
                 clk_pin_borrow,
-                r.dma_ch,
+                dma_ch,
             );
 
             let fw = unsafe { core::slice::from_raw_parts(0x10100000 as *const u8, 230321) };
@@ -355,7 +359,7 @@ pub async fn connect_and_update_rtc(
                     let dt: DateTime;
                     dt = StringUtils::convert_str_to_datetime(response.datetime);
                     rtc_ref.borrow_mut().set_datetime(dt).unwrap();
-                } // end of scope for request, response, and body
+                }
 
                 control.leave().await;
                 control.gpio_set(0, false).await; // Turn off the onboard LED
@@ -367,14 +371,10 @@ pub async fn connect_and_update_rtc(
                     "Waiting for {:?} seconds before reconnecting",
                     time_updater.refresh_after_secs
                 );
+                break 'inner;
             }
-            // // break the inner loop to reconnect
-            break;
+            //*vsys_pins_guard = Some(vsys_pins);
+            Timer::after(Duration::from_secs(time_updater.refresh_after_secs)).await;
         }
-
-        *vsys_pins_guard = Some(vsys_pins);
-
-        Timer::after(Duration::from_secs(time_updater.refresh_after_secs)).await;
-        continue 'outer;
-    } // end of outer loop
+    }
 }

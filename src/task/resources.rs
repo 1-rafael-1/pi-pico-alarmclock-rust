@@ -5,8 +5,7 @@ use assign_resources::assign_resources;
 use embassy_rp::adc::InterruptHandler as AdcInterruptHandler;
 use embassy_rp::i2c::InterruptHandler as I2cInterruptHandler;
 use embassy_rp::peripherals::UART1;
-use embassy_rp::peripherals::{I2C0, PIN_25};
-use embassy_rp::peripherals::{PIN_29, PIO0};
+use embassy_rp::peripherals::{DMA_CH0, I2C0, PIN_23, PIN_24, PIN_25, PIN_29, PIO0};
 use embassy_rp::pio::InterruptHandler;
 use embassy_rp::uart::BufferedInterruptHandler;
 use embassy_rp::{bind_interrupts, peripherals};
@@ -25,16 +24,16 @@ assign_resources! {
     btn_yellow: YellowButtonResources {
         button_pin: PIN_22,
     },
-    wifi: WifiResources {
-        pwr_pin: PIN_23,
-        // PIN_25 is the cs pin, this we handle through a mutex, see below
-        //cs_pin: PIN_25,
-        pio_sm: PIO0,
-        dio_pin: PIN_24,
-        // PIN_25 is the clk pin, this we handle through a mutex, see below
-        //clk_pin: PIN_29,
-        dma_ch: DMA_CH0,
-    },
+    // wifi: WifiResources {
+    //     pwr_pin: PIN_23,
+    //     // PIN_25 is the cs pin, this we handle through a mutex, see below
+    //     //cs_pin: PIN_25,
+    //     pio_sm: PIO0,
+    //     dio_pin: PIN_24,
+    //     // PIN_25 is the clk pin, this we handle through a mutex, see below
+    //     //clk_pin: PIN_29,
+    //     dma_ch: DMA_CH0,
+    // },
     rtc: RtcResources {
         rtc_inst: RTC,
     },
@@ -67,9 +66,15 @@ assign_resources! {
 // some resources are shared between tasks, so we need to wrap them in a mutex
 // these are resources used by the wifi chip as well as power.rs
 // the mutex is defined here, and the resources are assigned to the mutex in the main.rs file
+// we put all the required resources into this mutex, although stricty speaking we do not need to -> this is a design choice
+// and also in the appropriate task it helps solve value moved errors in the loop
 pub struct VsysPins {
+    pub pwr_pin: PIN_23,
     pub cs_pin: PIN_25, // required to facilitate reading adc values from vsys on a Pi ico W
-    pub vsys_pin: PIN_29,
+    pub vsys_clk_pin: PIN_29, // required to facilitate reading adc
+    pub pio_sm: PIO0,
+    pub dio_pin: PIN_24,
+    pub dma_ch: DMA_CH0,
 }
 
 pub type VsysPinsType = Mutex<ThreadModeRawMutex, Option<VsysPins>>;

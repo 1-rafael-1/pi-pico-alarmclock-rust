@@ -56,7 +56,11 @@ async fn main(spawner: Spawner) {
     // Initialize the VSYS pins in a mutex, we will need it mutable in multiple places
     let vsys_pins = VsysPins {
         cs_pin: p.PIN_25,
-        vsys_pin: p.PIN_29,
+        vsys_clk_pin: p.PIN_29,
+        pwr_pin: p.PIN_23,
+        pio_sm: p.PIO0,
+        dio_pin: p.PIN_24,
+        dma_ch: p.DMA_CH0,
     };
     // assign the pins to the mutex in an inner scope, so that the mutex guard is dropped after the assignment
     {
@@ -82,7 +86,7 @@ async fn main(spawner: Spawner) {
     // update the RTC
     if task_config.spawn_connect_and_update_rtc {
         spawner
-            .spawn(connect_and_update_rtc(spawner, r.wifi, rtc_ref))
+            .spawn(connect_and_update_rtc(spawner, rtc_ref))
             .unwrap();
     }
 
