@@ -21,8 +21,8 @@ include!(concat!(env!("OUT_DIR"), "/time_api_config.rs"));
 ///
 /// The task is responsible for connecting to a wifi network, making a request to a time API, parsing the response, and updating the RTC.
 use crate::utility::string_utils::StringUtils;
-use crate::VsysPins;
-use crate::{task::resources::Irqs, VSYS_PINS};
+use crate::WifiVsysPins;
+use crate::{task::resources::Irqs, WIFI_VSYS_PINS};
 use core::cell::RefCell;
 use core::str::from_utf8;
 use cyw43_pio::PioSpi;
@@ -116,21 +116,21 @@ pub async fn connect_and_update_rtc(
     '_outer: loop {
         '_mutex_scope: {
             // get pins from the mutex, locking them for the duration of the scope
-            let mut vsys_pins_guard = VSYS_PINS.lock().await;
+            let mut wifi_vsys_pins_guard = WIFI_VSYS_PINS.lock().await;
 
-            let vsys_pins: VsysPins;
-            if let Some(vsys_pins_inner) = vsys_pins_guard.take() {
-                vsys_pins = vsys_pins_inner;
+            let wifi_vsys_pins: WifiVsysPins;
+            if let Some(wifi_vsys_pins_inner) = wifi_vsys_pins_guard.take() {
+                wifi_vsys_pins = wifi_vsys_pins_inner;
             } else {
                 return;
             };
 
-            let cs_pin_borrow: peripherals::PIN_25 = vsys_pins.cs_pin.into();
-            let clk_pin_borrow: peripherals::PIN_29 = vsys_pins.vsys_clk_pin.into();
-            let pwr_pin: peripherals::PIN_23 = vsys_pins.pwr_pin.into();
-            let pio_sm: PIO0 = vsys_pins.pio_sm;
-            let dma_ch: DMA_CH0 = vsys_pins.dma_ch;
-            let dio_pin: peripherals::PIN_24 = vsys_pins.dio_pin.into();
+            let cs_pin_borrow: peripherals::PIN_25 = wifi_vsys_pins.cs_pin.into();
+            let clk_pin_borrow: peripherals::PIN_29 = wifi_vsys_pins.vsys_clk_pin.into();
+            let pwr_pin: peripherals::PIN_23 = wifi_vsys_pins.pwr_pin.into();
+            let pio_sm: PIO0 = wifi_vsys_pins.pio_sm;
+            let dma_ch: DMA_CH0 = wifi_vsys_pins.dma_ch;
+            let dio_pin: peripherals::PIN_24 = wifi_vsys_pins.dio_pin.into();
 
             let pwr = Output::new(pwr_pin, Level::Low);
             let cs = Output::new(cs_pin_borrow, Level::High);

@@ -54,7 +54,7 @@ async fn main(spawner: Spawner) {
 
     // VSYS
     // Initialize the VSYS pins in a mutex, we will need it mutable in multiple places
-    let vsys_pins = VsysPins {
+    let wifi_vsys_pins = WifiVsysPins {
         cs_pin: p.PIN_25,
         vsys_clk_pin: p.PIN_29,
         pwr_pin: p.PIN_23,
@@ -64,7 +64,7 @@ async fn main(spawner: Spawner) {
     };
     // assign the pins to the mutex in an inner scope, so that the mutex guard is dropped after the assignment
     {
-        *(VSYS_PINS.lock().await) = Some(vsys_pins);
+        *(WIFI_VSYS_PINS.lock().await) = Some(wifi_vsys_pins);
     }
 
     // Orchestrate

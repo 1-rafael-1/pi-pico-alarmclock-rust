@@ -24,16 +24,6 @@ assign_resources! {
     btn_yellow: YellowButtonResources {
         button_pin: PIN_22,
     },
-    // wifi: WifiResources {
-    //     pwr_pin: PIN_23,
-    //     // PIN_25 is the cs pin, this we handle through a mutex, see below
-    //     //cs_pin: PIN_25,
-    //     pio_sm: PIO0,
-    //     dio_pin: PIN_24,
-    //     // PIN_25 is the clk pin, this we handle through a mutex, see below
-    //     //clk_pin: PIN_29,
-    //     dma_ch: DMA_CH0,
-    // },
     rtc: RtcResources {
         rtc_inst: RTC,
     },
@@ -68,7 +58,7 @@ assign_resources! {
 // the mutex is defined here, and the resources are assigned to the mutex in the main.rs file
 // we put all the required resources into this mutex, although stricty speaking we do not need to -> this is a design choice
 // and also in the appropriate task it helps solve value moved errors in the loop
-pub struct VsysPins {
+pub struct WifiVsysPins {
     pub pwr_pin: PIN_23,
     pub cs_pin: PIN_25, // required to facilitate reading adc values from vsys on a Pi ico W
     pub vsys_clk_pin: PIN_29, // required to facilitate reading adc
@@ -77,8 +67,8 @@ pub struct VsysPins {
     pub dma_ch: DMA_CH0,
 }
 
-pub type VsysPinsType = Mutex<ThreadModeRawMutex, Option<VsysPins>>;
-pub static VSYS_PINS: VsysPinsType = Mutex::new(None);
+pub type WifiVsysPinsType = Mutex<ThreadModeRawMutex, Option<WifiVsysPins>>;
+pub static WIFI_VSYS_PINS: WifiVsysPinsType = Mutex::new(None);
 
 // bind the interrupts, on a global scope, until i find a better way
 bind_interrupts!(pub struct Irqs {
