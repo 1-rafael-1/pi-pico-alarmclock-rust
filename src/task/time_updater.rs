@@ -113,12 +113,12 @@ pub async fn connect_and_update_rtc(
     info!("init time updater");
     let time_updater = TimeUpdater::new();
 
-    'outer: loop {
-        'scope: {
-            // get cs and clk pins from the mutex, locking them for the duration of the scope
+    '_outer: loop {
+        '_mutex_scope: {
+            // get pins from the mutex, locking them for the duration of the scope
             let mut vsys_pins_guard = VSYS_PINS.lock().await;
 
-            let mut vsys_pins: VsysPins;
+            let vsys_pins: VsysPins;
             if let Some(vsys_pins_inner) = vsys_pins_guard.take() {
                 vsys_pins = vsys_pins_inner;
             } else {
@@ -373,7 +373,6 @@ pub async fn connect_and_update_rtc(
                 );
                 break 'inner;
             }
-            //*vsys_pins_guard = Some(vsys_pins);
             Timer::after(Duration::from_secs(time_updater.refresh_after_secs)).await;
         }
     }
