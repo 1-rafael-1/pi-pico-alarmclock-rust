@@ -46,10 +46,13 @@ assign_resources! {
         tx_dma_ch: DMA_CH3,
         power_pin: PIN_8, // not a part of the dfplayer, using a mosfet to control power to the dfplayer because it draws too much current when idle
     },
-    vbus: UsbPowerResources {
+    vbus_power: UsbPowerResources {
         // we cannot use the USB power pin 24, because on the Pico W the vbus pin is run through the wifi module and is not available
         // instead we wire a voltage divider between VBUS and a GPIO pin
         vbus_pin: PIN_27,
+    },
+    vsys_power: VsysPowerResources {
+        adc: ADC,
     },
 }
 
@@ -86,6 +89,8 @@ pub struct TaskConfig {
     pub spawn_neopixel: bool,
     pub spawn_display: bool,
     pub spawn_dfplayer: bool,
+    pub spawn_usb_power: bool,
+    pub spawn_vsys_voltage: bool,
 }
 
 impl Default for TaskConfig {
@@ -98,6 +103,8 @@ impl Default for TaskConfig {
             spawn_neopixel: true,
             spawn_display: true,
             spawn_dfplayer: true,
+            spawn_usb_power: true,
+            spawn_vsys_voltage: true,
         }
     }
 }

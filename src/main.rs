@@ -5,6 +5,7 @@
 use crate::task::buttons::{blue_button, green_button, yellow_button};
 use crate::task::dfplayer::sound;
 use crate::task::display::display;
+use crate::task::power::{usb_power, vsys_voltage};
 use crate::task::resources::*;
 use crate::task::state::*;
 use crate::task::time_updater::connect_and_update_rtc;
@@ -36,15 +37,16 @@ async fn main(spawner: Spawner) {
     // configure, which tasks to spawn. For a production build we need all tasks, for troubleshooting we can disable some
     // the tasks are all spawned in main.rs, so we can disable them here
     // clutter in the output aside, the binary size is conveniently reduced by disabling tasks
-    let task_config = TaskConfig::new();
-    // let mut task_config = TaskConfig::new();
-    // task_config.spawn_connect_and_update_rtc = false;
-    // task_config.spawn_btn_green = false;
-    // task_config.spawn_btn_blue = false;
-    // task_config.spawn_btn_yellow = false;
-    // task_config.spawn_neopixel = false;
-    // task_config.spawn_display = false;
-    // task_config.spawn_dfplayer = false;
+    let mut task_config = TaskConfig::new();
+    task_config.spawn_connect_and_update_rtc = false;
+    task_config.spawn_btn_green = true;
+    task_config.spawn_btn_blue = true;
+    task_config.spawn_btn_yellow = true;
+    task_config.spawn_neopixel = true;
+    task_config.spawn_display = true;
+    task_config.spawn_dfplayer = false;
+    task_config.spawn_usb_power = true;
+    task_config.spawn_vsys_voltage = true;
 
     // RTC
     // Initialize the RTC in a static cell, we will need it in multiple places
@@ -71,6 +73,15 @@ async fn main(spawner: Spawner) {
     // there is no main loop, the tasks are spawned and run in parallel
     // orchestrating the tasks is done here:
     spawner.spawn(orchestrate(spawner, rtc_ref)).unwrap();
+
+    // Power
+    if task_config.spawn_usb_power {
+        spawner.spawn(usb_power(spawner, r.vbus_power)).unwrap();
+    };
+
+    if task_config.spawn_vsys_voltage {
+        spawner.spawn(vsys_voltage(spawner, r.vsys_power)).unwrap();
+    }
 
     // Buttons
     if task_config.spawn_btn_green {
