@@ -1,9 +1,8 @@
-use core::borrow::BorrowMut;
-
 use crate::task::resources::{
     Irqs, UsbPowerResources, VsysPowerResources, WifiVsysPins, WIFI_VSYS_PINS,
 };
 use crate::task::state::VBUS_CHANNEL;
+use core::borrow::BorrowMut;
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_rp::adc::{self, Adc, Channel, Config, InterruptHandler};
@@ -68,7 +67,6 @@ pub async fn vsys_voltage(_spawner: Spawner, r: VsysPowerResources) {
         } else {
             info!("vsys_voltage no pins");
             return;
-            info!("vsys_voltage left mutex scope");
         }
         Timer::after(Duration::from_secs(30)).await;
     }
