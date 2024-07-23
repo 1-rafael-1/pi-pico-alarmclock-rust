@@ -66,15 +66,7 @@ assign_resources! {
     },
 }
 
-pub enum WifiVsysToggle {
-    WifiOn,
-    VsysOn,
-}
-
-// pub type WifiVsysToggleType = Mutex<ThreadModeRawMutex, Option<WifiVsysToggle>>;
-// pub static WIFI_VSYS_TOGGLE: WifiVsysToggleType = Mutex::new(None);
-
-/// bind the interrupts, on a global scope
+// bind the interrupts, on a global scope for convenience
 bind_interrupts!(pub struct Irqs {
     PIO0_IRQ_0 => InterruptHandler<PIO0>;
     I2C0_IRQ => I2cInterruptHandler<I2C0>;
