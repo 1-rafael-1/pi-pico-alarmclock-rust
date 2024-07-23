@@ -1,11 +1,12 @@
-/// this module is used to define the resources that will be used in the tasks
-///
-/// the resources are defined in the main.rs file, and assigned to the tasks in the main.rs file
+//! # Resources
+//! this module is used to define the resources that will be used in the tasks
+//!
+//! the resources are defined in the main.rs file, and assigned to the tasks in the main.rs file
 use assign_resources::assign_resources;
+use embassy_rp::adc::InterruptHandler as AdcInterruptHandler;
 use embassy_rp::i2c::InterruptHandler as I2cInterruptHandler;
-use embassy_rp::peripherals::I2C0;
-use embassy_rp::peripherals::PIO0;
 use embassy_rp::peripherals::UART1;
+use embassy_rp::peripherals::{I2C0, PIO0};
 use embassy_rp::pio::InterruptHandler;
 use embassy_rp::uart::BufferedInterruptHandler;
 use embassy_rp::{bind_interrupts, peripherals};
@@ -21,14 +22,6 @@ assign_resources! {
     },
     btn_yellow: YellowButtonResources {
         button_pin: PIN_22,
-    },
-    wifi: WifiResources {
-        pwr_pin: PIN_23,
-        cs_pin: PIN_25,
-        pio_sm: PIO0,
-        dio_pin: PIN_24,
-        clk_pin: PIN_29,
-        dma_ch: DMA_CH0,
     },
     rtc: RtcResources {
         rtc_inst: RTC,
@@ -52,42 +45,31 @@ assign_resources! {
         tx_dma_ch: DMA_CH3,
         power_pin: PIN_8, // not a part of the dfplayer, using a mosfet to control power to the dfplayer because it draws too much current when idle
     },
+    vbus_power: UsbPowerResources {
+        // we cannot use the VBUS power pin 24, because on the Pico W the vbus pin is run through the wifi module and is not available
+        // instead we wire a voltage divider between VBUS and a GPIO pin
+        vbus_pin: PIN_28,
+    },
+    wifi: WifiResources {
+        pwr_pin: PIN_23,
+        cs_pin: PIN_25,
+        pio_sm: PIO0,
+        dio_pin: PIN_24,
+        clk_pin: PIN_29,
+        dma_ch: DMA_CH0,
+    },
+    vsys_resources: VsysResources {
+        // we cannot use the VSYS power pin 29, because on the Pico W the vsys pin is run through the wifi module and is not available
+        // instead we wire a voltage divider between VSYS and a GPIO pin
+        adc: ADC,
+        pin_27: PIN_27,
+    },
 }
 
-// bind the interrupts, on a global scope, until i find a better way
+// bind the interrupts, on a global scope for convenience
 bind_interrupts!(pub struct Irqs {
     PIO0_IRQ_0 => InterruptHandler<PIO0>;
     I2C0_IRQ => I2cInterruptHandler<I2C0>;
-    // UART0_IRQ => UartInterruptHandler<UART0>;
     UART1_IRQ => BufferedInterruptHandler<UART1>;
+    ADC_IRQ_FIFO => AdcInterruptHandler;
 });
-
-pub struct TaskConfig {
-    pub spawn_btn_green: bool,
-    pub spawn_btn_blue: bool,
-    pub spawn_btn_yellow: bool,
-    pub spawn_connect_and_update_rtc: bool,
-    pub spawn_neopixel: bool,
-    pub spawn_display: bool,
-    pub spawn_dfplayer: bool,
-}
-
-impl Default for TaskConfig {
-    fn default() -> Self {
-        TaskConfig {
-            spawn_btn_green: true,
-            spawn_btn_blue: true,
-            spawn_btn_yellow: true,
-            spawn_connect_and_update_rtc: true,
-            spawn_neopixel: true,
-            spawn_display: true,
-            spawn_dfplayer: true,
-        }
-    }
-}
-
-impl TaskConfig {
-    pub fn new() -> Self {
-        TaskConfig::default()
-    }
-}

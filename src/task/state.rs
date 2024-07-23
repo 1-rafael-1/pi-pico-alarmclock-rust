@@ -1,13 +1,55 @@
-use core::{cell::RefCell, future::IntoFuture};
+//! # State
+//! This module keeps the state of the system.
+//! This module is responsible for the state transitions of the system, receiving events from the various tasks and reacting to them.
+//! Reacting to the events will involve changing the state of the system and triggering actions like updating the display, playing sounds, etc.
+use core::cell::RefCell;
 use defmt::*;
-use embassy_embedded_hal::shared_bus::asynch;
 use embassy_executor::Spawner;
-use embassy_futures::select::{self, select3, select_array, Either3, Select3};
+use embassy_futures::select::select_array;
 use embassy_rp::peripherals::RTC;
 use embassy_rp::rtc::Rtc;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
-use embassy_time::{Duration, Timer};
+
+/// Task configuration
+/// This struct is used to configure which tasks are enabled
+/// This is useful for troubleshooting, as we can disable tasks to reduce the binary size
+/// and clutter in the output.
+/// Also, we can disable tasks that are not needed for the current development stage and also test tasks in isolation.
+/// For a production build we will need all tasks enabled
+pub struct TaskConfig {
+    pub btn_green: bool,
+    pub btn_blue: bool,
+    pub btn_yellow: bool,
+    pub time_updater: bool,
+    pub neopixel: bool,
+    pub display: bool,
+    pub dfplayer: bool,
+    pub usb_power: bool,
+    pub vsys_voltage: bool,
+}
+
+impl Default for TaskConfig {
+    fn default() -> Self {
+        TaskConfig {
+            btn_green: true,
+            btn_blue: true,
+            btn_yellow: true,
+            time_updater: true,
+            neopixel: true,
+            display: true,
+            dfplayer: true,
+            usb_power: true,
+            vsys_voltage: true,
+        }
+    }
+}
+
+impl TaskConfig {
+    pub fn new() -> Self {
+        TaskConfig::default()
+    }
+}
 
 /// Channels for the events that we want to react to
 /// we will need more channels for the other events, and we may need to use pipes instead of channels in some cases
@@ -15,6 +57,7 @@ use embassy_time::{Duration, Timer};
 pub static GREEN_BTN_CHANNEL: Channel<CriticalSectionRawMutex, u8, 1> = Channel::new();
 pub static BLUE_BTN_CHANNEL: Channel<CriticalSectionRawMutex, u8, 1> = Channel::new();
 pub static YELLOW_BTN_CHANNEL: Channel<CriticalSectionRawMutex, u8, 1> = Channel::new();
+pub static VBUS_CHANNEL: Channel<CriticalSectionRawMutex, u8, 1> = Channel::new();
 
 #[derive(PartialEq, Debug, Format)]
 pub struct StateManager {
@@ -23,6 +66,7 @@ pub struct StateManager {
     pub system_info: SystemInfo,
     pub alarm_time: (u8, u8),
     pub alarm_enabled: bool,
+    pub power_state: PowerState,
     // more
 }
 
@@ -72,6 +116,7 @@ impl StateManager {
             system_info: SystemInfo::Select,
             alarm_time: (0, 0),
             alarm_enabled: false,
+            power_state: PowerState::Battery { level: 0 },
         }
     }
 
@@ -81,7 +126,18 @@ impl StateManager {
         self.system_info = SystemInfo::Select;
         self.alarm_time = (0, 0);
         self.alarm_enabled = false;
+        self.power_state = PowerState::Battery { level: 0 };
     }
+}
+
+#[derive(PartialEq, Debug, Format)]
+pub enum PowerState {
+    Battery {
+        level: u8, // Battery level as a percentage
+    },
+    Power {
+        usb_powered: bool, // true if the system is powered by USB
+    },
 }
 
 /// Task to orchestrate the states of the system
@@ -98,6 +154,7 @@ pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stati
     let blue_btn_receiver = BLUE_BTN_CHANNEL.receiver();
     let green_btn_receiver = GREEN_BTN_CHANNEL.receiver();
     let yellow_btn_receiver = YELLOW_BTN_CHANNEL.receiver();
+    let vbus_receiver = VBUS_CHANNEL.receiver();
 
     info!("Orchestrate task started");
 
@@ -109,7 +166,16 @@ pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stati
         let green_btn_future = green_btn_receiver.receive();
         let yellow_btn_future = yellow_btn_receiver.receive();
 
-        let mut futures = [blue_btn_future, green_btn_future, yellow_btn_future];
+        // determine the state of the system by checking the power state
+        let vbus_future = vbus_receiver.receive();
+
+        let futures = [
+            blue_btn_future,
+            green_btn_future,
+            yellow_btn_future,
+            vbus_future,
+        ];
+
         match select_array(futures).await {
             (_, 0) => {
                 info!("BLUE");
@@ -121,12 +187,16 @@ pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stati
             (_, 2) => {
                 info!("YELLOW");
             }
+            (vbus_value, 3) => {
+                info!("VBUS");
+                info!("VBUS value: {}", vbus_value);
+            }
             _ => {
                 info!("unreachable");
             }
         }
 
-        info!("StateMansger: {:?}", state_manager);
+        info!("StateManager: {:?}", state_manager);
 
         if let Ok(dt) = rtc_ref.borrow_mut().now() {
             info!(
@@ -134,7 +204,5 @@ pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stati
                 dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second,
             );
         }
-
-        //Timer::after(Duration::from_secs(1)).await;
     }
 }

@@ -1,3 +1,6 @@
+//! # StringUtils module
+//! This module contains utility functions around string handling that are used in the project.
+
 use embassy_rp::rtc::{DateTime, DayOfWeek};
 use heapless::Vec;
 
