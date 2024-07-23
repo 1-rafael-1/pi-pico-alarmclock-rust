@@ -1,3 +1,7 @@
+//! # State
+//! This module keeps the state of the system.
+//! This module is responsible for the state transitions of the system, receiving events from the various tasks and reacting to them.
+//! Reacting to the events will involve changing the state of the system and triggering actions like updating the display, playing sounds, etc.
 use core::cell::RefCell;
 use defmt::*;
 use embassy_executor::Spawner;
@@ -6,6 +10,46 @@ use embassy_rp::peripherals::RTC;
 use embassy_rp::rtc::Rtc;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
+
+/// Task configuration
+/// This struct is used to configure which tasks are enabled
+/// This is useful for troubleshooting, as we can disable tasks to reduce the binary size
+/// and clutter in the output.
+/// Also, we can disable tasks that are not needed for the current development stage and also test tasks in isolation.
+/// For a production build we will need all tasks enabled
+pub struct TaskConfig {
+    pub btn_green: bool,
+    pub btn_blue: bool,
+    pub btn_yellow: bool,
+    pub time_updater: bool,
+    pub neopixel: bool,
+    pub display: bool,
+    pub dfplayer: bool,
+    pub usb_power: bool,
+    pub vsys_voltage: bool,
+}
+
+impl Default for TaskConfig {
+    fn default() -> Self {
+        TaskConfig {
+            btn_green: true,
+            btn_blue: true,
+            btn_yellow: true,
+            time_updater: true,
+            neopixel: true,
+            display: true,
+            dfplayer: true,
+            usb_power: true,
+            vsys_voltage: true,
+        }
+    }
+}
+
+impl TaskConfig {
+    pub fn new() -> Self {
+        TaskConfig::default()
+    }
+}
 
 /// Channels for the events that we want to react to
 /// we will need more channels for the other events, and we may need to use pipes instead of channels in some cases

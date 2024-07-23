@@ -1,4 +1,6 @@
-// we are in an environment with constrained resources, so we do not use the standard library and we define a different entry point.
+//! # Main
+//! This is the main entry point of the program.
+//! we are in an environment with constrained resources, so we do not use the standard library and we define a different entry point.
 #![no_std]
 #![no_main]
 
@@ -8,13 +10,14 @@ use crate::task::display::display;
 use crate::task::power::{usb_power, vsys_voltage};
 use crate::task::resources::*;
 use crate::task::state::*;
-use crate::task::time_updater::connect_and_update_rtc;
+use crate::task::time_updater::time_updater;
 use core::cell::RefCell;
 use defmt::*;
 use embassy_executor::{Executor, Spawner};
 use embassy_rp::multicore::{spawn_core1, Stack};
-use embassy_rp::peripherals;
+use embassy_rp::peripherals::{PIN_25, PIN_29};
 use embassy_rp::rtc::Rtc;
+use embassy_rp::{peripherals, Peripheral};
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
@@ -24,7 +27,7 @@ mod task;
 // import the utility module (submodule of src)
 mod utility;
 
-// Entry point
+/// Entry point
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     info!("Program start");
@@ -38,15 +41,15 @@ async fn main(spawner: Spawner) {
     // the tasks are all spawned in main.rs, so we can disable them here
     // clutter in the output aside, the binary size is conveniently reduced by disabling tasks
     let mut task_config = TaskConfig::new();
-    task_config.spawn_connect_and_update_rtc = false;
-    task_config.spawn_btn_green = true;
-    task_config.spawn_btn_blue = true;
-    task_config.spawn_btn_yellow = true;
-    task_config.spawn_neopixel = true;
-    task_config.spawn_display = true;
-    task_config.spawn_dfplayer = false;
-    task_config.spawn_usb_power = true;
-    task_config.spawn_vsys_voltage = true;
+    task_config.time_updater = true;
+    task_config.btn_green = true;
+    task_config.btn_blue = true;
+    task_config.btn_yellow = true;
+    task_config.neopixel = false;
+    task_config.display = false;
+    task_config.dfplayer = false;
+    task_config.usb_power = false;
+    task_config.vsys_voltage = true;
 
     // RTC
     // Initialize the RTC in a static cell, we will need it in multiple places
@@ -54,50 +57,37 @@ async fn main(spawner: Spawner) {
     let rtc_instance: Rtc<'static, peripherals::RTC> = Rtc::new(r.rtc.rtc_inst);
     let rtc_ref = RTC.init(RefCell::new(rtc_instance));
 
-    // VSYS
-    // Initialize the VSYS pins in a mutex, we will need it mutable in multiple places
-    let wifi_vsys_pins = WifiVsysPins {
-        cs_pin: p.PIN_25,
-        vsys_clk_pin: p.PIN_29,
-        pwr_pin: p.PIN_23,
-        pio_sm: p.PIO0,
-        dio_pin: p.PIN_24,
-        dma_ch: p.DMA_CH0,
-    };
-    // assign the pins to the mutex in an inner scope, so that the mutex guard is dropped after the assignment
-    {
-        *(WIFI_VSYS_PINS.lock().await) = Some(wifi_vsys_pins);
-    }
-
     // Orchestrate
     // there is no main loop, the tasks are spawned and run in parallel
     // orchestrating the tasks is done here:
     spawner.spawn(orchestrate(spawner, rtc_ref)).unwrap();
 
     // Power
-    if task_config.spawn_usb_power {
+    if task_config.usb_power {
         spawner.spawn(usb_power(spawner, r.vbus_power)).unwrap();
     };
 
-    if task_config.spawn_vsys_voltage {
-        spawner.spawn(vsys_voltage(spawner, r.vsys_power)).unwrap();
+    if task_config.vsys_voltage {
+        spawner
+            .spawn(vsys_voltage(spawner, r.vsys_resources))
+            .unwrap();
     }
 
     // Buttons
-    if task_config.spawn_btn_green {
+    if task_config.btn_green {
         spawner.spawn(green_button(spawner, r.btn_green)).unwrap();
     };
-    if task_config.spawn_btn_blue {
+    if task_config.btn_blue {
         spawner.spawn(blue_button(spawner, r.btn_blue)).unwrap();
     };
-    if task_config.spawn_btn_yellow {
+    if task_config.btn_yellow {
         spawner.spawn(yellow_button(spawner, r.btn_yellow)).unwrap();
     };
 
     // update the RTC
-    if task_config.spawn_connect_and_update_rtc {
+    if task_config.time_updater {
         spawner
-            .spawn(connect_and_update_rtc(spawner, rtc_ref))
+            .spawn(time_updater(spawner, r.wifi, rtc_ref))
             .unwrap();
     }
 
@@ -116,7 +106,7 @@ async fn main(spawner: Spawner) {
         move || {
             let executor1 = EXECUTOR1.init(Executor::new());
             executor1.run(|spawner| {
-                if task_config.spawn_neopixel {
+                if task_config.neopixel {
                     spawner
                         .spawn(task::neopixel::analog_clock(spawner, r.neopixel))
                         .unwrap();
@@ -126,12 +116,12 @@ async fn main(spawner: Spawner) {
     );
 
     // Display
-    if task_config.spawn_display {
+    if task_config.display {
         spawner.spawn(display(spawner, r.display)).unwrap();
     }
 
     // DFPlayer
-    if task_config.spawn_dfplayer {
+    if task_config.dfplayer {
         spawner.spawn(sound(spawner, r.dfplayer)).unwrap();
     }
 }

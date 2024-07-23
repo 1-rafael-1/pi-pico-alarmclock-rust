@@ -1,6 +1,7 @@
-/// this module is used to define the resources that will be used in the tasks
-///
-/// the resources are defined in the main.rs file, and assigned to the tasks in the main.rs file
+//! # Resources
+//! this module is used to define the resources that will be used in the tasks
+//!
+//! the resources are defined in the main.rs file, and assigned to the tasks in the main.rs file
 use assign_resources::assign_resources;
 use embassy_rp::adc::InterruptHandler as AdcInterruptHandler;
 use embassy_rp::i2c::InterruptHandler as I2cInterruptHandler;
@@ -8,9 +9,11 @@ use embassy_rp::peripherals::UART1;
 use embassy_rp::peripherals::{DMA_CH0, I2C0, PIN_23, PIN_24, PIN_25, PIN_29, PIO0};
 use embassy_rp::pio::InterruptHandler;
 use embassy_rp::uart::BufferedInterruptHandler;
+use embassy_rp::Peripheral;
 use embassy_rp::{bind_interrupts, peripherals};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
+use static_cell::StaticCell;
 
 // group the peripherlas into resources, to be used in the tasks
 // the resources are assigned to the tasks in main.rs
@@ -47,70 +50,38 @@ assign_resources! {
         power_pin: PIN_8, // not a part of the dfplayer, using a mosfet to control power to the dfplayer because it draws too much current when idle
     },
     vbus_power: UsbPowerResources {
-        // we cannot use the USB power pin 24, because on the Pico W the vbus pin is run through the wifi module and is not available
+        // we cannot use the VBUS power pin 24, because on the Pico W the vbus pin is run through the wifi module and is not available
         // instead we wire a voltage divider between VBUS and a GPIO pin
-        vbus_pin: PIN_27,
+        vbus_pin: PIN_28,
     },
-    vsys_power: VsysPowerResources {
+    wifi: WifiResources {
+        pwr_pin: PIN_23,
+        cs_pin: PIN_25,
+        pio_sm: PIO0,
+        dio_pin: PIN_24,
+        clk_pin: PIN_29,
+        dma_ch: DMA_CH0,
+    },
+    vsys_resources: VsysResources {
+        // we cannot use the VSYS power pin 29, because on the Pico W the vsys pin is run through the wifi module and is not available
+        // instead we wire a voltage divider between VSYS and a GPIO pin
         adc: ADC,
+        pin_27: PIN_27,
     },
 }
 
-// some resources are shared between tasks, so we need to wrap them in a mutex
-// these are resources used by the wifi chip as well as power.rs
-// the mutex is defined here, and the resources are assigned to the mutex in the main.rs file
-// we put all the required resources into this mutex, although stricty speaking we do not need to -> this is a design choice
-// and also in the appropriate task it helps solve value moved errors in the loop
-pub struct WifiVsysPins {
-    pub pwr_pin: PIN_23,
-    pub cs_pin: PIN_25, // required to facilitate reading adc values from vsys on a Pi ico W
-    pub vsys_clk_pin: PIN_29, // required to facilitate reading adc
-    pub pio_sm: PIO0,
-    pub dio_pin: PIN_24,
-    pub dma_ch: DMA_CH0,
+pub enum WifiVsysToggle {
+    WifiOn,
+    VsysOn,
 }
 
-pub type WifiVsysPinsType = Mutex<ThreadModeRawMutex, Option<WifiVsysPins>>;
-pub static WIFI_VSYS_PINS: WifiVsysPinsType = Mutex::new(None);
+// pub type WifiVsysToggleType = Mutex<ThreadModeRawMutex, Option<WifiVsysToggle>>;
+// pub static WIFI_VSYS_TOGGLE: WifiVsysToggleType = Mutex::new(None);
 
-// bind the interrupts, on a global scope, until i find a better way
+/// bind the interrupts, on a global scope
 bind_interrupts!(pub struct Irqs {
     PIO0_IRQ_0 => InterruptHandler<PIO0>;
     I2C0_IRQ => I2cInterruptHandler<I2C0>;
     UART1_IRQ => BufferedInterruptHandler<UART1>;
     ADC_IRQ_FIFO => AdcInterruptHandler;
 });
-
-pub struct TaskConfig {
-    pub spawn_btn_green: bool,
-    pub spawn_btn_blue: bool,
-    pub spawn_btn_yellow: bool,
-    pub spawn_connect_and_update_rtc: bool,
-    pub spawn_neopixel: bool,
-    pub spawn_display: bool,
-    pub spawn_dfplayer: bool,
-    pub spawn_usb_power: bool,
-    pub spawn_vsys_voltage: bool,
-}
-
-impl Default for TaskConfig {
-    fn default() -> Self {
-        TaskConfig {
-            spawn_btn_green: true,
-            spawn_btn_blue: true,
-            spawn_btn_yellow: true,
-            spawn_connect_and_update_rtc: true,
-            spawn_neopixel: true,
-            spawn_display: true,
-            spawn_dfplayer: true,
-            spawn_usb_power: true,
-            spawn_vsys_voltage: true,
-        }
-    }
-}
-
-impl TaskConfig {
-    pub fn new() -> Self {
-        TaskConfig::default()
-    }
-}

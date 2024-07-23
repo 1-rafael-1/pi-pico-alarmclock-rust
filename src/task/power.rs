@@ -1,7 +1,10 @@
-use crate::task::resources::{
-    Irqs, UsbPowerResources, VsysPowerResources, WifiVsysPins, WIFI_VSYS_PINS,
-};
+//! # Power
+//! Determine the power state of the system: battery or power supply.
+//! Detremine the supply voltage of the system.
+
+use crate::task::resources::{Irqs, UsbPowerResources, WifiResources};
 use crate::task::state::VBUS_CHANNEL;
+use crate::VsysResources;
 use core::borrow::BorrowMut;
 use defmt::*;
 use embassy_executor::Spawner;
@@ -10,6 +13,11 @@ use embassy_rp::gpio::{Input, Level, Output, Pull};
 use embassy_rp::peripherals::{ADC, PIN_25, PIN_29};
 use embassy_time::{Duration, Timer};
 
+/// determine the power source of the system, specifically if the USB power supply is connected
+/// the USB power supply is connected, if the pin is high
+/// Note: We are using a voltage divider to detect the USB power supply through a GPIO pin. Due to the intricacies of the Pico W,
+/// the VBUS pin is not available for direct use (it is run through the wifi module, and there is no safe way to use wifi and the
+/// vbus concurrently).
 #[embassy_executor::task]
 pub async fn usb_power(_spawner: Spawner, r: UsbPowerResources) {
     info!("usb_power task started");
@@ -23,51 +31,27 @@ pub async fn usb_power(_spawner: Spawner, r: UsbPowerResources) {
     }
 }
 
+/// measure the voltage of the Vsys rail
+/// this is either the battery voltage or the usb power supply voltage, if the usb power supply is connected.
+/// Note: We are using a voltage divider to measure the Vsys voltage through a GPIO pin. Due to the intricacies of the Pico W,
+/// the VSYS pin is not available for direct use (it is run through the wifi module, and there is no safe way to use wifi and the
+/// vsys concurrently).
 #[embassy_executor::task]
-pub async fn vsys_voltage(_spawner: Spawner, r: VsysPowerResources) {
+pub async fn vsys_voltage(_spawner: Spawner, r: VsysResources) {
     info!("vsys_voltage task started");
-
     let mut adc = Adc::new(r.adc, Irqs, Config::default());
-
+    let vsys_in = r.pin_27;
+    let mut channel = Channel::new_pin(vsys_in, Pull::None);
+    let refresh_after_secs = 600; // 10 minutes
     loop {
-        // get pins from the mutex, locking them for the duration of the scope
+        // read the adc value
+        let adc_value = adc.read(&mut channel).await.unwrap();
+        let voltage = (adc_value as f32) * 3.3 * 3.0 / 4096.0;
 
-        // define the mutex guard, that we will drop at the end of the scope
-        let mut wifi_vsys_pins_guard = WIFI_VSYS_PINS.lock().await;
-
-        // if the mutex guard is not empty, we can proceed, dropping the mutex guard at the end of the scope
-        if let Some(ref mut wifi_vsys_pins) = *wifi_vsys_pins_guard {
-            // cs_pin is required to facilitate reading adc values from vsys on a Pico W
-            let cs_pin = wifi_vsys_pins.cs_pin.borrow_mut();
-            let mut cs_output = Output::new(cs_pin, Level::Low);
-
-            // vsys_clk_pin is required as the channel for the adc
-            let clk_pin = wifi_vsys_pins.vsys_clk_pin.borrow_mut();
-            let mut clk_channel = Channel::new_pin(clk_pin, Pull::None);
-
-            // we need the adc in this scope, so we don't get value moved errors in the loop
-            let adc = &mut adc;
-
-            // for reading the adc value, pin 25 has to cycle through low to high, not sure why... but this is how it works
-            cs_output.set_high();
-            Timer::after(Duration::from_millis(20)).await;
-
-            // read the adc value
-            let adc_value = adc.read(&mut clk_channel).await.unwrap();
-            let voltage = (adc_value as f32) * 3.3 * 3.0 / 4096.0;
-
-            // for reading the adc value, pin 25 has to cycle through low to high, not sure why... but this is how it works
-            cs_output.set_low();
-            Timer::after(Duration::from_millis(20)).await;
-
-            info!(
-                "vsys_voltage: adc_value: {}, voltage: {}",
-                adc_value, voltage
-            );
-        } else {
-            info!("vsys_voltage no pins");
-            return;
-        }
-        Timer::after(Duration::from_secs(30)).await;
+        info!(
+            "vsys_voltage: adc_value: {}, voltage: {}",
+            adc_value, voltage
+        );
+        Timer::after(Duration::from_secs(refresh_after_secs)).await;
     }
 }
