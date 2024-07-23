@@ -47,7 +47,7 @@ async fn main(spawner: Spawner) {
     task_config.neopixel = false;
     task_config.display = false;
     task_config.dfplayer = false;
-    task_config.usb_power = false;
+    task_config.usb_power = true;
     task_config.vsys_voltage = true;
 
     // RTC
