@@ -2,15 +2,13 @@
 //! Determine the power state of the system: battery or power supply.
 //! Detremine the supply voltage of the system.
 
-use crate::task::resources::{Irqs, UsbPowerResources, WifiResources};
+use crate::task::resources::{Irqs, UsbPowerResources};
 use crate::task::state::VBUS_CHANNEL;
 use crate::VsysResources;
-use core::borrow::BorrowMut;
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_rp::adc::{self, Adc, Channel, Config, InterruptHandler};
-use embassy_rp::gpio::{Input, Level, Output, Pull};
-use embassy_rp::peripherals::{ADC, PIN_25, PIN_29};
+use embassy_rp::adc::{Adc, Channel, Config};
+use embassy_rp::gpio::{Input, Pull};
 use embassy_time::{Duration, Timer};
 
 /// determine the power source of the system, specifically if the USB power supply is connected

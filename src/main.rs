@@ -15,9 +15,8 @@ use core::cell::RefCell;
 use defmt::*;
 use embassy_executor::{Executor, Spawner};
 use embassy_rp::multicore::{spawn_core1, Stack};
-use embassy_rp::peripherals::{PIN_25, PIN_29};
+use embassy_rp::peripherals;
 use embassy_rp::rtc::Rtc;
-use embassy_rp::{peripherals, Peripheral};
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 

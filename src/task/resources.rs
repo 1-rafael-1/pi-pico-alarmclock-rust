@@ -6,14 +6,10 @@ use assign_resources::assign_resources;
 use embassy_rp::adc::InterruptHandler as AdcInterruptHandler;
 use embassy_rp::i2c::InterruptHandler as I2cInterruptHandler;
 use embassy_rp::peripherals::UART1;
-use embassy_rp::peripherals::{DMA_CH0, I2C0, PIN_23, PIN_24, PIN_25, PIN_29, PIO0};
+use embassy_rp::peripherals::{I2C0, PIO0};
 use embassy_rp::pio::InterruptHandler;
 use embassy_rp::uart::BufferedInterruptHandler;
-use embassy_rp::Peripheral;
 use embassy_rp::{bind_interrupts, peripherals};
-use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
-use embassy_sync::mutex::Mutex;
-use static_cell::StaticCell;
 
 // group the peripherlas into resources, to be used in the tasks
 // the resources are assigned to the tasks in main.rs
