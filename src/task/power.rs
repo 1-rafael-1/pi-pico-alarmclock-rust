@@ -3,7 +3,7 @@
 //! Detremine the supply voltage of the system.
 
 use crate::task::resources::{Irqs, UsbPowerResources};
-use crate::task::state::VBUS_CHANNEL;
+use crate::task::state::{Events, EVENT_CHANNEL};
 use crate::VsysResources;
 use defmt::*;
 use embassy_executor::Spawner;
@@ -20,10 +20,10 @@ use embassy_time::{Duration, Timer};
 pub async fn usb_power(_spawner: Spawner, r: UsbPowerResources) {
     info!("usb_power task started");
     let mut vbus_in = Input::new(r.vbus_pin, Pull::None);
-    let sender = VBUS_CHANNEL.sender();
+    let sender = EVENT_CHANNEL.sender();
     loop {
         info!("usb_power task loop");
-        sender.send(vbus_in.is_high().into()).await;
+        sender.send(Events::Vbus(vbus_in.is_high())).await;
         vbus_in.wait_for_any_edge().await;
         info!("usb_power edge detected");
     }
