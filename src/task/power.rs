@@ -3,7 +3,7 @@
 //! Detremine the supply voltage of the system.
 
 use crate::task::resources::{Irqs, UsbPowerResources};
-use crate::task::state::VBUS_CHANNEL;
+use crate::task::state::{Events, EVENT_CHANNEL};
 use crate::VsysResources;
 use defmt::*;
 use embassy_executor::Spawner;
@@ -20,10 +20,10 @@ use embassy_time::{Duration, Timer};
 pub async fn usb_power(_spawner: Spawner, r: UsbPowerResources) {
     info!("usb_power task started");
     let mut vbus_in = Input::new(r.vbus_pin, Pull::None);
-    let sender = VBUS_CHANNEL.sender();
+    let sender = EVENT_CHANNEL.sender();
     loop {
         info!("usb_power task loop");
-        sender.send(vbus_in.is_high().into()).await;
+        sender.send(Events::Vbus(vbus_in.is_high())).await;
         vbus_in.wait_for_any_edge().await;
         info!("usb_power edge detected");
     }
@@ -40,6 +40,7 @@ pub async fn vsys_voltage(_spawner: Spawner, r: VsysResources) {
     let mut adc = Adc::new(r.adc, Irqs, Config::default());
     let vsys_in = r.pin_27;
     let mut channel = Channel::new_pin(vsys_in, Pull::None);
+    let sender = EVENT_CHANNEL.sender();
     let refresh_after_secs = 600; // 10 minutes
     loop {
         // read the adc value
@@ -48,8 +49,9 @@ pub async fn vsys_voltage(_spawner: Spawner, r: VsysResources) {
 
         info!(
             "vsys_voltage: adc_value: {}, voltage: {}",
-            adc_value, voltage
+            adc_value, &voltage
         );
+        sender.send(Events::Vsys(voltage)).await;
         Timer::after(Duration::from_secs(refresh_after_secs)).await;
     }
 }

@@ -5,7 +5,6 @@
 use core::cell::RefCell;
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_futures::select::select_array;
 use embassy_rp::peripherals::RTC;
 use embassy_rp::rtc::Rtc;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -51,13 +50,19 @@ impl TaskConfig {
     }
 }
 
-/// Channels for the events that we want to react to
-/// we will need more channels for the other events, and we may need to use pipes instead of channels in some cases
-/// see below in the orchestrate task for the ToDo
-pub static GREEN_BTN_CHANNEL: Channel<CriticalSectionRawMutex, u8, 1> = Channel::new();
-pub static BLUE_BTN_CHANNEL: Channel<CriticalSectionRawMutex, u8, 1> = Channel::new();
-pub static YELLOW_BTN_CHANNEL: Channel<CriticalSectionRawMutex, u8, 1> = Channel::new();
-pub static VBUS_CHANNEL: Channel<CriticalSectionRawMutex, u8, 1> = Channel::new();
+/// Events that we want to react to together with the data that we need to react to the event
+#[derive(PartialEq, Debug, Format)]
+pub enum Events {
+    BlueBtn(u32),
+    GreenBtn(u32),
+    YellowBtn(u32),
+    Vbus(bool),
+    Vsys(f32),
+    // more
+}
+
+/// Channel for the events that we want to react to, all state events are of the type Enum Events
+pub static EVENT_CHANNEL: Channel<CriticalSectionRawMutex, Events, 10> = Channel::new();
 
 #[derive(PartialEq, Debug, Format)]
 pub struct StateManager {
@@ -149,52 +154,54 @@ pub enum PowerState {
 /// and once we reached states we will need to trigger display updates, sound, etc.
 #[embassy_executor::task]
 pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'static, RTC>>) {
-    let mut state_manager = StateManager::new();
-
-    let blue_btn_receiver = BLUE_BTN_CHANNEL.receiver();
-    let green_btn_receiver = GREEN_BTN_CHANNEL.receiver();
-    let yellow_btn_receiver = YELLOW_BTN_CHANNEL.receiver();
-    let vbus_receiver = VBUS_CHANNEL.receiver();
+    let state_manager = StateManager::new();
+    let event_receiver = EVENT_CHANNEL.receiver();
 
     info!("Orchestrate task started");
 
     loop {
         info!("Orchestrate loop");
 
-        // determine the state of the system by checking the button presses
-        let blue_btn_future = blue_btn_receiver.receive();
-        let green_btn_future = green_btn_receiver.receive();
-        let yellow_btn_future = yellow_btn_receiver.receive();
+        // receive the events
+        let event = event_receiver.receive().await;
 
-        // determine the state of the system by checking the power state
-        let vbus_future = vbus_receiver.receive();
-
-        let futures = [
-            blue_btn_future,
-            green_btn_future,
-            yellow_btn_future,
-            vbus_future,
-        ];
-
-        match select_array(futures).await {
-            (_, 0) => {
-                info!("BLUE");
+        // react to the events
+        match event {
+            Events::BlueBtn(presses) => {
+                info!("Blue button pressed, presses: {}", presses);
             }
-            (_, 1) => {
-                info!("GREEN");
-                state_manager.state.toggle_alarm_active();
+            Events::GreenBtn(presses) => {
+                info!("Green button pressed, presses: {}", presses);
             }
-            (_, 2) => {
-                info!("YELLOW");
+            Events::YellowBtn(presses) => {
+                info!("Yellow button pressed, presses: {}", presses);
             }
-            (vbus_value, 3) => {
-                info!("VBUS");
-                info!("VBUS value: {}", vbus_value);
+            Events::Vbus(usb) => {
+                info!("Vbus event, usb: {}", usb);
             }
-            _ => {
-                info!("unreachable");
+            Events::Vsys(voltage) => {
+                info!("Vsys event, voltage: {}", voltage);
             }
         }
+        // match event {
+        //     Ok(Events::BlueBtn(presses)) => {
+        //         info!("Blue button pressed, presses: {}", presses);
+        //     }
+        //     Ok(Events::GreenBtn(presses)) => {
+        //         info!("Green button pressed, presses: {}", presses);
+        //     }
+        //     Ok(Events::YellowBtn(presses)) => {
+        //         info!("Yellow button pressed, presses: {}", presses);
+        //     }
+        //     Ok(Events::Vbus(usb)) => {
+        //         info!("Vbus event, usb: {}", usb);
+        //     }
+        //     Ok(Events::Vsys(voltage)) => {
+        //         info!("Vsys event, voltage: {}", voltage);
+        //     }
+        //     // more events
+        //     _ => {}
+        // }
 
         info!("StateManager: {:?}", state_manager);
 
