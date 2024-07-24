@@ -5,7 +5,6 @@
 use core::cell::RefCell;
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_futures::select::select_array;
 use embassy_rp::peripherals::RTC;
 use embassy_rp::rtc::Rtc;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -155,7 +154,7 @@ pub enum PowerState {
 /// and once we reached states we will need to trigger display updates, sound, etc.
 #[embassy_executor::task]
 pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'static, RTC>>) {
-    let mut state_manager = StateManager::new();
+    let state_manager = StateManager::new();
     let event_receiver = EVENT_CHANNEL.receiver();
 
     info!("Orchestrate task started");
