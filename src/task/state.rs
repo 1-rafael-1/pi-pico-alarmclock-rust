@@ -10,7 +10,7 @@ use embassy_rp::rtc::Rtc;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 
-/// Task configuration
+/// # TaskConfig
 /// This struct is used to configure which tasks are enabled
 /// This is useful for troubleshooting, as we can disable tasks to reduce the binary size
 /// and clutter in the output.
@@ -64,85 +64,178 @@ pub enum Events {
 /// Channel for the events that we want to react to, all state events are of the type Enum Events
 pub static EVENT_CHANNEL: Channel<CriticalSectionRawMutex, Events, 10> = Channel::new();
 
+/// # StateManager
+/// All the states of the system are kept in this struct.
 #[derive(PartialEq, Debug, Format)]
 pub struct StateManager {
-    pub state: State,
-    pub menu: Menu,
-    pub system_info: SystemInfo,
-    pub alarm_time: (u8, u8),
-    pub alarm_enabled: bool,
+    /// The operation mode of the system
+    pub operation_mode: OperationMode,
+    pub alarm_settings: AlarmSettings,
+    pub alarm_state: AlarmState,
     pub power_state: PowerState,
     // more
 }
 
-/// global state
+impl StateManager {
+    /// Create a new StateManager.             
+    /// We will get the actual data pretty early in the system startup, so we can set all this to inits here
+    pub fn new() -> Self {
+        let mut manager = StateManager {
+            operation_mode: OperationMode::Normal,
+            alarm_settings: AlarmSettings {
+                time: (0, 0),
+                enabled: false,
+            },
+            alarm_state: AlarmState::None,
+            power_state: PowerState {
+                usb_power: false,
+                vsys: 0.0,
+                battery_level: BatteryLevel::Bat000,
+            },
+        };
+        manager.read_saved_alarm_time();
+        manager
+    }
+
+    /// Read the saved alarm time from the flash memory, if it exists
+    fn read_saved_alarm_time(&mut self) {
+        // ToDo: read the saved alarm time from the flash memory
+    }
+
+    fn toggle_alarm_enabled(&mut self) {
+        self.alarm_settings.enabled = !self.alarm_settings.enabled;
+    }
+
+    /// Handle presses of the green button
+    fn handle_green_button_press(&mut self) {
+        match self.operation_mode {
+            OperationMode::Normal => {
+                self.toggle_alarm_enabled();
+            }
+            _ => {
+                // ToDo: handle the green button press in other operation modes
+            }
+        }
+    }
+
+    // ToDo: handle the other button presses
+}
+
+/// # OperationMode
+/// The operation mode of the system
 #[derive(PartialEq, Debug, Format)]
-pub enum State {
-    Idle,
-    Menu,
+pub enum OperationMode {
+    /// The regular operation mode, displaying the time, the alarm status, etc. Showing the analog clock on the neopixel
+    /// ring, if the alarm is active.
+    Normal,
+    /// Setting the alarm time, displaying the alarm time and allowing the user to set the new alarm time.
+    SetAlarmTime,
+    /// The alarm is active, starting with the sunrise effect on the neopixel ring, then playing the alarm sound and displaying the waker effect on the neopixel ring.
+    /// on the neopixel ring. Also display and await the color sequence of buttons that need to be pressed to stop the alarm.
     Alarm,
+    /// The menu is active, displaying the menu options and allowing the user to select the menu options.
+    Menu,
+    /// Displaying the system info
     SystemInfo,
 }
 
-impl State {
-    pub fn toggle_alarm_active(&mut self) {
-        match self {
-            State::Alarm => {
-                *self = State::Idle;
-            }
-            _ => {
-                *self = State::Alarm;
-            }
+/// # AlarmSettings
+/// The settings for the alarm
+#[derive(PartialEq, Debug, Format)]
+pub struct AlarmSettings {
+    /// The alarm time is set to the specified time
+    time: (u8, u8),
+    /// The alarm is enabled or disabled
+    enabled: bool,
+}
+
+/// # AlarmState
+/// The state of the alarm
+#[derive(PartialEq, Debug, Format)]
+pub enum AlarmState {
+    /// The alarm is not active, the alarm time has not been reached
+    None,
+    /// The alarm time has been reached, the alarm is active and the sunrise effect is displayed on the neopixel ring. The user
+    /// can stop the alarm by pressing the buttons in the correct sequence.
+    Sunrise,
+    /// We are past the sunrise effect. The alarm sound is playing, the neopixel waker effect is playing. The user can stop the alarm by pressing
+    /// the buttons in the correct sequence.
+    Noise,
+    /// The alarm is being stopped after the correct button sequence has been pressed. The next state will be None.
+    StopAlarm,
+}
+
+/// # BatteryLevel
+/// The battery level of the system in steps of 20% from 0 to 100. One additional state is provided for charging.
+#[derive(PartialEq, Debug, Format)]
+pub enum BatteryLevel {
+    Charging,
+    Bat000,
+    Bat020,
+    Bat040,
+    Bat060,
+    Bat080,
+    Bat100,
+}
+
+/// # PowerState
+/// The power state of the system
+#[derive(PartialEq, Debug, Format)]
+pub struct PowerState {
+    /// The system is running on usb power
+    usb_power: bool,
+    /// The voltage of the system power supply
+    vsys: f32,
+    /// The battery level of the system
+    /// The battery level is provided in steps of 20% from 0 to 100. One additional state is provided for charging.
+    battery_level: BatteryLevel,
+}
+
+impl PowerState {
+    pub fn set_battery_level(&mut self) {
+        if self.usb_power {
+            self.battery_level = BatteryLevel::Charging;
+        } else {
+            // battery level is calculated based on the voltage of the battery, these are values measured on a LiPo battery on this system
+            let upper_bound_voltage = 4.1; // fully charged battery
+            let lower_bound_voltage = 2.6; // empty battery
+
+            // Calculate battery level based on voltage
+            let battery_percent = ((self.vsys - lower_bound_voltage)
+                / (upper_bound_voltage - lower_bound_voltage)
+                * 100.0) as u8;
+            // set the battery level
+            self.battery_level = match battery_percent {
+                0..=5 => BatteryLevel::Bat000,
+                6..=29 => BatteryLevel::Bat020,
+                30..=49 => BatteryLevel::Bat040,
+                50..=69 => BatteryLevel::Bat060,
+                70..=89 => BatteryLevel::Bat080,
+                _ => BatteryLevel::Bat100,
+            };
         }
     }
 }
 
-/// options for the menu
+/// # MenuMode
+/// The menu mode of the system
 #[derive(PartialEq, Debug, Format)]
-pub enum Menu {
-    Idle,       // the default state: the clock is displayed
-    SetAlarm,   // the alarm is being set
-    SystemInfo, // system info is being displayed
+pub enum MenuMode {
+    /// The default state: the clock is displayed
+    None, // the default state: the clock is displayed
+    /// The system info menu is being displayed
+    SystemInfoMenu,
 }
 
 /// options for the system info
 #[derive(PartialEq, Debug, Format)]
-pub enum SystemInfo {
-    Select,   // select to either display the system info or shutdown the system
-    Info,     // display the system info
-    Shutdown, // shutdown the system
-}
-
-impl StateManager {
-    pub fn new() -> Self {
-        Self {
-            state: State::Idle,
-            menu: Menu::Idle,
-            system_info: SystemInfo::Select,
-            alarm_time: (0, 0),
-            alarm_enabled: false,
-            power_state: PowerState::Battery { level: 0 },
-        }
-    }
-
-    pub fn reset(&mut self) {
-        self.state = State::Idle;
-        self.menu = Menu::Idle;
-        self.system_info = SystemInfo::Select;
-        self.alarm_time = (0, 0);
-        self.alarm_enabled = false;
-        self.power_state = PowerState::Battery { level: 0 };
-    }
-}
-
-#[derive(PartialEq, Debug, Format)]
-pub enum PowerState {
-    Battery {
-        level: u8, // Battery level as a percentage
-    },
-    Power {
-        usb_powered: bool, // true if the system is powered by USB
-    },
+pub enum SystemInfoMenuMode {
+    /// select to either display the system info or shutdown the system
+    Select,
+    /// display the system info
+    Info,
+    /// shutdown the system into a low power state
+    ShutdownLowPower,
 }
 
 /// Task to orchestrate the states of the system
@@ -154,15 +247,13 @@ pub enum PowerState {
 /// and once we reached states we will need to trigger display updates, sound, etc.
 #[embassy_executor::task]
 pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'static, RTC>>) {
-    let state_manager = StateManager::new();
+    let mut state_manager = StateManager::new();
     let event_receiver = EVENT_CHANNEL.receiver();
 
     info!("Orchestrate task started");
 
     loop {
-        info!("Orchestrate loop");
-
-        // receive the events
+        // receive the events, halting the task until an event is received
         let event = event_receiver.receive().await;
 
         // react to the events
@@ -171,45 +262,37 @@ pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stati
                 info!("Blue button pressed, presses: {}", presses);
             }
             Events::GreenBtn(presses) => {
-                info!("Green button pressed, presses: {}", presses);
+                state_manager.handle_green_button_press();
             }
             Events::YellowBtn(presses) => {
                 info!("Yellow button pressed, presses: {}", presses);
             }
             Events::Vbus(usb) => {
                 info!("Vbus event, usb: {}", usb);
+                state_manager.power_state.usb_power = usb;
             }
             Events::Vsys(voltage) => {
                 info!("Vsys event, voltage: {}", voltage);
+                state_manager.power_state.vsys = voltage;
+                state_manager.power_state.set_battery_level();
             }
         }
-        // match event {
-        //     Ok(Events::BlueBtn(presses)) => {
-        //         info!("Blue button pressed, presses: {}", presses);
-        //     }
-        //     Ok(Events::GreenBtn(presses)) => {
-        //         info!("Green button pressed, presses: {}", presses);
-        //     }
-        //     Ok(Events::YellowBtn(presses)) => {
-        //         info!("Yellow button pressed, presses: {}", presses);
-        //     }
-        //     Ok(Events::Vbus(usb)) => {
-        //         info!("Vbus event, usb: {}", usb);
-        //     }
-        //     Ok(Events::Vsys(voltage)) => {
-        //         info!("Vsys event, voltage: {}", voltage);
-        //     }
-        //     // more events
-        //     _ => {}
-        // }
 
+        // at this point we have altered the state of the system, we can now trigger actions based on the state
+        // for now we will just log the state
         info!("StateManager: {:?}", state_manager);
-
         if let Ok(dt) = rtc_ref.borrow_mut().now() {
             info!(
                 "orhestrate loop: {}-{:02}-{:02} {}:{:02}:{:02}",
                 dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second,
             );
         }
+
+        // ToDo: send the state to the display task. This will be straightforward, as we will design the display task to
+        // receive the state and update the display accordingly.
+
+        // ToDo: send the state to the sound task. This will be straightforward, as there is only one sound to play, the alarm sound.
+
+        // ToDo: send the state to the neopixel task. This will need a little thinking, as the neopixel hs different effects to display
     }
 }
