@@ -6,7 +6,6 @@ use core::cell::RefCell;
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_futures::select::select_array;
-use embassy_rp::pac::usb;
 use embassy_rp::peripherals::RTC;
 use embassy_rp::rtc::Rtc;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;

@@ -40,6 +40,7 @@ pub async fn vsys_voltage(_spawner: Spawner, r: VsysResources) {
     let mut adc = Adc::new(r.adc, Irqs, Config::default());
     let vsys_in = r.pin_27;
     let mut channel = Channel::new_pin(vsys_in, Pull::None);
+    let sender = EVENT_CHANNEL.sender();
     let refresh_after_secs = 600; // 10 minutes
     loop {
         // read the adc value
@@ -48,8 +49,9 @@ pub async fn vsys_voltage(_spawner: Spawner, r: VsysResources) {
 
         info!(
             "vsys_voltage: adc_value: {}, voltage: {}",
-            adc_value, voltage
+            adc_value, &voltage
         );
+        sender.send(Events::Vsys(voltage)).await;
         Timer::after(Duration::from_secs(refresh_after_secs)).await;
     }
 }

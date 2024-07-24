@@ -41,8 +41,14 @@ impl<'a> ButtonManager<'a> {
 
             // send button press to channel -> this is a ToDo, we will want to do this reacting to the length of the press somehow
             // maybe we need a pipe instead of a channel to stream the button presses to the orchestrator
-            let event = events
-            self.sender.send(self.).await;
+            let presses: u32 = 0;
+            let event = match self.events {
+                Events::BlueBtn(0) => Events::BlueBtn(presses + 1),
+                Events::GreenBtn(0) => Events::GreenBtn(presses + 1),
+                Events::YellowBtn(0) => Events::YellowBtn(presses + 1),
+                _ => panic!("Invalid Event"),
+            };
+            self.sender.send(event).await;
 
             match with_deadline(start + Duration::from_secs(1), self.debounce()).await {
                 // Button Released < 1s
