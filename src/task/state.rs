@@ -2,6 +2,7 @@
 //! This module keeps the state of the system.
 //! This module is responsible for the state transitions of the system, receiving events from the various tasks and reacting to them.
 //! Reacting to the events will involve changing the state of the system and triggering actions like updating the display, playing sounds, etc.
+use crate::utility::persist_utils::PersistedData;
 use core::cell::RefCell;
 use defmt::*;
 use embassy_executor::Spawner;
