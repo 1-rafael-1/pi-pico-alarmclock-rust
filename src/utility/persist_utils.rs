@@ -1,7 +1,13 @@
+use crate::task::resources::FlashResources;
+use embassy_rp::flash::Async;
+use embassy_rp::flash::Flash;
 use sequential_storage;
 use sequential_storage::map;
 
-pub async fn test() {
+const FLASH_SIZE: usize = 2 * 1024 * 1024;
+
+pub async fn test(r: FlashResources) {
+    let mut flash = Flash::<_, Async, FLASH_SIZE>::new(r.flash, r.dma_ch);
     //let mut flash = init_flash();
     // -> fnd something like this let mut flash = embassy_embedded_hal::adapter::BlockingAsync::new(flash);
     // in the examples or the appropriate library
