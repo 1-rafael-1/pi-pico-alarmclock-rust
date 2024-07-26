@@ -1,3 +1,3 @@
 //! Utility functions and modules for the project.
-pub mod persist_utils;
+pub mod persisted_alarm_time;
 pub mod string_utils;
