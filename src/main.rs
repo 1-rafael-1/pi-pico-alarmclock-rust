@@ -7,6 +7,7 @@
 use crate::task::buttons::{blue_button, green_button, yellow_button};
 use crate::task::dfplayer::sound;
 use crate::task::display::display;
+use crate::task::persisted_alarm_time::read_persisted_alarm_time;
 use crate::task::power::{usb_power, vsys_voltage};
 use crate::task::resources::*;
 use crate::task::state::*;
@@ -49,6 +50,7 @@ async fn main(spawner: Spawner) {
     task_config.dfplayer = false;
     task_config.usb_power = true;
     task_config.vsys_voltage = true;
+    task_config.persisted_alarm_time = true;
 
     // RTC
     // Initialize the RTC in a static cell, we will need it in multiple places
@@ -60,6 +62,13 @@ async fn main(spawner: Spawner) {
     // there is no main loop, the tasks are spawned and run in parallel
     // orchestrating the tasks is done here:
     spawner.spawn(orchestrate(spawner, rtc_ref)).unwrap();
+
+    // PersistedAlarmTime
+    if task_config.persisted_alarm_time {
+        spawner
+            .spawn(read_persisted_alarm_time(spawner, r.flash))
+            .unwrap();
+    }
 
     // Power
     if task_config.usb_power {

@@ -64,6 +64,10 @@ assign_resources! {
         adc: ADC,
         pin_27: PIN_27,
     },
+    flash: FlashResources {
+        dma_ch: DMA_CH4,
+        flash: FLASH,
+    }
 }
 
 // bind the interrupts, on a global scope for convenience

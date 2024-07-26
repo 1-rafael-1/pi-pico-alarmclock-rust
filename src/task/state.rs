@@ -26,6 +26,7 @@ pub struct TaskConfig {
     pub dfplayer: bool,
     pub usb_power: bool,
     pub vsys_voltage: bool,
+    pub persisted_alarm_time: bool,
 }
 
 impl Default for TaskConfig {
@@ -40,6 +41,7 @@ impl Default for TaskConfig {
             dfplayer: true,
             usb_power: true,
             vsys_voltage: true,
+            persisted_alarm_time: true,
         }
     }
 }
@@ -58,6 +60,7 @@ pub enum Events {
     YellowBtn(u32),
     Vbus(bool),
     Vsys(f32),
+    AlarmTimeReadFromFlash((u8, u8)),
     // more
 }
 
@@ -80,7 +83,7 @@ impl StateManager {
     /// Create a new StateManager.             
     /// We will get the actual data pretty early in the system startup, so we can set all this to inits here
     pub fn new() -> Self {
-        let mut manager = StateManager {
+        let manager = StateManager {
             operation_mode: OperationMode::Normal,
             alarm_settings: AlarmSettings {
                 time: (0, 0),
@@ -93,13 +96,7 @@ impl StateManager {
                 battery_level: BatteryLevel::Bat000,
             },
         };
-        manager.read_saved_alarm_time();
         manager
-    }
-
-    /// Read the saved alarm time from the flash memory, if it exists
-    fn read_saved_alarm_time(&mut self) {
-        // ToDo: read the saved alarm time from the flash memory
     }
 
     fn toggle_alarm_enabled(&mut self) {
@@ -275,6 +272,10 @@ pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stati
                 info!("Vsys event, voltage: {}", voltage);
                 state_manager.power_state.vsys = voltage;
                 state_manager.power_state.set_battery_level();
+            }
+            Events::AlarmTimeReadFromFlash(time) => {
+                info!("Alarm time read from flash: {:?}", time);
+                state_manager.alarm_settings.time = time;
             }
         }
 
