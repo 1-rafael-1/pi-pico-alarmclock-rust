@@ -26,7 +26,7 @@ pub struct TaskConfig {
     pub dfplayer: bool,
     pub usb_power: bool,
     pub vsys_voltage: bool,
-    pub persisted_alarm_time: bool,
+    pub alarm_settings: bool,
 }
 
 impl Default for TaskConfig {
@@ -41,7 +41,7 @@ impl Default for TaskConfig {
             dfplayer: true,
             usb_power: true,
             vsys_voltage: true,
-            persisted_alarm_time: true,
+            alarm_settings: true,
         }
     }
 }
@@ -52,7 +52,8 @@ impl TaskConfig {
     }
 }
 
-/// Events that we want to react to together with the data that we need to react to the event
+/// Events that we want to react to together with the data that we need to react to the event.
+/// Works in conjunction with the `EVENT_CHANNEL` channel in the orchestrator task.
 #[derive(PartialEq, Debug, Format)]
 pub enum Events {
     BlueBtn(u32),
@@ -60,12 +61,29 @@ pub enum Events {
     YellowBtn(u32),
     Vbus(bool),
     Vsys(f32),
-    AlarmTimeReadFromFlash((u8, u8)),
-    // more
+    AlarmSettingsReadFromFlash(AlarmSettings),
 }
 
-/// Channel for the events that we want to react to, all state events are of the type Enum Events
+/// Commands that we want to send from the orchestrator to the other tasks that we want to control.
+/// Works in conjunction with the `COMMAND_CHANNEL` channel in the orchestrator task.
+#[derive(PartialEq, Debug, Format)]
+pub enum Commands {
+    AlarmSettingsWriteToFlash(AlarmSettings),
+    DisplayUpdate(StateManager),
+    NeopixelUpdate(StateManager),
+    SoundUpdate(StateManager),
+}
+
+/// Channel for the events that we want the orchestrator to react to, all state events are of the type Enum Events.
 pub static EVENT_CHANNEL: Channel<CriticalSectionRawMutex, Events, 10> = Channel::new();
+/// Channel for the update commands that we want the orchestrator to send to the display task.
+pub static DISPLAY_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 1> = Channel::new();
+/// Channel for the update commands that we want the orchestrator to send to the neopixel.
+pub static NEOPIXEL_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 3> = Channel::new();
+/// Channel for the update commands that we want the orchestrator to send to the flash task.
+pub static FLASH_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 1> = Channel::new();
+/// Channel for the update commands that we want the orchestrator to send to the mp3-player task.
+pub static SOUND_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 1> = Channel::new();
 
 /// # StateManager
 /// All the states of the system are kept in this struct.
@@ -85,10 +103,7 @@ impl StateManager {
     pub fn new() -> Self {
         let manager = StateManager {
             operation_mode: OperationMode::Normal,
-            alarm_settings: AlarmSettings {
-                time: (0, 0),
-                enabled: false,
-            },
+            alarm_settings: AlarmSettings::new_empty(),
             alarm_state: AlarmState::None,
             power_state: PowerState {
                 usb_power: false,
@@ -138,12 +153,41 @@ pub enum OperationMode {
 
 /// # AlarmSettings
 /// The settings for the alarm
-#[derive(PartialEq, Debug, Format)]
+#[derive(PartialEq, Debug, Format, Clone)]
 pub struct AlarmSettings {
     /// The alarm time is set to the specified time
     time: (u8, u8),
     /// The alarm is enabled or disabled
     enabled: bool,
+}
+
+impl AlarmSettings {
+    pub fn new_empty() -> Self {
+        AlarmSettings {
+            time: (0, 0),
+            enabled: false,
+        }
+    }
+
+    pub fn set_time(&mut self, time: (u8, u8)) {
+        self.time = time;
+    }
+
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
+    }
+
+    pub fn get_hour(&self) -> u8 {
+        self.time.0
+    }
+
+    pub fn get_minute(&self) -> u8 {
+        self.time.1
+    }
+
+    pub fn get_enabled(&self) -> bool {
+        self.enabled
+    }
 }
 
 /// # AlarmState
@@ -246,8 +290,18 @@ pub enum SystemInfoMenuMode {
 pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'static, RTC>>) {
     let mut state_manager = StateManager::new();
     let event_receiver = EVENT_CHANNEL.receiver();
+    let flash_sender = FLASH_CHANNEL.sender();
 
     info!("Orchestrate task started");
+
+    // // just testing: set the alarm time to 7:30 and enable the alarm
+    // state_manager.alarm_settings.enabled = true;
+    // state_manager.alarm_settings.time = (7, 30);
+    // flash_sender
+    //     .send(Commands::AlarmSettingsWriteToFlash(
+    //         state_manager.alarm_settings.clone(),
+    //     ))
+    //     .await;
 
     loop {
         // receive the events, halting the task until an event is received
@@ -273,9 +327,9 @@ pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stati
                 state_manager.power_state.vsys = voltage;
                 state_manager.power_state.set_battery_level();
             }
-            Events::AlarmTimeReadFromFlash(time) => {
-                info!("Alarm time read from flash: {:?}", time);
-                state_manager.alarm_settings.time = time;
+            Events::AlarmSettingsReadFromFlash(alarm_settings) => {
+                info!("Alarm time read from flash: {:?}", alarm_settings);
+                state_manager.alarm_settings = alarm_settings;
             }
         }
 
