@@ -83,7 +83,7 @@ impl StateManager {
     /// Create a new StateManager.             
     /// We will get the actual data pretty early in the system startup, so we can set all this to inits here
     pub fn new() -> Self {
-        let mut manager = StateManager {
+        let manager = StateManager {
             operation_mode: OperationMode::Normal,
             alarm_settings: AlarmSettings {
                 time: (0, 0),
