@@ -294,14 +294,14 @@ pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stati
 
     info!("Orchestrate task started");
 
-    // dummy
-    state_manager.alarm_settings.enabled = true;
-    state_manager.alarm_settings.time = (7, 30);
-    flash_sender
-        .send(Commands::AlarmSettingsWriteToFlash(
-            state_manager.alarm_settings.clone(),
-        ))
-        .await;
+    // // just testing: set the alarm time to 7:30 and enable the alarm
+    // state_manager.alarm_settings.enabled = true;
+    // state_manager.alarm_settings.time = (7, 30);
+    // flash_sender
+    //     .send(Commands::AlarmSettingsWriteToFlash(
+    //         state_manager.alarm_settings.clone(),
+    //     ))
+    //     .await;
 
     loop {
         // receive the events, halting the task until an event is received

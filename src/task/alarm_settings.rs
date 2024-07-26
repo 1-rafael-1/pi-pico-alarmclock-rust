@@ -1,6 +1,6 @@
 //! # persisted_alarm_time
-//! This module contains the functionality to persist the alarm time in the flash memory.
-//! The alarm time is stored in the flash memory as two separate key/value pairs.
+//! This module contains the functionality to persist the alarm settings in the flash memory.
+//! The alarm settings are stored in the flash memory as three separate key/value pairs.
 use crate::task::resources::FlashResources;
 use crate::task::state::{AlarmSettings, Commands, Events, EVENT_CHANNEL, FLASH_CHANNEL};
 use core::ops::Range;
@@ -19,20 +19,18 @@ const FLASH_SIZE: usize = 2 * 1024 * 1024;
 
 /// # PersistedAlarmTime
 /// This struct is used to persist the alarm time in the flash memory.
-pub struct PersistedAlarmTime<'a> {
+pub struct PersistedAlarmSettings<'a> {
     flash: Flash<'a, FLASH, Async, { FLASH_SIZE }>,
     flash_range: Range<u32>,
     data_buffer: [u8; 128],
 }
 
-impl<'a> PersistedAlarmTime<'a> {
+impl<'a> PersistedAlarmSettings<'a> {
     /// # new
     /// This function creates a new instance of the PersistedAlarmTime struct.
     /// It takes a FlashResources struct as an argument and returns a PersistedAlarmTime struct.
     pub fn new(r: FlashResources) -> Self {
         let flash = Flash::<_, Async, { FLASH_SIZE }>::new(r.flash, r.dma_ch);
-        info!("Flash initialized");
-        info!("Flash size: {:?}", FLASH_SIZE);
         Self {
             flash_range: 0x1F9000..0x1FC000,
             data_buffer: [0; 128],
@@ -127,13 +125,15 @@ impl<'a> PersistedAlarmTime<'a> {
 /// After that, it waits for commands to update the alarm settings.
 #[embassy_executor::task]
 pub async fn manage_alarm_settings(_spawner: Spawner, r: FlashResources) {
-    let mut persisted_alarm_time = PersistedAlarmTime::new(r);
+    let mut persisted_alarm_settings = PersistedAlarmSettings::new(r);
     let receiver = FLASH_CHANNEL.receiver();
 
     {
         // Read the alarm settings from the flash memory only once at the start of the task
         // and send them to the event channel. After that, we can drop this scope.
-        let alarm_settings = persisted_alarm_time.read_alarm_settings_from_flash().await;
+        let alarm_settings = persisted_alarm_settings
+            .read_alarm_settings_from_flash()
+            .await;
         let sender = EVENT_CHANNEL.sender();
         sender
             .send(Events::AlarmSettingsReadFromFlash(alarm_settings))
@@ -150,7 +150,7 @@ pub async fn manage_alarm_settings(_spawner: Spawner, r: FlashResources) {
                     "Received alarm settings write command: {:?}",
                     &alarm_settings
                 );
-                persisted_alarm_time
+                persisted_alarm_settings
                     .write_alarm_settings_to_flash(alarm_settings)
                     .await;
             }
