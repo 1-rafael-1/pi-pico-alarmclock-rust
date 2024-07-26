@@ -27,8 +27,10 @@ impl<'a> PersistedAlarmTime<'a> {
     /// It takes a FlashResources struct as an argument and returns a PersistedAlarmTime struct.
     pub fn new(r: FlashResources) -> Self {
         let flash = Flash::<_, Async, { FLASH_SIZE }>::new(r.flash, r.dma_ch);
+        info!("Flash initialized");
+        info!("Flash size: {:?}", FLASH_SIZE);
         Self {
-            flash_range: 0x1FDF01..0x1FFFFF,
+            flash_range: 0x1F9000..0x1FC000,
             data_buffer: [0; 128],
             flash,
         }
@@ -36,12 +38,12 @@ impl<'a> PersistedAlarmTime<'a> {
 
     /// this function reads the alarm time from the flash memory.
     /// It returns a tuple of two u8 values representing the hour and minute of the alarm time.
-    async fn read_alarm_time_from_flash(&mut self) -> (u8, u8) {
-        let keys = [0, 1];
+    pub async fn read_alarm_time_from_flash(&mut self) -> (u8, u8) {
+        let keys: [u8; 2] = [0, 1];
         let mut values = [0u8; 2];
 
         for (i, key) in keys.iter().enumerate() {
-            values[i] = match fetch_item(
+            values[i] = match fetch_item::<u8, u8, _>(
                 &mut self.flash,
                 self.flash_range.clone(),
                 &mut NoCache::new(),
@@ -74,12 +76,12 @@ impl<'a> PersistedAlarmTime<'a> {
     /// this function writes the alarm time to the flash memory.
     /// It takes a tuple of two u8 values representing the hour and minute of the alarm time as an argument.
     /// These values are written to the flash memory in two separate key/value pairs.
-    async fn write_alarm_time_to_flash(&mut self, alarm_time: (u8, u8)) {
-        let keys = [0, 1];
+    pub async fn write_alarm_time_to_flash(&mut self, alarm_time: (u8, u8)) {
+        let keys: [u8; 2] = [0, 1];
         let values = [alarm_time.0, alarm_time.1];
 
         for (key, value) in keys.iter().zip(values.iter()) {
-            match store_item(
+            match store_item::<u8, u8, _>(
                 &mut self.flash,
                 self.flash_range.clone(),
                 &mut NoCache::new(),
