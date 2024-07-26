@@ -3,6 +3,7 @@ pub mod buttons;
 pub mod dfplayer;
 pub mod display;
 pub mod neopixel;
+pub mod persisted_alarm_time;
 pub mod power;
 pub mod resources;
 pub mod state;

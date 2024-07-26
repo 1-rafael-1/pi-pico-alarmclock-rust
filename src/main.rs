@@ -7,11 +7,11 @@
 use crate::task::buttons::{blue_button, green_button, yellow_button};
 use crate::task::dfplayer::sound;
 use crate::task::display::display;
+use crate::task::persisted_alarm_time::read_persisted_alarm_time;
 use crate::task::power::{usb_power, vsys_voltage};
 use crate::task::resources::*;
 use crate::task::state::*;
 use crate::task::time_updater::time_updater;
-use crate::utility::persisted_alarm_time::PersistedAlarmTime;
 use core::cell::RefCell;
 use defmt::*;
 use embassy_executor::{Executor, Spawner};
@@ -41,15 +41,16 @@ async fn main(spawner: Spawner) {
     // the tasks are all spawned in main.rs, so we can disable them here
     // clutter in the output aside, the binary size is conveniently reduced by disabling tasks
     let mut task_config = TaskConfig::new();
-    task_config.time_updater = false;
-    task_config.btn_green = false;
-    task_config.btn_blue = false;
-    task_config.btn_yellow = false;
+    task_config.time_updater = true;
+    task_config.btn_green = true;
+    task_config.btn_blue = true;
+    task_config.btn_yellow = true;
     task_config.neopixel = false;
     task_config.display = false;
     task_config.dfplayer = false;
-    task_config.usb_power = false;
-    task_config.vsys_voltage = false;
+    task_config.usb_power = true;
+    task_config.vsys_voltage = true;
+    task_config.persisted_alarm_time = true;
 
     // RTC
     // Initialize the RTC in a static cell, we will need it in multiple places
@@ -61,6 +62,13 @@ async fn main(spawner: Spawner) {
     // there is no main loop, the tasks are spawned and run in parallel
     // orchestrating the tasks is done here:
     spawner.spawn(orchestrate(spawner, rtc_ref)).unwrap();
+
+    // PersistedAlarmTime
+    if task_config.persisted_alarm_time {
+        spawner
+            .spawn(read_persisted_alarm_time(spawner, r.flash))
+            .unwrap();
+    }
 
     // Power
     if task_config.usb_power {

@@ -1,4 +1,5 @@
 use crate::task::resources::FlashResources;
+use crate::task::state::{Events, EVENT_CHANNEL};
 use core::ops::Range;
 use defmt::*;
 use embassy_executor::Spawner;
@@ -109,4 +110,17 @@ impl<'a> PersistedAlarmTime<'a> {
             }
         }
     }
+}
+
+/// # read_persisted_alarm_time
+/// This function reads the alarm time from the flash memory and sends it to the event channel.
+/// It is run only once at the start of the program and does not loop.
+#[embassy_executor::task]
+pub async fn read_persisted_alarm_time(spawner: Spawner, r: FlashResources) {
+    let sender = EVENT_CHANNEL.sender();
+    let mut persisted_alarm_time = PersistedAlarmTime::new(r);
+    let alarm_time = persisted_alarm_time.read_alarm_time_from_flash().await;
+    sender
+        .send(Events::AlarmTimeReadFromFlash(alarm_time))
+        .await;
 }
