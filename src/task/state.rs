@@ -7,6 +7,7 @@ use embassy_rp::peripherals::RTC;
 use embassy_rp::rtc::Rtc;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
+use embassy_sync::mutex::Mutex;
 
 /// Events that we want to react to together with the data that we need to react to the event.
 /// Works in conjunction with the `EVENT_CHANNEL` channel in the orchestrator task.
@@ -40,6 +41,23 @@ pub static NEOPIXEL_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 3> = Cha
 pub static FLASH_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 1> = Channel::new();
 /// Channel for the update commands that we want the orchestrator to send to the mp3-player task.
 pub static SOUND_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 1> = Channel::new();
+
+/// Type alias for the system state manager protected by a mutex.
+///
+/// This type alias defines a `Mutex` that uses a `CriticalSectionRawMutex` for synchronization.
+/// The state is wrapped in an `Option` to allow for the possibility of the state being uninitialized.
+/// This ensures that tasks can safely access and update the state across different executors (e.g., different cores).
+type StateManagerType = Mutex<CriticalSectionRawMutex, Option<StateManager>>;
+
+/// Global instance of the system state manager protected by a mutex.
+///
+/// This static variable holds the system state manager, which is protected by a `Mutex` to ensure
+/// that only one task can access the state at a time. The mutex uses a `CriticalSectionRawMutex`
+/// for synchronization, allowing safe access across different tasks and executors.
+///
+/// The state is initially set to `None`, indicating that it has not been initialized yet.
+/// Tasks attempting to access the state before initialization will need to handle the `None` case.
+pub static STATE_MANAGER_MUTEX: StateManagerType = Mutex::new(None);
 
 /// All the states of the system are kept in this struct.
 #[derive(PartialEq, Debug, Format)]
@@ -91,10 +109,14 @@ impl StateManager {
 /// The operation mode of the system
 #[derive(PartialEq, Debug, Format)]
 pub enum OperationMode {
-    /// The regular operation mode, displaying the time, the alarm status, etc. Showing the analog clock on the neopixel
+    /// The regular operation mode.
+    ///
+    /// Displays the time, the alarm status, etc. Showing the analog clock on the neopixel
     /// ring, if the alarm is active.
     Normal,
-    /// Setting the alarm time, displaying the alarm time and allowing the user to set the new alarm time.
+    /// Setting the alarm time.
+    ///
+    /// Displays the alarm time and allowing the user to set the new alarm time.
     SetAlarmTime,
     /// The alarm is active, starting with the sunrise effect on the neopixel ring, then playing the alarm sound and displaying the waker effect on the neopixel ring.
     /// on the neopixel ring. Also display and await the color sequence of buttons that need to be pressed to stop the alarm.
@@ -212,7 +234,7 @@ impl PowerState {
 #[derive(PartialEq, Debug, Format)]
 pub enum MenuMode {
     /// The default state: the clock is displayed
-    None, // the default state: the clock is displayed
+    None,
     /// The system info menu is being displayed
     SystemInfoMenu,
 }
