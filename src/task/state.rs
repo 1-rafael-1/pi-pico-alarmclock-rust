@@ -1,56 +1,9 @@
-//! # State
-//! This module keeps the state of the system.
-//! This module is responsible for the state transitions of the system, receiving events from the various tasks and reacting to them.
-//! Reacting to the events will involve changing the state of the system and triggering actions like updating the display, playing sounds, etc.
-use core::cell::RefCell;
+//! This module desccribes the state of the system and the events that can change the state of the system as well as the commands that can be sent to the tasks
+//! that control the system.
 use defmt::*;
-use embassy_executor::Spawner;
-use embassy_rp::peripherals::RTC;
-use embassy_rp::rtc::Rtc;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
-
-/// # TaskConfig
-/// This struct is used to configure which tasks are enabled
-/// This is useful for troubleshooting, as we can disable tasks to reduce the binary size
-/// and clutter in the output.
-/// Also, we can disable tasks that are not needed for the current development stage and also test tasks in isolation.
-/// For a production build we will need all tasks enabled
-pub struct TaskConfig {
-    pub btn_green: bool,
-    pub btn_blue: bool,
-    pub btn_yellow: bool,
-    pub time_updater: bool,
-    pub neopixel: bool,
-    pub display: bool,
-    pub dfplayer: bool,
-    pub usb_power: bool,
-    pub vsys_voltage: bool,
-    pub alarm_settings: bool,
-}
-
-impl Default for TaskConfig {
-    fn default() -> Self {
-        TaskConfig {
-            btn_green: true,
-            btn_blue: true,
-            btn_yellow: true,
-            time_updater: true,
-            neopixel: true,
-            display: true,
-            dfplayer: true,
-            usb_power: true,
-            vsys_voltage: true,
-            alarm_settings: true,
-        }
-    }
-}
-
-impl TaskConfig {
-    pub fn new() -> Self {
-        TaskConfig::default()
-    }
-}
+use embassy_sync::mutex::Mutex;
 
 /// Events that we want to react to together with the data that we need to react to the event.
 /// Works in conjunction with the `EVENT_CHANNEL` channel in the orchestrator task.
@@ -68,10 +21,18 @@ pub enum Events {
 /// Works in conjunction with the `COMMAND_CHANNEL` channel in the orchestrator task.
 #[derive(PartialEq, Debug, Format)]
 pub enum Commands {
+    /// Write the alarm settings to the flash memory, the data is the alarm settings
+    /// Since the alarm settings are small amd rarely changed, we can send them in the command option
     AlarmSettingsWriteToFlash(AlarmSettings),
-    DisplayUpdate(StateManager),
-    NeopixelUpdate(StateManager),
-    SoundUpdate(StateManager),
+    /// Update the display with the new state of the system
+    /// Since we will need to update the display often and wizth a lot of data, we will not send the data in the command option
+    DisplayUpdate,
+    /// Update the neopixel with the new state of the system
+    /// ToDo: decide if and what data we need to send to the neopixel
+    NeopixelUpdate,
+    /// Update the sound task with the new state of the system
+    /// ToDo: decide if and what data we need to send to the sound task
+    SoundUpdate,
 }
 
 /// Channel for the events that we want the orchestrator to react to, all state events are of the type Enum Events.
@@ -85,7 +46,23 @@ pub static FLASH_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 1> = Channe
 /// Channel for the update commands that we want the orchestrator to send to the mp3-player task.
 pub static SOUND_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 1> = Channel::new();
 
-/// # StateManager
+/// Type alias for the system state manager protected by a mutex.
+///
+/// This type alias defines a `Mutex` that uses a `CriticalSectionRawMutex` for synchronization.
+/// The state is wrapped in an `Option` to allow for the possibility of the state being uninitialized.
+/// This ensures that tasks can safely access and update the state across different executors (e.g., different cores).
+type StateManagerType = Mutex<CriticalSectionRawMutex, Option<StateManager>>;
+
+/// Global instance of the system state manager protected by a mutex.
+///
+/// This static variable holds the system state manager, which is protected by a `Mutex` to ensure
+/// that only one task can access the state at a time. The mutex uses a `CriticalSectionRawMutex`
+/// for synchronization, allowing safe access across different tasks and executors.
+///
+/// The state is initially set to `None`, indicating that it has not been initialized yet.
+/// Tasks attempting to access the state before initialization will need to handle the `None` case.
+pub static STATE_MANAGER_MUTEX: StateManagerType = Mutex::new(None);
+
 /// All the states of the system are kept in this struct.
 #[derive(PartialEq, Debug, Format)]
 pub struct StateManager {
@@ -119,7 +96,7 @@ impl StateManager {
     }
 
     /// Handle presses of the green button
-    fn handle_green_button_press(&mut self) {
+    pub fn handle_green_button_press(&mut self) {
         match self.operation_mode {
             OperationMode::Normal => {
                 self.toggle_alarm_enabled();
@@ -133,14 +110,17 @@ impl StateManager {
     // ToDo: handle the other button presses
 }
 
-/// # OperationMode
 /// The operation mode of the system
 #[derive(PartialEq, Debug, Format)]
 pub enum OperationMode {
-    /// The regular operation mode, displaying the time, the alarm status, etc. Showing the analog clock on the neopixel
+    /// The regular operation mode.
+    ///
+    /// Displays the time, the alarm status, etc. Showing the analog clock on the neopixel
     /// ring, if the alarm is active.
     Normal,
-    /// Setting the alarm time, displaying the alarm time and allowing the user to set the new alarm time.
+    /// Setting the alarm time.
+    ///
+    /// Displays the alarm time and allowing the user to set the new alarm time.
     SetAlarmTime,
     /// The alarm is active, starting with the sunrise effect on the neopixel ring, then playing the alarm sound and displaying the waker effect on the neopixel ring.
     /// on the neopixel ring. Also display and await the color sequence of buttons that need to be pressed to stop the alarm.
@@ -151,7 +131,6 @@ pub enum OperationMode {
     SystemInfo,
 }
 
-/// # AlarmSettings
 /// The settings for the alarm
 #[derive(PartialEq, Debug, Format, Clone)]
 pub struct AlarmSettings {
@@ -190,7 +169,6 @@ impl AlarmSettings {
     }
 }
 
-/// # AlarmState
 /// The state of the alarm
 #[derive(PartialEq, Debug, Format)]
 pub enum AlarmState {
@@ -206,7 +184,6 @@ pub enum AlarmState {
     StopAlarm,
 }
 
-/// # BatteryLevel
 /// The battery level of the system in steps of 20% from 0 to 100. One additional state is provided for charging.
 #[derive(PartialEq, Debug, Format)]
 pub enum BatteryLevel {
@@ -219,14 +196,13 @@ pub enum BatteryLevel {
     Bat100,
 }
 
-/// # PowerState
 /// The power state of the system
 #[derive(PartialEq, Debug, Format)]
 pub struct PowerState {
     /// The system is running on usb power
-    usb_power: bool,
+    pub usb_power: bool,
     /// The voltage of the system power supply
-    vsys: f32,
+    pub vsys: f32,
     /// The battery level of the system
     /// The battery level is provided in steps of 20% from 0 to 100. One additional state is provided for charging.
     battery_level: BatteryLevel,
@@ -258,12 +234,11 @@ impl PowerState {
     }
 }
 
-/// # MenuMode
 /// The menu mode of the system
 #[derive(PartialEq, Debug, Format)]
 pub enum MenuMode {
     /// The default state: the clock is displayed
-    None, // the default state: the clock is displayed
+    None,
     /// The system info menu is being displayed
     SystemInfoMenu,
 }
@@ -277,77 +252,4 @@ pub enum SystemInfoMenuMode {
     Info,
     /// shutdown the system into a low power state
     ShutdownLowPower,
-}
-
-/// Task to orchestrate the states of the system
-/// This task is responsible for the state transitions of the system. It acts as the main task of the system.
-/// ToDo: in general we will be reacting to a number of event
-/// - button presses, multiple things depending on the button and the state of the system
-/// - alarm time reached
-/// - plugging in usb power
-/// and once we reached states we will need to trigger display updates, sound, etc.
-#[embassy_executor::task]
-pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'static, RTC>>) {
-    let mut state_manager = StateManager::new();
-    let event_receiver = EVENT_CHANNEL.receiver();
-    let flash_sender = FLASH_CHANNEL.sender();
-
-    info!("Orchestrate task started");
-
-    // // just testing: set the alarm time to 7:30 and enable the alarm
-    // state_manager.alarm_settings.enabled = true;
-    // state_manager.alarm_settings.time = (7, 30);
-    // flash_sender
-    //     .send(Commands::AlarmSettingsWriteToFlash(
-    //         state_manager.alarm_settings.clone(),
-    //     ))
-    //     .await;
-
-    loop {
-        // receive the events, halting the task until an event is received
-        let event = event_receiver.receive().await;
-
-        // react to the events
-        match event {
-            Events::BlueBtn(presses) => {
-                info!("Blue button pressed, presses: {}", presses);
-            }
-            Events::GreenBtn(presses) => {
-                state_manager.handle_green_button_press();
-            }
-            Events::YellowBtn(presses) => {
-                info!("Yellow button pressed, presses: {}", presses);
-            }
-            Events::Vbus(usb) => {
-                info!("Vbus event, usb: {}", usb);
-                state_manager.power_state.usb_power = usb;
-            }
-            Events::Vsys(voltage) => {
-                info!("Vsys event, voltage: {}", voltage);
-                state_manager.power_state.vsys = voltage;
-                state_manager.power_state.set_battery_level();
-            }
-            Events::AlarmSettingsReadFromFlash(alarm_settings) => {
-                info!("Alarm time read from flash: {:?}", alarm_settings);
-                state_manager.alarm_settings = alarm_settings;
-            }
-        }
-
-        // at this point we have altered the state of the system, we can now trigger actions based on the state
-        // for now we will just log the state
-        info!("StateManager: {:?}", state_manager);
-        if let Ok(dt) = rtc_ref.borrow_mut().now() {
-            info!(
-                "orhestrate loop: {}-{:02}-{:02} {}:{:02}:{:02}",
-                dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second,
-            );
-        }
-
-        // ToDo: send the state to the display task. This will be straightforward, as we will design the display task to
-        // receive the state and update the display accordingly.
-
-        // ToDo: send the state to the sound task. This will be straightforward, as there is only one sound to play, the alarm sound.
-
-        // ToDo: send the state to the neopixel task. This will need a little thinking, as the neopixel hs different effects to display
-    }
 }

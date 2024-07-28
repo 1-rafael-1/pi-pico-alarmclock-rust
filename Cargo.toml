@@ -42,6 +42,7 @@ embassy-net = { git = "https://github.com/embassy-rs/embassy", features = [
     "dhcpv4",
     "medium-ethernet",
     "dns",
+    "dhcpv4-hostname",
 ] }
 embassy-net-wiznet = { git = "https://github.com/embassy-rs/embassy", features = [
     "defmt",
