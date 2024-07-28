@@ -1,4 +1,3 @@
-//! # State
 //! This module keeps the state of the system.
 //! This module is responsible for the state transitions of the system, receiving events from the various tasks and reacting to them.
 //! Reacting to the events will involve changing the state of the system and triggering actions like updating the display, playing sounds, etc.
@@ -9,48 +8,6 @@ use embassy_rp::peripherals::RTC;
 use embassy_rp::rtc::Rtc;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
-
-/// # TaskConfig
-/// This struct is used to configure which tasks are enabled
-/// This is useful for troubleshooting, as we can disable tasks to reduce the binary size
-/// and clutter in the output.
-/// Also, we can disable tasks that are not needed for the current development stage and also test tasks in isolation.
-/// For a production build we will need all tasks enabled
-pub struct TaskConfig {
-    pub btn_green: bool,
-    pub btn_blue: bool,
-    pub btn_yellow: bool,
-    pub time_updater: bool,
-    pub neopixel: bool,
-    pub display: bool,
-    pub dfplayer: bool,
-    pub usb_power: bool,
-    pub vsys_voltage: bool,
-    pub alarm_settings: bool,
-}
-
-impl Default for TaskConfig {
-    fn default() -> Self {
-        TaskConfig {
-            btn_green: true,
-            btn_blue: true,
-            btn_yellow: true,
-            time_updater: true,
-            neopixel: true,
-            display: true,
-            dfplayer: true,
-            usb_power: true,
-            vsys_voltage: true,
-            alarm_settings: true,
-        }
-    }
-}
-
-impl TaskConfig {
-    pub fn new() -> Self {
-        TaskConfig::default()
-    }
-}
 
 /// Events that we want to react to together with the data that we need to react to the event.
 /// Works in conjunction with the `EVENT_CHANNEL` channel in the orchestrator task.
@@ -85,7 +42,6 @@ pub static FLASH_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 1> = Channe
 /// Channel for the update commands that we want the orchestrator to send to the mp3-player task.
 pub static SOUND_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 1> = Channel::new();
 
-/// # StateManager
 /// All the states of the system are kept in this struct.
 #[derive(PartialEq, Debug, Format)]
 pub struct StateManager {
@@ -133,7 +89,6 @@ impl StateManager {
     // ToDo: handle the other button presses
 }
 
-/// # OperationMode
 /// The operation mode of the system
 #[derive(PartialEq, Debug, Format)]
 pub enum OperationMode {
@@ -151,7 +106,6 @@ pub enum OperationMode {
     SystemInfo,
 }
 
-/// # AlarmSettings
 /// The settings for the alarm
 #[derive(PartialEq, Debug, Format, Clone)]
 pub struct AlarmSettings {
@@ -190,7 +144,6 @@ impl AlarmSettings {
     }
 }
 
-/// # AlarmState
 /// The state of the alarm
 #[derive(PartialEq, Debug, Format)]
 pub enum AlarmState {
@@ -206,7 +159,6 @@ pub enum AlarmState {
     StopAlarm,
 }
 
-/// # BatteryLevel
 /// The battery level of the system in steps of 20% from 0 to 100. One additional state is provided for charging.
 #[derive(PartialEq, Debug, Format)]
 pub enum BatteryLevel {
@@ -219,7 +171,6 @@ pub enum BatteryLevel {
     Bat100,
 }
 
-/// # PowerState
 /// The power state of the system
 #[derive(PartialEq, Debug, Format)]
 pub struct PowerState {
@@ -258,7 +209,6 @@ impl PowerState {
     }
 }
 
-/// # MenuMode
 /// The menu mode of the system
 #[derive(PartialEq, Debug, Format)]
 pub enum MenuMode {

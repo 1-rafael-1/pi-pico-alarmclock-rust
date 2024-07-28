@@ -10,7 +10,7 @@ use crate::task::dfplayer::sound;
 use crate::task::display::display;
 use crate::task::power::{usb_power, vsys_voltage};
 use crate::task::resources::*;
-use crate::task::state::*;
+use crate::task::state::orchestrate;
 use crate::task::time_updater::time_updater;
 use core::cell::RefCell;
 use defmt::*;
@@ -131,5 +131,46 @@ async fn main(spawner: Spawner) {
     // DFPlayer
     if task_config.dfplayer {
         spawner.spawn(sound(spawner, r.dfplayer)).unwrap();
+    }
+}
+
+/// This struct is used to configure which tasks are enabled
+/// This is useful for troubleshooting, as we can disable tasks to reduce the binary size
+/// and clutter in the output.
+/// Also, we can disable tasks that are not needed for the current development stage and also test tasks in isolation.
+/// For a production build we will need all tasks enabled
+pub struct TaskConfig {
+    pub btn_green: bool,
+    pub btn_blue: bool,
+    pub btn_yellow: bool,
+    pub time_updater: bool,
+    pub neopixel: bool,
+    pub display: bool,
+    pub dfplayer: bool,
+    pub usb_power: bool,
+    pub vsys_voltage: bool,
+    pub alarm_settings: bool,
+}
+
+impl Default for TaskConfig {
+    fn default() -> Self {
+        TaskConfig {
+            btn_green: true,
+            btn_blue: true,
+            btn_yellow: true,
+            time_updater: true,
+            neopixel: true,
+            display: true,
+            dfplayer: true,
+            usb_power: true,
+            vsys_voltage: true,
+            alarm_settings: true,
+        }
+    }
+}
+
+impl TaskConfig {
+    pub fn new() -> Self {
+        TaskConfig::default()
     }
 }
