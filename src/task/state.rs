@@ -1,6 +1,5 @@
-//! This module keeps the state of the system.
-//! This module is responsible for the state transitions of the system, receiving events from the various tasks and reacting to them.
-//! Reacting to the events will involve changing the state of the system and triggering actions like updating the display, playing sounds, etc.
+//! This module desccribes the state of the system and the events that can change the state of the system as well as the commands that can be sent to the tasks
+//! that control the system.
 use core::cell::RefCell;
 use defmt::*;
 use embassy_executor::Spawner;
@@ -75,7 +74,7 @@ impl StateManager {
     }
 
     /// Handle presses of the green button
-    fn handle_green_button_press(&mut self) {
+    pub fn handle_green_button_press(&mut self) {
         match self.operation_mode {
             OperationMode::Normal => {
                 self.toggle_alarm_enabled();
@@ -175,9 +174,9 @@ pub enum BatteryLevel {
 #[derive(PartialEq, Debug, Format)]
 pub struct PowerState {
     /// The system is running on usb power
-    usb_power: bool,
+    pub usb_power: bool,
     /// The voltage of the system power supply
-    vsys: f32,
+    pub vsys: f32,
     /// The battery level of the system
     /// The battery level is provided in steps of 20% from 0 to 100. One additional state is provided for charging.
     battery_level: BatteryLevel,
@@ -227,77 +226,4 @@ pub enum SystemInfoMenuMode {
     Info,
     /// shutdown the system into a low power state
     ShutdownLowPower,
-}
-
-/// Task to orchestrate the states of the system
-/// This task is responsible for the state transitions of the system. It acts as the main task of the system.
-/// ToDo: in general we will be reacting to a number of event
-/// - button presses, multiple things depending on the button and the state of the system
-/// - alarm time reached
-/// - plugging in usb power
-/// and once we reached states we will need to trigger display updates, sound, etc.
-#[embassy_executor::task]
-pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'static, RTC>>) {
-    let mut state_manager = StateManager::new();
-    let event_receiver = EVENT_CHANNEL.receiver();
-    let flash_sender = FLASH_CHANNEL.sender();
-
-    info!("Orchestrate task started");
-
-    // // just testing: set the alarm time to 7:30 and enable the alarm
-    // state_manager.alarm_settings.enabled = true;
-    // state_manager.alarm_settings.time = (7, 30);
-    // flash_sender
-    //     .send(Commands::AlarmSettingsWriteToFlash(
-    //         state_manager.alarm_settings.clone(),
-    //     ))
-    //     .await;
-
-    loop {
-        // receive the events, halting the task until an event is received
-        let event = event_receiver.receive().await;
-
-        // react to the events
-        match event {
-            Events::BlueBtn(presses) => {
-                info!("Blue button pressed, presses: {}", presses);
-            }
-            Events::GreenBtn(presses) => {
-                state_manager.handle_green_button_press();
-            }
-            Events::YellowBtn(presses) => {
-                info!("Yellow button pressed, presses: {}", presses);
-            }
-            Events::Vbus(usb) => {
-                info!("Vbus event, usb: {}", usb);
-                state_manager.power_state.usb_power = usb;
-            }
-            Events::Vsys(voltage) => {
-                info!("Vsys event, voltage: {}", voltage);
-                state_manager.power_state.vsys = voltage;
-                state_manager.power_state.set_battery_level();
-            }
-            Events::AlarmSettingsReadFromFlash(alarm_settings) => {
-                info!("Alarm time read from flash: {:?}", alarm_settings);
-                state_manager.alarm_settings = alarm_settings;
-            }
-        }
-
-        // at this point we have altered the state of the system, we can now trigger actions based on the state
-        // for now we will just log the state
-        info!("StateManager: {:?}", state_manager);
-        if let Ok(dt) = rtc_ref.borrow_mut().now() {
-            info!(
-                "orhestrate loop: {}-{:02}-{:02} {}:{:02}:{:02}",
-                dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second,
-            );
-        }
-
-        // ToDo: send the state to the display task. This will be straightforward, as we will design the display task to
-        // receive the state and update the display accordingly.
-
-        // ToDo: send the state to the sound task. This will be straightforward, as there is only one sound to play, the alarm sound.
-
-        // ToDo: send the state to the neopixel task. This will need a little thinking, as the neopixel hs different effects to display
-    }
 }
