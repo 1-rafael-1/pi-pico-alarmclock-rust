@@ -29,6 +29,7 @@ use core::str::from_utf8;
 use cyw43_pio::PioSpi;
 use defmt::*;
 use embassy_executor::Spawner;
+use embassy_net::DhcpConfig;
 use embassy_net::{
     dns,
     tcp::client::{TcpClient, TcpClientState},
@@ -147,7 +148,9 @@ pub async fn time_updater(
         .set_power_management(cyw43::PowerManagementMode::PowerSave)
         .await;
 
-    let config = Config::dhcpv4(Default::default());
+    let mut default_config: DhcpConfig = Default::default();
+    default_config.hostname = Some("alarmclck".try_into().unwrap());
+    let mut config = Config::dhcpv4(default_config);
 
     // random seed
     let mut rng = RoscRng;
