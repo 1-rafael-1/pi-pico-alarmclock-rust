@@ -1,10 +1,6 @@
 //! This module desccribes the state of the system and the events that can change the state of the system as well as the commands that can be sent to the tasks
 //! that control the system.
-use core::cell::RefCell;
 use defmt::*;
-use embassy_executor::Spawner;
-use embassy_rp::peripherals::RTC;
-use embassy_rp::rtc::Rtc;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;

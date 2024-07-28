@@ -150,7 +150,7 @@ pub async fn time_updater(
 
     let mut default_config: DhcpConfig = Default::default();
     default_config.hostname = Some("alarmclck".try_into().unwrap());
-    let mut config = Config::dhcpv4(default_config);
+    let config = Config::dhcpv4(default_config);
 
     // random seed
     let mut rng = RoscRng;

@@ -5,9 +5,6 @@ use defmt::*;
 use embassy_executor::Spawner;
 use embassy_rp::peripherals::RTC;
 use embassy_rp::rtc::Rtc;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::channel::Channel;
-use embassy_sync::mutex::Mutex;
 
 /// This task is responsible for the state transitions of the system. It acts as the main task of the system.
 /// It receives events from the other tasks and reacts to them by changing the state of the system.
@@ -15,7 +12,7 @@ use embassy_sync::mutex::Mutex;
 pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'static, RTC>>) {
     // initialize the state manager and put it into the mutex
     {
-        let mut state_manager = StateManager::new();
+        let state_manager = StateManager::new();
         *(STATE_MANAGER_MUTEX.lock().await) = Some(state_manager);
     }
 
