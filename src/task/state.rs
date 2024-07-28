@@ -21,10 +21,18 @@ pub enum Events {
 /// Works in conjunction with the `COMMAND_CHANNEL` channel in the orchestrator task.
 #[derive(PartialEq, Debug, Format)]
 pub enum Commands {
+    /// Write the alarm settings to the flash memory, the data is the alarm settings
+    /// Since the alarm settings are small amd rarely changed, we can send them in the command option
     AlarmSettingsWriteToFlash(AlarmSettings),
-    DisplayUpdate(StateManager),
-    NeopixelUpdate(StateManager),
-    SoundUpdate(StateManager),
+    /// Update the display with the new state of the system
+    /// Since we will need to update the display often and wizth a lot of data, we will not send the data in the command option
+    DisplayUpdate,
+    /// Update the neopixel with the new state of the system
+    /// ToDo: decide if and what data we need to send to the neopixel
+    NeopixelUpdate,
+    /// Update the sound task with the new state of the system
+    /// ToDo: decide if and what data we need to send to the sound task
+    SoundUpdate,
 }
 
 /// Channel for the events that we want the orchestrator to react to, all state events are of the type Enum Events.

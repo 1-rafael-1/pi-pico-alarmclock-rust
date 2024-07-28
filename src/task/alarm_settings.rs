@@ -1,5 +1,5 @@
-//! # persisted_alarm_time
 //! This module contains the functionality to persist the alarm settings in the flash memory.
+//!
 //! The alarm settings are stored in the flash memory as three separate key/value pairs.
 use crate::task::resources::FlashResources;
 use crate::task::state::{AlarmSettings, Commands, Events, EVENT_CHANNEL, FLASH_CHANNEL};
@@ -26,7 +26,6 @@ pub struct PersistedAlarmSettings<'a> {
 }
 
 impl<'a> PersistedAlarmSettings<'a> {
-    /// # new
     /// This function creates a new instance of the PersistedAlarmTime struct.
     /// It takes a FlashResources struct as an argument and returns a PersistedAlarmTime struct.
     pub fn new(r: FlashResources) -> Self {
@@ -39,7 +38,6 @@ impl<'a> PersistedAlarmSettings<'a> {
     }
 
     /// this function reads the alarm time from the flash memory.
-    /// It returns a tuple of two u8 values representing the hour and minute of the alarm time.
     pub async fn read_alarm_settings_from_flash(&mut self) -> AlarmSettings {
         let keys: [u8; 3] = [0, 1, 2];
         let mut values = [0u8; 3];
@@ -119,8 +117,8 @@ impl<'a> PersistedAlarmSettings<'a> {
     }
 }
 
-/// # alarm_settings
 /// This function reads the alarm settings from the flash memory and sends it to the event channel.
+///
 /// It is done only once at the start of the program.
 /// After that, it waits for commands to update the alarm settings.
 #[embassy_executor::task]
