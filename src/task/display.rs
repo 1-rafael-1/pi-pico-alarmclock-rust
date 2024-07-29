@@ -1,7 +1,10 @@
 /// This module contains the task that displays information on the OLED display.
 ///
 /// The task is responsible for initializing the display, displaying images and text, and updating the display.
-use crate::task::resources::{DisplayResources, Irqs};
+use crate::task::{
+    resources::{DisplayResources, Irqs},
+    state::DISPLAY_SIGNAL,
+};
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_rp::i2c::{Config, I2c};
@@ -182,7 +185,8 @@ pub async fn display(_spawner: Spawner, r: DisplayResources) {
             return;
         }
     }
-    display.set_brightness(Brightness::DIMMEST).await.unwrap();
+
+    display.set_brightness(Brightness::DIM).await.unwrap();
 
     // Load BMP images from media
     let bmps = Bmps::new();
@@ -190,7 +194,8 @@ pub async fn display(_spawner: Spawner, r: DisplayResources) {
     let mut images = Images::new(&bmps);
 
     loop {
-        Timer::after(Duration::from_millis(1_000)).await;
+        // Wait for a signal to update the display
+        DISPLAY_SIGNAL.wait().await;
 
         display.clear();
 

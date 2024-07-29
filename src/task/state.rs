@@ -4,6 +4,7 @@ use defmt::*;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
+use embassy_sync::signal::Signal;
 
 /// Events that we want to react to together with the data that we need to react to the event.
 /// Works in conjunction with the `EVENT_CHANNEL` channel in the orchestrator task.
@@ -15,6 +16,7 @@ pub enum Events {
     Vbus(bool),
     Vsys(f32),
     AlarmSettingsReadFromFlash(AlarmSettings),
+    MinuteTimer,
 }
 
 /// Commands that we want to send from the orchestrator to the other tasks that we want to control.
@@ -35,14 +37,19 @@ pub enum Commands {
     SoundUpdate,
 }
 
-/// Channel for the events that we want the orchestrator to react to, all state events are of the type Enum Events.
+/// For the events that we want the orchestrator to react to, all state events are of the type Enum Events.
 pub static EVENT_CHANNEL: Channel<CriticalSectionRawMutex, Events, 10> = Channel::new();
-/// Channel for the update commands that we want the orchestrator to send to the display task.
-pub static DISPLAY_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 1> = Channel::new();
+
+/// For the update commands that we want the orchestrator to send to the display task. Since we only ever want to display according to the state of
+/// the system, we will not send any data in the command option and we can afford to work only with a simple state of "the display needs to be updated".
+pub static DISPLAY_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
+
 /// Channel for the update commands that we want the orchestrator to send to the neopixel.
 pub static NEOPIXEL_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 3> = Channel::new();
+
 /// Channel for the update commands that we want the orchestrator to send to the flash task.
 pub static FLASH_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 1> = Channel::new();
+
 /// Channel for the update commands that we want the orchestrator to send to the mp3-player task.
 pub static SOUND_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 1> = Channel::new();
 
