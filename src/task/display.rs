@@ -3,11 +3,15 @@
 /// The task is responsible for initializing the display, displaying images and text, and updating the display.
 use crate::task::{
     resources::{DisplayResources, Irqs},
-    state::DISPLAY_SIGNAL,
+    state::{OperationMode, DISPLAY_SIGNAL, STATE_MANAGER_MUTEX},
 };
+use core::write;
+use core::{cell::RefCell, fmt::write};
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_rp::i2c::{Config, I2c};
+use embassy_rp::peripherals::RTC;
+use embassy_rp::rtc::Rtc;
 use embassy_time::{Duration, Timer};
 use embedded_graphics::{
     image::Image,
@@ -166,7 +170,11 @@ impl<'a> Images<'a> {
 }
 
 #[embassy_executor::task]
-pub async fn display(_spawner: Spawner, r: DisplayResources) {
+pub async fn display(
+    _spawner: Spawner,
+    r: DisplayResources,
+    rtc_ref: &'static RefCell<Rtc<'static, RTC>>,
+) {
     info!("Display task started");
 
     let scl = r.scl;
@@ -197,7 +205,44 @@ pub async fn display(_spawner: Spawner, r: DisplayResources) {
         // Wait for a signal to update the display
         DISPLAY_SIGNAL.wait().await;
 
+        // get the state of the system out of the mutex and quickly drop the mutex
+        let state_manager_guard = STATE_MANAGER_MUTEX.lock().await;
+        //let state_manager = state_manager_guard.as_ref().unwrap();
+        let state_manager = match state_manager_guard.clone() {
+            Some(state_manager) => state_manager,
+            None => {
+                error!("State manager not initialized");
+                continue;
+            }
+        };
+        drop(state_manager_guard);
+
+        // get the system time in format HH:MM out of the rtc_ref
+        let dt = rtc_ref.borrow().now().unwrap();
+
+        // prepare the display, note that nothing is sent to the display before flush()
         display.clear();
+
+        // display the time, depending on the operation mode
+        let hours: u8;
+        let minutes: u8;
+        match state_manager.operation_mode {
+            OperationMode::Normal | OperationMode::Alarm => {
+                hours = dt.hour;
+                minutes = dt.minute;
+            }
+            OperationMode::SetAlarmTime => {
+                hours = state_manager.alarm_settings.time.0;
+                minutes = state_manager.alarm_settings.time.1;
+            }
+            _ => {}
+        };
+        match state_manager.operation_mode {
+            OperationMode::Normal | OperationMode::Alarm | OperationMode::SetAlarmTime => {
+                // display the time
+            }
+            _ => {}
+        }
 
         let text_style = MonoTextStyleBuilder::new()
             .font(&FONT_9X18_BOLD)

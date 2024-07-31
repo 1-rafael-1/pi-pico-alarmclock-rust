@@ -5,6 +5,7 @@
 use assign_resources::assign_resources;
 use embassy_rp::adc::InterruptHandler as AdcInterruptHandler;
 use embassy_rp::i2c::InterruptHandler as I2cInterruptHandler;
+use embassy_rp::peripherals::RTC;
 use embassy_rp::peripherals::UART1;
 use embassy_rp::peripherals::{I2C0, PIO0};
 use embassy_rp::pio::InterruptHandler;
@@ -23,8 +24,8 @@ assign_resources! {
     btn_yellow: YellowButtonResources {
         button_pin: PIN_22,
     },
-    rtc: RtcResources {
-        rtc_inst: RTC,
+    real_time_clock: RtcResources {
+        rtc: RTC,
     },
     neopixel: NeopixelResources {
         inner_spi: SPI0,

@@ -56,7 +56,7 @@ async fn main(spawner: Spawner) {
     // RTC
     // Initialize the RTC in a static cell, we will need it in multiple places
     static RTC: StaticCell<RefCell<Rtc<'static, peripherals::RTC>>> = StaticCell::new();
-    let rtc_instance: Rtc<'static, peripherals::RTC> = Rtc::new(r.rtc.rtc_inst);
+    let rtc_instance: Rtc<'static, peripherals::RTC> = Rtc::new(r.real_time_clock.rtc);
     let rtc_ref = RTC.init(RefCell::new(rtc_instance));
 
     // Orchestrate
@@ -126,7 +126,7 @@ async fn main(spawner: Spawner) {
 
     // Display
     if task_config.display {
-        spawner.spawn(display(spawner, r.display)).unwrap();
+        spawner.spawn(display(spawner, r.display, rtc_ref)).unwrap();
     }
 
     // DFPlayer

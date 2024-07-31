@@ -71,7 +71,7 @@ type StateManagerType = Mutex<CriticalSectionRawMutex, Option<StateManager>>;
 pub static STATE_MANAGER_MUTEX: StateManagerType = Mutex::new(None);
 
 /// All the states of the system are kept in this struct.
-#[derive(PartialEq, Debug, Format)]
+#[derive(PartialEq, Debug, Format, Clone)]
 pub struct StateManager {
     /// The operation mode of the system
     pub operation_mode: OperationMode,
@@ -118,7 +118,7 @@ impl StateManager {
 }
 
 /// The operation mode of the system
-#[derive(PartialEq, Debug, Format)]
+#[derive(PartialEq, Debug, Format, Clone)]
 pub enum OperationMode {
     /// The regular operation mode.
     ///
@@ -142,9 +142,9 @@ pub enum OperationMode {
 #[derive(PartialEq, Debug, Format, Clone)]
 pub struct AlarmSettings {
     /// The alarm time is set to the specified time
-    time: (u8, u8),
+    pub time: (u8, u8),
     /// The alarm is enabled or disabled
-    enabled: bool,
+    pub enabled: bool,
 }
 
 impl AlarmSettings {
@@ -177,7 +177,7 @@ impl AlarmSettings {
 }
 
 /// The state of the alarm
-#[derive(PartialEq, Debug, Format)]
+#[derive(PartialEq, Debug, Format, Clone)]
 pub enum AlarmState {
     /// The alarm is not active, the alarm time has not been reached
     None,
@@ -192,7 +192,7 @@ pub enum AlarmState {
 }
 
 /// The battery level of the system in steps of 20% from 0 to 100. One additional state is provided for charging.
-#[derive(PartialEq, Debug, Format)]
+#[derive(PartialEq, Debug, Format, Clone)]
 pub enum BatteryLevel {
     Charging,
     Bat000,
@@ -204,7 +204,7 @@ pub enum BatteryLevel {
 }
 
 /// The power state of the system
-#[derive(PartialEq, Debug, Format)]
+#[derive(PartialEq, Debug, Format, Clone)]
 pub struct PowerState {
     /// The system is running on usb power
     pub usb_power: bool,
@@ -242,7 +242,7 @@ impl PowerState {
 }
 
 /// The menu mode of the system
-#[derive(PartialEq, Debug, Format)]
+#[derive(PartialEq, Debug, Format, Clone)]
 pub enum MenuMode {
     /// The default state: the clock is displayed
     None,
@@ -251,7 +251,7 @@ pub enum MenuMode {
 }
 
 /// options for the system info
-#[derive(PartialEq, Debug, Format)]
+#[derive(PartialEq, Debug, Format, Clone)]
 pub enum SystemInfoMenuMode {
     /// select to either display the system info or shutdown the system
     Select,
