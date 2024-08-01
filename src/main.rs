@@ -8,7 +8,7 @@ use crate::task::alarm_settings::manage_alarm_settings;
 use crate::task::buttons::{blue_button, green_button, yellow_button};
 use crate::task::dfplayer::sound;
 use crate::task::display::display;
-use crate::task::orchestrate::orchestrate;
+use crate::task::orchestrate::{minute_timer, orchestrate};
 use crate::task::power::{usb_power, vsys_voltage};
 use crate::task::resources::*;
 use crate::task::time_updater::time_updater;
@@ -41,21 +41,22 @@ async fn main(spawner: Spawner) {
     // the tasks are all spawned in main.rs, so we can disable them here
     // clutter in the output aside, the binary size is conveniently reduced by disabling tasks
     let mut task_config = TaskConfig::new();
-    task_config.time_updater = true;
-    task_config.btn_green = true;
-    task_config.btn_blue = true;
-    task_config.btn_yellow = true;
+    // task_config.time_updater = false;
+    // task_config.btn_green = false;
+    // task_config.btn_blue = false;
+    // task_config.btn_yellow = false;
     task_config.neopixel = false;
-    task_config.display = false;
+    // task_config.display = false;
     task_config.dfplayer = false;
-    task_config.usb_power = true;
-    task_config.vsys_voltage = true;
-    task_config.alarm_settings = true;
+    // task_config.usb_power = false;
+    // task_config.vsys_voltage = false;
+    // task_config.alarm_settings = false;
+    // task_config.minute_timer = false;
 
     // RTC
     // Initialize the RTC in a static cell, we will need it in multiple places
     static RTC: StaticCell<RefCell<Rtc<'static, peripherals::RTC>>> = StaticCell::new();
-    let rtc_instance: Rtc<'static, peripherals::RTC> = Rtc::new(r.rtc.rtc_inst);
+    let rtc_instance: Rtc<'static, peripherals::RTC> = Rtc::new(r.real_time_clock.rtc);
     let rtc_ref = RTC.init(RefCell::new(rtc_instance));
 
     // Orchestrate
@@ -125,12 +126,17 @@ async fn main(spawner: Spawner) {
 
     // Display
     if task_config.display {
-        spawner.spawn(display(spawner, r.display)).unwrap();
+        spawner.spawn(display(spawner, r.display, rtc_ref)).unwrap();
     }
 
     // DFPlayer
     if task_config.dfplayer {
         spawner.spawn(sound(spawner, r.dfplayer)).unwrap();
+    }
+
+    // Minute timer
+    if task_config.minute_timer {
+        spawner.spawn(minute_timer(spawner)).unwrap();
     }
 }
 
@@ -150,6 +156,7 @@ pub struct TaskConfig {
     pub usb_power: bool,
     pub vsys_voltage: bool,
     pub alarm_settings: bool,
+    pub minute_timer: bool,
 }
 
 impl Default for TaskConfig {
@@ -165,6 +172,7 @@ impl Default for TaskConfig {
             usb_power: true,
             vsys_voltage: true,
             alarm_settings: true,
+            minute_timer: true,
         }
     }
 }

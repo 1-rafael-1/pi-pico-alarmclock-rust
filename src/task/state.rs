@@ -4,6 +4,7 @@ use defmt::*;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
+use embassy_sync::signal::Signal;
 
 /// Events that we want to react to together with the data that we need to react to the event.
 /// Works in conjunction with the `EVENT_CHANNEL` channel in the orchestrator task.
@@ -15,6 +16,7 @@ pub enum Events {
     Vbus(bool),
     Vsys(f32),
     AlarmSettingsReadFromFlash(AlarmSettings),
+    MinuteTimer,
 }
 
 /// Commands that we want to send from the orchestrator to the other tasks that we want to control.
@@ -35,14 +37,19 @@ pub enum Commands {
     SoundUpdate,
 }
 
-/// Channel for the events that we want the orchestrator to react to, all state events are of the type Enum Events.
+/// For the events that we want the orchestrator to react to, all state events are of the type Enum Events.
 pub static EVENT_CHANNEL: Channel<CriticalSectionRawMutex, Events, 10> = Channel::new();
-/// Channel for the update commands that we want the orchestrator to send to the display task.
-pub static DISPLAY_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 1> = Channel::new();
+
+/// For the update commands that we want the orchestrator to send to the display task. Since we only ever want to display according to the state of
+/// the system, we will not send any data in the command option and we can afford to work only with a simple state of "the display needs to be updated".
+pub static DISPLAY_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
+
 /// Channel for the update commands that we want the orchestrator to send to the neopixel.
 pub static NEOPIXEL_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 3> = Channel::new();
+
 /// Channel for the update commands that we want the orchestrator to send to the flash task.
 pub static FLASH_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 1> = Channel::new();
+
 /// Channel for the update commands that we want the orchestrator to send to the mp3-player task.
 pub static SOUND_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 1> = Channel::new();
 
@@ -64,7 +71,7 @@ type StateManagerType = Mutex<CriticalSectionRawMutex, Option<StateManager>>;
 pub static STATE_MANAGER_MUTEX: StateManagerType = Mutex::new(None);
 
 /// All the states of the system are kept in this struct.
-#[derive(PartialEq, Debug, Format)]
+#[derive(PartialEq, Debug, Format, Clone)]
 pub struct StateManager {
     /// The operation mode of the system
     pub operation_mode: OperationMode,
@@ -107,11 +114,35 @@ impl StateManager {
         }
     }
 
-    // ToDo: handle the other button presses
+    pub fn handle_blue_button_press(&mut self) {
+        match self.operation_mode {
+            OperationMode::Normal => {
+                self.operation_mode = OperationMode::SetAlarmTime;
+            }
+            OperationMode::SetAlarmTime => {
+                // ToDo: save the alarm time
+                // ToDo: save the alarm time
+                self.operation_mode = OperationMode::Normal;
+            }
+            _ => {}
+        }
+    }
+
+    pub fn handle_yellow_button_press(&mut self) {
+        match self.operation_mode {
+            OperationMode::Normal => {
+                self.operation_mode = OperationMode::Menu;
+            }
+            OperationMode::Menu => {
+                self.operation_mode = OperationMode::Normal;
+            }
+            _ => {}
+        }
+    }
 }
 
 /// The operation mode of the system
-#[derive(PartialEq, Debug, Format)]
+#[derive(PartialEq, Debug, Format, Clone)]
 pub enum OperationMode {
     /// The regular operation mode.
     ///
@@ -135,9 +166,9 @@ pub enum OperationMode {
 #[derive(PartialEq, Debug, Format, Clone)]
 pub struct AlarmSettings {
     /// The alarm time is set to the specified time
-    time: (u8, u8),
+    pub time: (u8, u8),
     /// The alarm is enabled or disabled
-    enabled: bool,
+    pub enabled: bool,
 }
 
 impl AlarmSettings {
@@ -170,7 +201,7 @@ impl AlarmSettings {
 }
 
 /// The state of the alarm
-#[derive(PartialEq, Debug, Format)]
+#[derive(PartialEq, Debug, Format, Clone)]
 pub enum AlarmState {
     /// The alarm is not active, the alarm time has not been reached
     None,
@@ -185,7 +216,7 @@ pub enum AlarmState {
 }
 
 /// The battery level of the system in steps of 20% from 0 to 100. One additional state is provided for charging.
-#[derive(PartialEq, Debug, Format)]
+#[derive(PartialEq, Debug, Format, Clone)]
 pub enum BatteryLevel {
     Charging,
     Bat000,
@@ -197,7 +228,7 @@ pub enum BatteryLevel {
 }
 
 /// The power state of the system
-#[derive(PartialEq, Debug, Format)]
+#[derive(PartialEq, Debug, Format, Clone)]
 pub struct PowerState {
     /// The system is running on usb power
     pub usb_power: bool,
@@ -205,7 +236,7 @@ pub struct PowerState {
     pub vsys: f32,
     /// The battery level of the system
     /// The battery level is provided in steps of 20% from 0 to 100. One additional state is provided for charging.
-    battery_level: BatteryLevel,
+    pub battery_level: BatteryLevel,
 }
 
 impl PowerState {
@@ -235,7 +266,7 @@ impl PowerState {
 }
 
 /// The menu mode of the system
-#[derive(PartialEq, Debug, Format)]
+#[derive(PartialEq, Debug, Format, Clone)]
 pub enum MenuMode {
     /// The default state: the clock is displayed
     None,
@@ -244,7 +275,7 @@ pub enum MenuMode {
 }
 
 /// options for the system info
-#[derive(PartialEq, Debug, Format)]
+#[derive(PartialEq, Debug, Format, Clone)]
 pub enum SystemInfoMenuMode {
     /// select to either display the system info or shutdown the system
     Select,

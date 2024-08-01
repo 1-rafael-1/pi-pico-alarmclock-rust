@@ -5,6 +5,7 @@ use defmt::*;
 use embassy_executor::Spawner;
 use embassy_rp::peripherals::RTC;
 use embassy_rp::rtc::Rtc;
+use embassy_time::{Duration, Timer};
 
 /// This task is responsible for the state transitions of the system. It acts as the main task of the system.
 /// It receives events from the other tasks and reacts to them by changing the state of the system.
@@ -43,26 +44,36 @@ pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stati
             // react to the events
             match event {
                 Events::BlueBtn(presses) => {
-                    info!("Blue button pressed, presses: {}", presses);
+                    state_manager.handle_blue_button_press();
+                    DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                 }
                 Events::GreenBtn(presses) => {
                     state_manager.handle_green_button_press();
+                    DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                 }
                 Events::YellowBtn(presses) => {
-                    info!("Yellow button pressed, presses: {}", presses);
+                    state_manager.handle_yellow_button_press();
+                    DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                 }
                 Events::Vbus(usb) => {
                     info!("Vbus event, usb: {}", usb);
                     state_manager.power_state.usb_power = usb;
+                    state_manager.power_state.set_battery_level();
+                    DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                 }
                 Events::Vsys(voltage) => {
                     info!("Vsys event, voltage: {}", voltage);
                     state_manager.power_state.vsys = voltage;
                     state_manager.power_state.set_battery_level();
+                    DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                 }
                 Events::AlarmSettingsReadFromFlash(alarm_settings) => {
                     info!("Alarm time read from flash: {:?}", alarm_settings);
                     state_manager.alarm_settings = alarm_settings;
+                }
+                Events::MinuteTimer => {
+                    info!("Minute timer event");
+                    DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                 }
             }
         }
@@ -76,16 +87,27 @@ pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stati
             );
         }
 
-        match _spawner.spawn(info_task(_spawner)) {
+        match _spawner.spawn(info(_spawner)) {
             Ok(_) => info!("info_task spawned"),
             Err(_) => info!("info_task spawn failed"),
         }
-        // ToDo: send the state to the display task. This will be straightforward, as we will design the display task to
-        // receive the state and update the display accordingly.
 
         // ToDo: send the state to the sound task. This will be straightforward, as there is only one sound to play, the alarm sound.
 
         // ToDo: send the state to the neopixel task. This will need a little thinking, as the neopixel hs different effects to display
+    }
+}
+
+#[embassy_executor::task]
+pub async fn minute_timer(_spawner: Spawner) {
+    info!("Minute timer task started");
+    loop {
+        // send the minute timer event, if there is not already a signal to update the display active
+        if !DISPLAY_SIGNAL.signaled() {
+            EVENT_CHANNEL.sender().send(Events::MinuteTimer).await;
+        }
+        // wait for 1 minute
+        Timer::after(Duration::from_secs(60)).await;
     }
 }
 
@@ -94,8 +116,8 @@ pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stati
 /// This task is responsible for logging the state of the system. It is triggered by the orchestrate task.
 /// This is just a simple way to prove the Mutex is working as expected.
 #[embassy_executor::task]
-pub async fn info_task(_spawner: Spawner) {
-    info!("Info task started");
+pub async fn info(_spawner: Spawner) {
+    info!("set_time task started");
     let mut state_manager_guard = STATE_MANAGER_MUTEX.lock().await;
     match state_manager_guard.as_mut() {
         Some(state_manager) => {

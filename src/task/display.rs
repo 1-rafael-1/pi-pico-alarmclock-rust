@@ -1,20 +1,25 @@
 /// This module contains the task that displays information on the OLED display.
 ///
 /// The task is responsible for initializing the display, displaying images and text, and updating the display.
-use crate::task::resources::{DisplayResources, Irqs};
+use crate::task::{
+    resources::{DisplayResources, Irqs},
+    state::{BatteryLevel, OperationMode, DISPLAY_SIGNAL, STATE_MANAGER_MUTEX},
+};
+use core::cell::RefCell;
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_rp::i2c::{Config, I2c};
-use embassy_time::{Duration, Timer};
+use embassy_rp::peripherals::RTC;
+use embassy_rp::rtc::Rtc;
+use embassy_rp::rtc::{DateTime, DayOfWeek};
 use embedded_graphics::{
     image::Image,
-    mono_font::{ascii::FONT_9X18_BOLD, MonoTextStyleBuilder},
-    pixelcolor::{BinaryColor, Gray8},
+    pixelcolor::Gray8,
     prelude::*,
-    text::{Baseline, Text},
 };
 use ssd1306_async::{prelude::*, I2CDisplayInterface, Ssd1306};
 use tinybmp::Bmp;
+
 
 struct Bmps {
     saber: Bmp<'static, Gray8>,
@@ -163,7 +168,11 @@ impl<'a> Images<'a> {
 }
 
 #[embassy_executor::task]
-pub async fn display(_spawner: Spawner, r: DisplayResources) {
+pub async fn display(
+    _spawner: Spawner,
+    r: DisplayResources,
+    rtc_ref: &'static RefCell<Rtc<'static, RTC>>,
+) {
     info!("Display task started");
 
     let scl = r.scl;
@@ -182,45 +191,193 @@ pub async fn display(_spawner: Spawner, r: DisplayResources) {
             return;
         }
     }
-    display.set_brightness(Brightness::DIMMEST).await.unwrap();
+
+    display.set_brightness(Brightness::DIM).await.unwrap();
 
     // Load BMP images from media
     let bmps = Bmps::new();
     // Create images from BMPs
-    let mut images = Images::new(&bmps);
+    let images = Images::new(&bmps);
 
     loop {
-        Timer::after(Duration::from_millis(1_000)).await;
+        // Wait for a signal to update the display
+        DISPLAY_SIGNAL.wait().await;
 
+        // get the state of the system out of the mutex and quickly drop the mutex
+        let state_manager_guard = STATE_MANAGER_MUTEX.lock().await;
+        //let state_manager = state_manager_guard.as_ref().unwrap();
+        let state_manager = match state_manager_guard.clone() {
+            Some(state_manager) => state_manager,
+            None => {
+                error!("State manager not initialized");
+                continue;
+            }
+        };
+        drop(state_manager_guard);
+
+        // get the system time in format HH:MM out of the rtc_ref
+        //let dt = rtc_ref.borrow().now().unwrap();
+        // Get the system time in format HH:MM out of the rtc_ref
+        let dt = match rtc_ref.borrow().now() {
+            Ok(dt) => dt,
+            Err(e) => {
+                info!("RTC not running: {:?}", Debug2Format(&e));
+                // return an empty DateTime
+                DateTime {
+                    year: 0,
+                    month: 0,
+                    day: 0,
+                    day_of_week: DayOfWeek::Monday,
+                    hour: 0,
+                    minute: 0,
+                    second: 0,
+                }
+            }
+        };
+
+        // prepare the display, note that nothing is sent to the display before flush()
         display.clear();
 
-        let text_style = MonoTextStyleBuilder::new()
-            .font(&FONT_9X18_BOLD)
-            .text_color(BinaryColor::On)
-            .build();
-        Text::with_baseline("Text 1", Point::zero(), text_style, Baseline::Top)
-            .draw(&mut display)
-            .unwrap();
-        Text::with_baseline("Text 2", Point::new(0, 16), text_style, Baseline::Top)
-            .draw(&mut display)
-            .unwrap();
+        // display the battery status
+        match state_manager.power_state.battery_level {
+            BatteryLevel::Bat000 => {
+                images.bat_000.draw(&mut display.color_converted()).unwrap();
+            }
+            BatteryLevel::Bat020 => {
+                images.bat_020.draw(&mut display.color_converted()).unwrap();
+            }
+            BatteryLevel::Bat040 => {
+                images.bat_040.draw(&mut display.color_converted()).unwrap();
+            }
+            BatteryLevel::Bat060 => {
+                images.bat_060.draw(&mut display.color_converted()).unwrap();
+            }
+            BatteryLevel::Bat080 => {
+                images.bat_080.draw(&mut display.color_converted()).unwrap();
+            }
+            BatteryLevel::Bat100 => {
+                images.bat_100.draw(&mut display.color_converted()).unwrap();
+            }
+            BatteryLevel::Charging => {
+                images
+                    .bat_mains
+                    .draw(&mut display.color_converted())
+                    .unwrap();
+            }
+        }
 
+        // display the time, depending on the operation mode
+        let hours: u8;
+        let minutes: u8;
+        match state_manager.operation_mode {
+            OperationMode::Normal | OperationMode::Alarm => {
+                hours = dt.hour;
+                minutes = dt.minute;
+            }
+            OperationMode::SetAlarmTime => {
+                hours = state_manager.alarm_settings.time.0;
+                minutes = state_manager.alarm_settings.time.1;
+            }
+            _ => {
+                hours = 0;
+                minutes = 0;
+            }
+        };
+        match state_manager.operation_mode {
+            OperationMode::Normal | OperationMode::Alarm | OperationMode::SetAlarmTime => {
+                let digit_images = [
+                    &bmps._0, &bmps._1, &bmps._2, &bmps._3, &bmps._4, &bmps._5, &bmps._6, &bmps._7,
+                    &bmps._8, &bmps._9,
+                ];
+                // Display the time
+                let mut next_position = Point::new(13, 26);
+                let first_hour_digit_index = (hours / 10) as usize;
+                let first_hour_digit =
+                    Image::new(digit_images[first_hour_digit_index], next_position);
+
+                next_position.x += 24;
+                let second_hour_digit_index = (hours % 10) as usize;
+                let second_hour_digit =
+                    Image::new(digit_images[second_hour_digit_index], next_position);
+
+                next_position.x += 24;
+                let colon = Image::new(&bmps.colon, next_position);
+
+                next_position.x += 11;
+                let first_minute_digit_index = (minutes / 10) as usize;
+                let first_minute_digit =
+                    Image::new(digit_images[first_minute_digit_index], next_position);
+
+                next_position.x += 24;
+                let second_minute_digit_index = (minutes % 10) as usize;
+                let second_minute_digit =
+                    Image::new(digit_images[second_minute_digit_index], next_position);
+
+                first_hour_digit
+                    .draw(&mut display.color_converted())
+                    .unwrap();
+                second_hour_digit
+                    .draw(&mut display.color_converted())
+                    .unwrap();
+                colon.draw(&mut display.color_converted()).unwrap();
+                first_minute_digit
+                    .draw(&mut display.color_converted())
+                    .unwrap();
+                second_minute_digit
+                    .draw(&mut display.color_converted())
+                    .unwrap();
+            }
+            _ => {}
+        };
+
+        // display the state area
+        match state_manager.operation_mode {
+            OperationMode::Normal => match state_manager.alarm_settings.enabled {
+                true => {
+                    images.saber.draw(&mut display.color_converted()).unwrap();
+                }
+                false => {}
+            },
+            OperationMode::SetAlarmTime | OperationMode::SystemInfo => {
+                images
+                    .settings
+                    .draw(&mut display.color_converted())
+                    .unwrap();
+            }
+            _ => {}
+        }
+
+        // finally: send the display buffer to the display
         display.flush().await.unwrap();
+        // and we are done for this cycle
 
-        Timer::after(Duration::from_millis(1_000)).await;
+        // let text_style = MonoTextStyleBuilder::new()
+        //     .font(&FONT_9X18_BOLD)
+        //     .text_color(BinaryColor::On)
+        //     .build();
+        // Text::with_baseline("Text 1", Point::zero(), text_style, Baseline::Top)
+        //     .draw(&mut display)
+        //     .unwrap();
+        // Text::with_baseline("Text 2", Point::new(0, 16), text_style, Baseline::Top)
+        //     .draw(&mut display)
+        //     .unwrap();
 
-        display.clear();
-        images.saber.draw(&mut display.color_converted()).unwrap();
-        display.flush().await.unwrap();
+        // display.flush().await.unwrap();
 
-        Timer::after(Duration::from_millis(1_000)).await;
+        // Timer::after(Duration::from_millis(1_000)).await;
 
-        display.clear();
-        images.repositon_image(&bmps, "saber", Point::new(0, 50));
-        images.saber.draw(&mut display.color_converted()).unwrap();
-        display.flush().await.unwrap();
-        images.repositon_image(&bmps, "saber", Point::new(0, 0));
+        // display.clear();
+        // images.saber.draw(&mut display.color_converted()).unwrap();
+        // display.flush().await.unwrap();
 
-        Timer::after(Duration::from_millis(1_000)).await;
+        // Timer::after(Duration::from_millis(1_000)).await;
+
+        // display.clear();
+        // images.repositon_image(&bmps, "saber", Point::new(0, 50));
+        // images.saber.draw(&mut display.color_converted()).unwrap();
+        // display.flush().await.unwrap();
+        // images.repositon_image(&bmps, "saber", Point::new(0, 0));
+
+        // Timer::after(Duration::from_millis(1_000)).await;
     }
 }

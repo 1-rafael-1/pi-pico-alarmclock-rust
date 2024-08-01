@@ -23,8 +23,8 @@ assign_resources! {
     btn_yellow: YellowButtonResources {
         button_pin: PIN_22,
     },
-    rtc: RtcResources {
-        rtc_inst: RTC,
+    real_time_clock: RtcResources {
+        rtc: RTC,
     },
     neopixel: NeopixelResources {
         inner_spi: SPI0,
