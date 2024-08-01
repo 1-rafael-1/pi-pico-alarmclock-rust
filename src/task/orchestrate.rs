@@ -5,7 +5,6 @@ use defmt::*;
 use embassy_executor::Spawner;
 use embassy_rp::peripherals::RTC;
 use embassy_rp::rtc::Rtc;
-use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Timer};
 
 /// This task is responsible for the state transitions of the system. It acts as the main task of the system.

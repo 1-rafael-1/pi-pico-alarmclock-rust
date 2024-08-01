@@ -3,32 +3,23 @@
 /// The task is responsible for initializing the display, displaying images and text, and updating the display.
 use crate::task::{
     resources::{DisplayResources, Irqs},
-    state::{BatteryLevel, OperationMode, PowerState, DISPLAY_SIGNAL, STATE_MANAGER_MUTEX},
+    state::{BatteryLevel, OperationMode, DISPLAY_SIGNAL, STATE_MANAGER_MUTEX},
 };
-use core::fmt::Display;
-use core::write;
-use core::{cell::RefCell, fmt::write};
+use core::cell::RefCell;
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_rp::i2c::{Config, I2c};
 use embassy_rp::peripherals::RTC;
 use embassy_rp::rtc::Rtc;
 use embassy_rp::rtc::{DateTime, DayOfWeek};
-use embassy_time::{Duration, Timer};
 use embedded_graphics::{
     image::Image,
-    mono_font::{ascii::FONT_9X18_BOLD, MonoTextStyleBuilder},
-    pixelcolor::{BinaryColor, Gray8},
+    pixelcolor::Gray8,
     prelude::*,
-    text::{Baseline, Text},
 };
 use ssd1306_async::{prelude::*, I2CDisplayInterface, Ssd1306};
 use tinybmp::Bmp;
 
-use embassy_rp::i2c::Async;
-use embassy_rp::peripherals::I2C0;
-use ssd1306_async::i2c_interface::I2CInterface;
-use ssd1306_async::mode::BufferedGraphicsMode;
 
 struct Bmps {
     saber: Bmp<'static, Gray8>,
@@ -206,7 +197,7 @@ pub async fn display(
     // Load BMP images from media
     let bmps = Bmps::new();
     // Create images from BMPs
-    let mut images = Images::new(&bmps);
+    let images = Images::new(&bmps);
 
     loop {
         // Wait for a signal to update the display
