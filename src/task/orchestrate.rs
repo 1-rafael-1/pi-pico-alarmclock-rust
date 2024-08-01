@@ -45,22 +45,28 @@ pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stati
             // react to the events
             match event {
                 Events::BlueBtn(presses) => {
-                    info!("Blue button pressed, presses: {}", presses);
+                    state_manager.handle_blue_button_press();
+                    DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                 }
                 Events::GreenBtn(presses) => {
                     state_manager.handle_green_button_press();
+                    DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                 }
                 Events::YellowBtn(presses) => {
-                    info!("Yellow button pressed, presses: {}", presses);
+                    state_manager.handle_yellow_button_press();
+                    DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                 }
                 Events::Vbus(usb) => {
                     info!("Vbus event, usb: {}", usb);
                     state_manager.power_state.usb_power = usb;
+                    state_manager.power_state.set_battery_level();
+                    DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                 }
                 Events::Vsys(voltage) => {
                     info!("Vsys event, voltage: {}", voltage);
                     state_manager.power_state.vsys = voltage;
                     state_manager.power_state.set_battery_level();
+                    DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                 }
                 Events::AlarmSettingsReadFromFlash(alarm_settings) => {
                     info!("Alarm time read from flash: {:?}", alarm_settings);
@@ -86,8 +92,6 @@ pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stati
             Ok(_) => info!("info_task spawned"),
             Err(_) => info!("info_task spawn failed"),
         }
-        // ToDo: send the state to the display task. This will be straightforward, as we will design the display task to
-        // receive the state and update the display accordingly.
 
         // ToDo: send the state to the sound task. This will be straightforward, as there is only one sound to play, the alarm sound.
 
@@ -98,7 +102,6 @@ pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stati
 #[embassy_executor::task]
 pub async fn minute_timer(_spawner: Spawner) {
     info!("Minute timer task started");
-
     loop {
         // send the minute timer event, if there is not already a signal to update the display active
         if !DISPLAY_SIGNAL.signaled() {

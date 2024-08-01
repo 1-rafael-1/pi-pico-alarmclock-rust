@@ -114,7 +114,31 @@ impl StateManager {
         }
     }
 
-    // ToDo: handle the other button presses
+    pub fn handle_blue_button_press(&mut self) {
+        match self.operation_mode {
+            OperationMode::Normal => {
+                self.operation_mode = OperationMode::SetAlarmTime;
+            }
+            OperationMode::SetAlarmTime => {
+                // ToDo: save the alarm time
+                // ToDo: save the alarm time
+                self.operation_mode = OperationMode::Normal;
+            }
+            _ => {}
+        }
+    }
+
+    pub fn handle_yellow_button_press(&mut self) {
+        match self.operation_mode {
+            OperationMode::Normal => {
+                self.operation_mode = OperationMode::Menu;
+            }
+            OperationMode::Menu => {
+                self.operation_mode = OperationMode::Normal;
+            }
+            _ => {}
+        }
+    }
 }
 
 /// The operation mode of the system
@@ -212,7 +236,7 @@ pub struct PowerState {
     pub vsys: f32,
     /// The battery level of the system
     /// The battery level is provided in steps of 20% from 0 to 100. One additional state is provided for charging.
-    battery_level: BatteryLevel,
+    pub battery_level: BatteryLevel,
 }
 
 impl PowerState {
