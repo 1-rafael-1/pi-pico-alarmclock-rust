@@ -20,6 +20,8 @@ pub enum Events {
     AlarmSettingsNeedUpdate,
     MinuteTimer,
     RtcUpdated,
+    Standby,
+    WakeUp,
 }
 
 /// Commands that we want to send from the orchestrator to the other tasks that we want to control.
@@ -38,6 +40,10 @@ pub enum Commands {
     /// Update the sound task with the new state of the system
     /// ToDo: decide if and what data we need to send to the sound task
     SoundUpdate,
+    /// Stop the minute timer
+    MinuteTimerStop,
+    /// Start the minute timer
+    MinuteTimerStart,
 }
 
 /// For the events that we want the orchestrator to react to, all state events are of the type Enum Events.
@@ -47,14 +53,19 @@ pub static EVENT_CHANNEL: Channel<CriticalSectionRawMutex, Events, 10> = Channel
 /// the system, we will not send any data in the command option and we can afford to work only with a simple state of "the display needs to be updated".
 pub static DISPLAY_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
 
-/// Channel for the update commands that we want the orchestrator to send to the neopixel.
-pub static NEOPIXEL_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 3> = Channel::new();
+/// For the update commands that we want the orchestrator to send to the minute timer task. Since we only ever want to update the minute timer according to the state of
+/// the system, we will not send any data in the command option and we can afford to work only with a simple state of "the minute timer needs to be stopped".
+pub static TIMER_STOP_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
+pub static TIMER_START_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
 
 /// Channel for the update commands that we want the orchestrator to send to the flash task.
 pub static FLASH_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 1> = Channel::new();
 
+/// Channel for the update commands that we want the orchestrator to send to the neopixel.
+// pub static NEOPIXEL_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 3> = Channel::new();
+
 /// Channel for the update commands that we want the orchestrator to send to the mp3-player task.
-pub static SOUND_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 1> = Channel::new();
+// pub static SOUND_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 1> = Channel::new();
 
 /// Type alias for the system state manager protected by a mutex.
 ///
@@ -147,6 +158,18 @@ impl StateManager {
         let sender = EVENT_CHANNEL.sender();
         sender.send(Events::AlarmSettingsNeedUpdate).await;
     }
+
+    pub async fn set_standby_mode(&mut self) {
+        let sender = EVENT_CHANNEL.sender();
+        self.operation_mode = OperationMode::Standby;
+        sender.send(Events::Standby).await;
+    }
+
+    pub async fn wake_up(&mut self) {
+        let sender = EVENT_CHANNEL.sender();
+        self.set_normal_mode();
+        sender.send(Events::WakeUp).await;
+    }
 }
 
 /// User Input Handling
@@ -167,6 +190,9 @@ impl StateManager {
                 self.set_normal_mode();
             }
             OperationMode::Alarm => {}
+            OperationMode::Standby => {
+                self.wake_up().await;
+            }
         }
     }
 
@@ -180,11 +206,16 @@ impl StateManager {
                 self.save_alarm_settings().await;
                 self.set_normal_mode();
             }
-            OperationMode::Menu => {}
+            OperationMode::Menu => {
+                self.set_standby_mode().await;
+            }
             OperationMode::SystemInfo => {
                 self.set_normal_mode();
             }
             OperationMode::Alarm => {}
+            OperationMode::Standby => {
+                self.wake_up().await;
+            }
         }
     }
 
@@ -204,6 +235,9 @@ impl StateManager {
                 self.set_normal_mode();
             }
             OperationMode::Alarm => {}
+            OperationMode::Standby => {
+                self.wake_up().await;
+            }
         }
     }
 }
@@ -227,6 +261,8 @@ pub enum OperationMode {
     Menu,
     /// Displaying the system info
     SystemInfo,
+    /// The system is in standby mode, the display is off, the neopixel ring is off, the system is in a low power state.
+    Standby,
 }
 
 /// The settings for the alarm

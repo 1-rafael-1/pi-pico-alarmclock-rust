@@ -15,6 +15,7 @@ use embassy_rp::i2c::{Config, I2c};
 use embassy_rp::peripherals::RTC;
 use embassy_rp::rtc::Rtc;
 use embassy_rp::rtc::{DateTime, DayOfWeek};
+use embassy_time::{Duration, Timer};
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::{
     image::Image,
@@ -166,7 +167,6 @@ pub async fn display(
 
         // get the state of the system out of the mutex and quickly drop the mutex
         let state_manager_guard = STATE_MANAGER_MUTEX.lock().await;
-        //let state_manager = state_manager_guard.as_ref().unwrap();
         let state_manager = match state_manager_guard.clone() {
             Some(state_manager) => state_manager,
             None => {
@@ -232,6 +232,7 @@ pub async fn display(
                     .unwrap();
                 }
                 OperationMode::Alarm => {}
+                OperationMode::Standby => {}
             }
         }
 
@@ -262,7 +263,7 @@ pub async fn display(
                 }
             }
             bat_image.draw(&mut display.color_converted()).unwrap();
-        };
+        }
 
         '_main_area: {
             let hours: u8;
@@ -400,6 +401,22 @@ pub async fn display(
                     .draw(&mut display)
                     .unwrap();
                 }
+                OperationMode::Standby => {
+                    let mut content_next_position = settings.content_start_position.clone();
+                    content_next_position.y += 15;
+                    Text::with_baseline(
+                        "Going to sleep...",
+                        settings.content_start_position,
+                        settings.content_text_style,
+                        Baseline::Top,
+                    )
+                    .draw(&mut display)
+                    .unwrap();
+                    display.flush().await.unwrap();
+                    Timer::after(Duration::from_secs(5)).await;
+                    display.clear();
+                    display.flush().await.unwrap();
+                }
             };
         }
 
@@ -418,10 +435,9 @@ pub async fn display(
                 }
                 _ => {}
             }
-        };
+        }
 
-        // finally: send the display buffer to the display
+        // finally: send the display buffer to the display and we are done for this cycle
         display.flush().await.unwrap();
-        // and we are done for this cycle
     }
 }

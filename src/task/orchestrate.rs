@@ -88,6 +88,16 @@ pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stati
                         ))
                         .await;
                 }
+                Events::Standby => {
+                    info!("Standby event");
+                    DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
+                    TIMER_STOP_SIGNAL.signal(Commands::MinuteTimerStop);
+                }
+                Events::WakeUp => {
+                    info!("Wake up event");
+                    DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
+                    TIMER_START_SIGNAL.signal(Commands::MinuteTimerStart);
+                }
             }
         }
 
@@ -115,6 +125,14 @@ pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stati
 pub async fn minute_timer(_spawner: Spawner) {
     info!("Minute timer task started");
     loop {
+        // see if we must halt the task, then wait for the start signal
+        if TIMER_STOP_SIGNAL.signaled() {
+            info!("Minute timer task halted");
+            TIMER_STOP_SIGNAL.reset();
+            TIMER_START_SIGNAL.wait().await;
+            info!("Minute timer task resumed");
+        }
+
         // send the minute timer event, if there is not already a signal to update the display active
         if !DISPLAY_SIGNAL.signaled() {
             EVENT_CHANNEL.sender().send(Events::MinuteTimer).await;
