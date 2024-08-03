@@ -125,7 +125,7 @@ pub async fn manage_alarm_settings(_spawner: Spawner, r: FlashResources) {
     let mut persisted_alarm_settings = PersistedAlarmSettings::new(r);
     let receiver = FLASH_CHANNEL.receiver();
 
-    'read_alarm_settings: {
+    '_read_alarm_settings: {
         // Read the alarm settings from the flash memory only once at the start of the task
         // and send them to the event channel. After that, we can drop this scope.
         let alarm_settings = persisted_alarm_settings

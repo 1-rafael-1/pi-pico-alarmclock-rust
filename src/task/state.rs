@@ -266,23 +266,3 @@ impl PowerState {
         }
     }
 }
-
-/// The menu mode of the system
-#[derive(PartialEq, Debug, Format, Clone)]
-pub enum MenuMode {
-    /// The default state: the clock is displayed
-    None,
-    /// The system info menu is being displayed
-    SystemInfoMenu,
-}
-
-/// options for the system info
-#[derive(PartialEq, Debug, Format, Clone)]
-pub enum SystemInfoMenuMode {
-    /// select to either display the system info or shutdown the system
-    Select,
-    /// display the system info
-    Info,
-    /// shutdown the system into a low power state
-    ShutdownLowPower,
-}
