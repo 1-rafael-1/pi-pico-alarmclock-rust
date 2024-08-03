@@ -1,3 +1,4 @@
+//! # Alarm Settings
 //! This module contains the functionality to persist the alarm settings in the flash memory.
 //!
 //! The alarm settings are stored in the flash memory as three separate key/value pairs.

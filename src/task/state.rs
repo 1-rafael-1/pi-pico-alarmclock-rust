@@ -1,3 +1,4 @@
+//! # State of the system
 //! This module desccribes the state of the system and the events that can change the state of the system as well as the commands that can be sent to the tasks
 //! that control the system.
 use defmt::*;
@@ -17,6 +18,7 @@ pub enum Events {
     Vsys(f32),
     AlarmSettingsReadFromFlash(AlarmSettings),
     MinuteTimer,
+    RtcUpdated,
 }
 
 /// Commands that we want to send from the orchestrator to the other tasks that we want to control.

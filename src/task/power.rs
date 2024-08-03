@@ -1,4 +1,4 @@
-//! # Power
+//! # Power tasks
 //! Determine the power state of the system: battery or power supply.
 //! Detremine the supply voltage of the system.
 

@@ -1,3 +1,4 @@
+//! # Orchestrate Tasks
 //! Task to orchestrate the state transitions of the system.
 use crate::task::state::*;
 use core::cell::RefCell;
@@ -73,6 +74,10 @@ pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stati
                 }
                 Events::MinuteTimer => {
                     info!("Minute timer event");
+                    DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
+                }
+                Events::RtcUpdated => {
+                    info!("RTC updated event");
                     DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                 }
             }
