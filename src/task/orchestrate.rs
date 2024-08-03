@@ -83,8 +83,7 @@ pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stati
             }
         }
 
-        // at this point we have altered the state of the system, we can now trigger actions based on the state
-        // for now we will just log the state, in another task :-)
+        // log the time
         if let Ok(dt) = rtc_ref.borrow_mut().now() {
             info!(
                 "orhestrate loop: {}-{:02}-{:02} {}:{:02}:{:02}",
@@ -92,9 +91,10 @@ pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stati
             );
         }
 
+        // log the state of the system
         match _spawner.spawn(info(_spawner)) {
-            Ok(_) => info!("info_task spawned"),
-            Err(_) => info!("info_task spawn failed"),
+            Ok(_) => {}
+            Err(_) => error!("info_task spawn failed"),
         }
 
         // ToDo: send the state to the sound task. This will be straightforward, as there is only one sound to play, the alarm sound.
@@ -122,7 +122,6 @@ pub async fn minute_timer(_spawner: Spawner) {
 /// This is just a simple way to prove the Mutex is working as expected.
 #[embassy_executor::task]
 pub async fn info(_spawner: Spawner) {
-    info!("set_time task started");
     let mut state_manager_guard = STATE_MANAGER_MUTEX.lock().await;
     match state_manager_guard.as_mut() {
         Some(state_manager) => {
