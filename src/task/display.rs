@@ -8,7 +8,8 @@ use crate::task::{
 };
 use crate::utility::string_utils::StringUtils;
 use core::cell::RefCell;
-use defmt::*;
+use core::fmt::Write;
+use defmt::{error, info, Debug2Format};
 use embassy_executor::Spawner;
 use embassy_rp::i2c::{Config, I2c};
 use embassy_rp::peripherals::RTC;
@@ -25,6 +26,7 @@ use embedded_graphics::{
     prelude::*,
     text::{Baseline, Text},
 };
+use heapless::String;
 use ssd1306_async::{prelude::*, I2CDisplayInterface, Ssd1306};
 use tinybmp::Bmp;
 
@@ -122,7 +124,7 @@ impl<'a> Settings<'a> {
                 .text_color(BinaryColor::On)
                 .build(),
             content_text_style: MonoTextStyleBuilder::new()
-                .font(&FONT_8X13)
+                .font(&FONT_6X13)
                 .text_color(BinaryColor::On)
                 .build(),
         }
@@ -356,7 +358,48 @@ pub async fn display(
                     .draw(&mut display)
                     .unwrap();
                 }
-                _ => {}
+                OperationMode::SystemInfo => {
+                    let mut content_next_position = settings.content_start_position.clone();
+                    let vsys = state_manager.power_state.vsys.clone();
+                    let usb_power = state_manager.power_state.usb_power.clone();
+                    let upper = state_manager
+                        .power_state
+                        .battery_voltage_fully_charged
+                        .clone();
+                    let lower = state_manager.power_state.battery_voltage_empty.clone();
+                    let mut vsys_txt: String<20> = String::new();
+                    let _ = write!(vsys_txt, "Vsys:  {}V", vsys);
+                    Text::with_baseline(
+                        &vsys_txt,
+                        content_next_position,
+                        settings.content_text_style,
+                        Baseline::Top,
+                    )
+                    .draw(&mut display)
+                    .unwrap();
+                    content_next_position.y += 15;
+                    let mut usb_txt: String<20> = String::new();
+                    let _ = write!(usb_txt, "USB:   {}", usb_power);
+                    Text::with_baseline(
+                        &usb_txt,
+                        content_next_position,
+                        settings.content_text_style,
+                        Baseline::Top,
+                    )
+                    .draw(&mut display)
+                    .unwrap();
+                    content_next_position.y += 15;
+                    let mut bounds_txt: String<20> = String::new();
+                    let _ = write!(bounds_txt, "Upper/Lower {}/{}V", upper, lower);
+                    Text::with_baseline(
+                        &bounds_txt,
+                        content_next_position,
+                        settings.content_text_style,
+                        Baseline::Top,
+                    )
+                    .draw(&mut display)
+                    .unwrap();
+                }
             };
         }
 

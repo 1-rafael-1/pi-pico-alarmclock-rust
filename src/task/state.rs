@@ -96,6 +96,8 @@ impl StateManager {
             power_state: PowerState {
                 usb_power: false,
                 vsys: 0.0,
+                battery_voltage_fully_charged: 4.1,
+                battery_voltage_empty: 2.6,
                 battery_level: BatteryLevel::Bat000,
             },
         };
@@ -299,6 +301,10 @@ pub struct PowerState {
     pub usb_power: bool,
     /// The voltage of the system power supply
     pub vsys: f32,
+    /// The battery voltage when fully charged
+    pub battery_voltage_fully_charged: f32,
+    /// The battery voltage when the charger board cuts off the battery
+    pub battery_voltage_empty: f32,
     /// The battery level of the system
     /// The battery level is provided in steps of 20% from 0 to 100. One additional state is provided for charging.
     pub battery_level: BatteryLevel,
@@ -310,8 +316,8 @@ impl PowerState {
             self.battery_level = BatteryLevel::Charging;
         } else {
             // battery level is calculated based on the voltage of the battery, these are values measured on a LiPo battery on this system
-            let upper_bound_voltage = 4.1; // fully charged battery
-            let lower_bound_voltage = 2.6; // empty battery
+            let upper_bound_voltage = self.battery_voltage_fully_charged;
+            let lower_bound_voltage = self.battery_voltage_empty;
 
             // Calculate battery level based on voltage
             let battery_percent = ((self.vsys - lower_bound_voltage)
