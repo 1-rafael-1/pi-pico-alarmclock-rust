@@ -45,15 +45,15 @@ pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stati
             // react to the events
             match event {
                 Events::BlueBtn(presses) => {
-                    state_manager.handle_blue_button_press();
+                    state_manager.handle_blue_button_press().await;
                     DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                 }
                 Events::GreenBtn(presses) => {
-                    state_manager.handle_green_button_press();
+                    state_manager.handle_green_button_press().await;
                     DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                 }
                 Events::YellowBtn(presses) => {
-                    state_manager.handle_yellow_button_press();
+                    state_manager.handle_yellow_button_press().await;
                     DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                 }
                 Events::Vbus(usb) => {
@@ -80,11 +80,28 @@ pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stati
                     info!("RTC updated event");
                     DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                 }
+                Events::AlarmSettingsNeedUpdate => {
+                    info!("Alarm settings must be updated event");
+                    flash_sender
+                        .send(Commands::AlarmSettingsWriteToFlash(
+                            state_manager.alarm_settings.clone(),
+                        ))
+                        .await;
+                }
+                Events::Standby => {
+                    info!("Standby event");
+                    DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
+                    TIMER_STOP_SIGNAL.signal(Commands::MinuteTimerStop);
+                }
+                Events::WakeUp => {
+                    info!("Wake up event");
+                    DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
+                    TIMER_START_SIGNAL.signal(Commands::MinuteTimerStart);
+                }
             }
         }
 
-        // at this point we have altered the state of the system, we can now trigger actions based on the state
-        // for now we will just log the state, in another task :-)
+        // log the time
         if let Ok(dt) = rtc_ref.borrow_mut().now() {
             info!(
                 "orhestrate loop: {}-{:02}-{:02} {}:{:02}:{:02}",
@@ -92,9 +109,10 @@ pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stati
             );
         }
 
+        // log the state of the system
         match _spawner.spawn(info(_spawner)) {
-            Ok(_) => info!("info_task spawned"),
-            Err(_) => info!("info_task spawn failed"),
+            Ok(_) => {}
+            Err(_) => error!("info_task spawn failed"),
         }
 
         // ToDo: send the state to the sound task. This will be straightforward, as there is only one sound to play, the alarm sound.
@@ -107,6 +125,14 @@ pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stati
 pub async fn minute_timer(_spawner: Spawner) {
     info!("Minute timer task started");
     loop {
+        // see if we must halt the task, then wait for the start signal
+        if TIMER_STOP_SIGNAL.signaled() {
+            info!("Minute timer task halted");
+            TIMER_STOP_SIGNAL.reset();
+            TIMER_START_SIGNAL.wait().await;
+            info!("Minute timer task resumed");
+        }
+
         // send the minute timer event, if there is not already a signal to update the display active
         if !DISPLAY_SIGNAL.signaled() {
             EVENT_CHANNEL.sender().send(Events::MinuteTimer).await;
@@ -122,7 +148,6 @@ pub async fn minute_timer(_spawner: Spawner) {
 /// This is just a simple way to prove the Mutex is working as expected.
 #[embassy_executor::task]
 pub async fn info(_spawner: Spawner) {
-    info!("set_time task started");
     let mut state_manager_guard = STATE_MANAGER_MUTEX.lock().await;
     match state_manager_guard.as_mut() {
         Some(state_manager) => {

@@ -17,8 +17,11 @@ pub enum Events {
     Vbus(bool),
     Vsys(f32),
     AlarmSettingsReadFromFlash(AlarmSettings),
+    AlarmSettingsNeedUpdate,
     MinuteTimer,
     RtcUpdated,
+    Standby,
+    WakeUp,
 }
 
 /// Commands that we want to send from the orchestrator to the other tasks that we want to control.
@@ -37,6 +40,10 @@ pub enum Commands {
     /// Update the sound task with the new state of the system
     /// ToDo: decide if and what data we need to send to the sound task
     SoundUpdate,
+    /// Stop the minute timer
+    MinuteTimerStop,
+    /// Start the minute timer
+    MinuteTimerStart,
 }
 
 /// For the events that we want the orchestrator to react to, all state events are of the type Enum Events.
@@ -46,14 +53,19 @@ pub static EVENT_CHANNEL: Channel<CriticalSectionRawMutex, Events, 10> = Channel
 /// the system, we will not send any data in the command option and we can afford to work only with a simple state of "the display needs to be updated".
 pub static DISPLAY_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
 
-/// Channel for the update commands that we want the orchestrator to send to the neopixel.
-pub static NEOPIXEL_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 3> = Channel::new();
+/// For the update commands that we want the orchestrator to send to the minute timer task. Since we only ever want to update the minute timer according to the state of
+/// the system, we will not send any data in the command option and we can afford to work only with a simple state of "the minute timer needs to be stopped".
+pub static TIMER_STOP_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
+pub static TIMER_START_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
 
 /// Channel for the update commands that we want the orchestrator to send to the flash task.
 pub static FLASH_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 1> = Channel::new();
 
+/// Channel for the update commands that we want the orchestrator to send to the neopixel.
+// pub static NEOPIXEL_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 3> = Channel::new();
+
 /// Channel for the update commands that we want the orchestrator to send to the mp3-player task.
-pub static SOUND_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 1> = Channel::new();
+// pub static SOUND_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 1> = Channel::new();
 
 /// Type alias for the system state manager protected by a mutex.
 ///
@@ -83,6 +95,7 @@ pub struct StateManager {
     // more
 }
 
+/// State transitions
 impl StateManager {
     /// Create a new StateManager.             
     /// We will get the actual data pretty early in the system startup, so we can set all this to inits here
@@ -94,51 +107,137 @@ impl StateManager {
             power_state: PowerState {
                 usb_power: false,
                 vsys: 0.0,
+                battery_voltage_fully_charged: 4.1,
+                battery_voltage_empty: 2.6,
                 battery_level: BatteryLevel::Bat000,
             },
         };
         manager
     }
 
-    fn toggle_alarm_enabled(&mut self) {
+    pub async fn toggle_alarm_enabled(&mut self) {
         self.alarm_settings.enabled = !self.alarm_settings.enabled;
+        self.save_alarm_settings().await;
     }
 
-    /// Handle presses of the green button
-    pub fn handle_green_button_press(&mut self) {
-        match self.operation_mode {
-            OperationMode::Normal => {
-                self.toggle_alarm_enabled();
-            }
-            _ => {
-                // ToDo: handle the green button press in other operation modes
-            }
-        }
+    pub fn set_menu_mode(&mut self) {
+        self.operation_mode = OperationMode::Menu;
     }
 
-    pub fn handle_blue_button_press(&mut self) {
+    pub fn set_normal_mode(&mut self) {
+        self.operation_mode = OperationMode::Normal;
+    }
+
+    pub fn set_set_alarm_time_mode(&mut self) {
+        self.operation_mode = OperationMode::SetAlarmTime;
+    }
+
+    pub fn set_alarm_mode(&mut self) {
+        self.operation_mode = OperationMode::Alarm;
+    }
+
+    pub fn set_system_info_mode(&mut self) {
+        self.operation_mode = OperationMode::SystemInfo;
+    }
+
+    pub fn increment_alarm_hour(&mut self) {
+        let mut hour = self.alarm_settings.get_hour();
+        hour = (hour + 1) % 24;
+        self.alarm_settings
+            .set_time((hour, self.alarm_settings.get_minute()));
+    }
+
+    pub fn increment_alarm_minute(&mut self) {
+        let mut minute = self.alarm_settings.get_minute();
+        minute = (minute + 1) % 60;
+        self.alarm_settings
+            .set_time((self.alarm_settings.get_hour(), minute));
+    }
+
+    pub async fn save_alarm_settings(&mut self) {
+        let sender = EVENT_CHANNEL.sender();
+        sender.send(Events::AlarmSettingsNeedUpdate).await;
+    }
+
+    pub async fn set_standby_mode(&mut self) {
+        let sender = EVENT_CHANNEL.sender();
+        self.operation_mode = OperationMode::Standby;
+        sender.send(Events::Standby).await;
+    }
+
+    pub async fn wake_up(&mut self) {
+        let sender = EVENT_CHANNEL.sender();
+        self.set_normal_mode();
+        sender.send(Events::WakeUp).await;
+    }
+}
+
+/// User Input Handling
+impl StateManager {
+    /// Handle state changes when the green button is pressed
+    pub async fn handle_green_button_press(&mut self) {
         match self.operation_mode {
             OperationMode::Normal => {
-                self.operation_mode = OperationMode::SetAlarmTime;
+                self.toggle_alarm_enabled().await;
             }
             OperationMode::SetAlarmTime => {
-                // ToDo: save the alarm time
-                // ToDo: save the alarm time
-                self.operation_mode = OperationMode::Normal;
+                self.increment_alarm_hour();
             }
-            _ => {}
+            OperationMode::Menu => {
+                self.set_system_info_mode();
+            }
+            OperationMode::SystemInfo => {
+                self.set_normal_mode();
+            }
+            OperationMode::Alarm => {}
+            OperationMode::Standby => {
+                self.wake_up().await;
+            }
         }
     }
 
-    pub fn handle_yellow_button_press(&mut self) {
+    /// Handle state changes when the blue button is pressed
+    pub async fn handle_blue_button_press(&mut self) {
         match self.operation_mode {
             OperationMode::Normal => {
-                self.operation_mode = OperationMode::Menu;
+                self.set_set_alarm_time_mode();
+            }
+            OperationMode::SetAlarmTime => {
+                self.save_alarm_settings().await;
+                self.set_normal_mode();
             }
             OperationMode::Menu => {
-                self.operation_mode = OperationMode::Normal;
+                self.set_standby_mode().await;
             }
-            _ => {}
+            OperationMode::SystemInfo => {
+                self.set_normal_mode();
+            }
+            OperationMode::Alarm => {}
+            OperationMode::Standby => {
+                self.wake_up().await;
+            }
+        }
+    }
+
+    /// Handle state changes when the yellow button is pressed
+    pub async fn handle_yellow_button_press(&mut self) {
+        match self.operation_mode {
+            OperationMode::Normal => {
+                self.set_menu_mode();
+            }
+            OperationMode::Menu => {
+                self.set_normal_mode();
+            }
+            OperationMode::SetAlarmTime => {
+                self.increment_alarm_minute();
+            }
+            OperationMode::SystemInfo => {
+                self.set_normal_mode();
+            }
+            OperationMode::Alarm => {}
+            OperationMode::Standby => {
+                self.wake_up().await;
+            }
         }
     }
 }
@@ -162,6 +261,8 @@ pub enum OperationMode {
     Menu,
     /// Displaying the system info
     SystemInfo,
+    /// The system is in standby mode, the display is off, the neopixel ring is off, the system is in a low power state.
+    Standby,
 }
 
 /// The settings for the alarm
@@ -236,6 +337,10 @@ pub struct PowerState {
     pub usb_power: bool,
     /// The voltage of the system power supply
     pub vsys: f32,
+    /// The battery voltage when fully charged
+    pub battery_voltage_fully_charged: f32,
+    /// The battery voltage when the charger board cuts off the battery
+    pub battery_voltage_empty: f32,
     /// The battery level of the system
     /// The battery level is provided in steps of 20% from 0 to 100. One additional state is provided for charging.
     pub battery_level: BatteryLevel,
@@ -247,8 +352,8 @@ impl PowerState {
             self.battery_level = BatteryLevel::Charging;
         } else {
             // battery level is calculated based on the voltage of the battery, these are values measured on a LiPo battery on this system
-            let upper_bound_voltage = 4.1; // fully charged battery
-            let lower_bound_voltage = 2.6; // empty battery
+            let upper_bound_voltage = self.battery_voltage_fully_charged;
+            let lower_bound_voltage = self.battery_voltage_empty;
 
             // Calculate battery level based on voltage
             let battery_percent = ((self.vsys - lower_bound_voltage)
@@ -265,24 +370,4 @@ impl PowerState {
             };
         }
     }
-}
-
-/// The menu mode of the system
-#[derive(PartialEq, Debug, Format, Clone)]
-pub enum MenuMode {
-    /// The default state: the clock is displayed
-    None,
-    /// The system info menu is being displayed
-    SystemInfoMenu,
-}
-
-/// options for the system info
-#[derive(PartialEq, Debug, Format, Clone)]
-pub enum SystemInfoMenuMode {
-    /// select to either display the system info or shutdown the system
-    Select,
-    /// display the system info
-    Info,
-    /// shutdown the system into a low power state
-    ShutdownLowPower,
 }

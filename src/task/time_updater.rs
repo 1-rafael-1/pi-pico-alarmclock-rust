@@ -133,20 +133,16 @@ pub async fn time_updater(
         r.dma_ch,
     );
 
-    info!("init time updater");
     let time_updater = TimeUpdater::new();
 
     let fw = unsafe { core::slice::from_raw_parts(0x10100000 as *const u8, 230321) };
     let clm = unsafe { core::slice::from_raw_parts(0x10140000 as *const u8, 4752) };
 
-    info!("init cyw43");
     static STATE: StaticCell<cyw43::State> = StaticCell::new();
     let state = STATE.init(cyw43::State::new());
 
-    info!("apply cyw43");
     let (net_device, mut control, runner) = cyw43::new(state, pwr, spi, fw).await;
 
-    info!("spawning wifi task");
     unwrap!(spawner.spawn(wifi_task(runner)));
 
     info!("init control");
@@ -163,7 +159,6 @@ pub async fn time_updater(
     let mut rng = RoscRng;
     let seed = rng.next_u64();
 
-    info!("init stack");
     // Initialize the network stack
     static STACK: StaticCell<Stack<cyw43::NetDriver<'static>>> = StaticCell::new();
     static RESOURCES: StaticCell<StackResources<5>> = StaticCell::new();
@@ -174,16 +169,17 @@ pub async fn time_updater(
         seed,
     ));
 
-    info!("spawning net task");
     unwrap!(spawner.spawn(net_task(stack)));
 
     info!("starting loop");
     '_mainloop: loop {
+        // get the wifi credentials
         let (ssid, password) = time_updater.credentials();
         info!(
             "Joining WPA2 network with SSID: {:?} and password: {:?}",
             &ssid, &password
         );
+
         // Join the network
         let join_result = with_timeout(
             time_updater.timeout_duration,
@@ -196,14 +192,14 @@ pub async fn time_updater(
                 info!("Connected to wifi");
             }
             Ok(Err(e)) => {
-                info!("Error connecting to wifi: {}", e.status);
+                error!("Error connecting to wifi: {}", Debug2Format(&e));
                 control.leave().await;
                 control.gpio_set(0, false).await; // Turn off the onboard LED
                 Timer::after(Duration::from_secs(time_updater.retry_after_secs)).await;
                 continue;
             }
             Err(_) => {
-                info!("Timeout while trying to connect to wifi");
+                error!("Timeout while trying to connect to wifi");
                 control.leave().await;
                 control.gpio_set(0, false).await; // Turn off the onboard LED
                 Timer::after(Duration::from_secs(time_updater.retry_after_secs)).await;
@@ -211,7 +207,7 @@ pub async fn time_updater(
             }
         }
 
-        info!("waiting for DHCP...");
+        // dhcp
         let mut timeout_counter = 0;
         while !stack.is_config_up() {
             Timer::after_millis(100).await;
@@ -223,16 +219,15 @@ pub async fn time_updater(
         if !stack.is_config_up() {
             control.leave().await;
             control.gpio_set(0, false).await; // Turn off the onboard LED
-            info!(
-                "Disconnected from wifi after error. Retrying in {:?} seconds",
+            error!(
+                "Disconnected from wifi after waiting for DHCP timed out. Retrying in {:?} seconds",
                 time_updater.retry_after_secs
             );
             Timer::after(Duration::from_secs(time_updater.retry_after_secs)).await;
             continue;
         }
-        info!("DHCP is now up!");
 
-        info!("waiting for link up...");
+        // link
         timeout_counter = 0;
         while !stack.is_link_up() {
             Timer::after_millis(500).await;
@@ -244,20 +239,16 @@ pub async fn time_updater(
         if !stack.is_link_up() {
             control.leave().await;
             control.gpio_set(0, false).await; // Turn off the onboard LED
-            info!(
-                "Disconnected from wifi after error. Retrying in {:?} seconds",
+            error!(
+                "Disconnected from wifi after establishing link timed out. Retrying in {:?} seconds",
                 time_updater.retry_after_secs
             );
             Timer::after(Duration::from_secs(time_updater.retry_after_secs)).await;
             continue;
         }
-        info!("Link is up!");
-
-        info!("waiting for stack to be up...");
         stack.wait_config_up().await;
-        info!("Stack is up!");
 
-        info!("Preparing request to timeapi.io");
+        // create buffers for the request and response
         let mut rx_buffer = [0; 8192];
         let mut tls_read_buffer = [0; 16640];
         let mut tls_write_buffer = [0; 16640];
@@ -277,20 +268,19 @@ pub async fn time_updater(
             // scope for request, response, and body. This is to ensure that the request is dropped before the next iteration of the loop.
 
             let mut http_client = HttpClient::new_with_tls(&tcp_client, &dns_client, tls_config);
-            info!("HttpClient created");
 
             let url = time_updater.time_api_url();
 
-            info!("Making request");
+            // make the request
             let mut request = match http_client.request(Method::GET, url).await {
                 Ok(req) => req,
                 Err(e) => {
-                    error!("Failed to make HTTP request: {:?}", e);
                     control.leave().await;
                     control.gpio_set(0, false).await; // Turn off the onboard LED
-                    info!(
-                        "Disconnected from wifi after error. Retrying in {:?} seconds",
-                        time_updater.retry_after_secs
+                    error!(
+                        "Failed to make HTTP request, retrying in {:?} seconds: {:?}",
+                        time_updater.retry_after_secs,
+                        Debug2Format(&e)
                     );
                     Timer::after(Duration::from_secs(time_updater.retry_after_secs)).await;
                     continue;
@@ -299,13 +289,13 @@ pub async fn time_updater(
 
             let response = match request.send(&mut rx_buffer).await {
                 Ok(resp) => resp,
-                Err(_e) => {
-                    error!("Failed to send HTTP request");
+                Err(e) => {
                     control.leave().await;
                     control.gpio_set(0, false).await; // Turn off the onboard LED
-                    info!(
-                        "Disconnected from wifi after error. Retrying in {:?} seconds",
-                        time_updater.retry_after_secs
+                    error!(
+                        "Disconnected from wifi after error. Retrying in {:?} seconds: {:?}",
+                        time_updater.retry_after_secs,
+                        Debug2Format(&e)
                     );
                     Timer::after(Duration::from_secs(time_updater.retry_after_secs)).await;
                     continue;
@@ -314,13 +304,13 @@ pub async fn time_updater(
 
             let body = match from_utf8(response.body().read_to_end().await.unwrap()) {
                 Ok(b) => b,
-                Err(_e) => {
-                    error!("Failed to read response body");
+                Err(e) => {
                     control.leave().await;
                     control.gpio_set(0, false).await; // Turn off the onboard LED
-                    info!(
-                        "Disconnected from wifi after error. Retrying in {:?} seconds",
-                        time_updater.retry_after_secs
+                    error!(
+                        "Disconnected from wifi after error. Retrying in {:?} seconds: {:?}",
+                        time_updater.retry_after_secs,
+                        Debug2Format(&e)
                     );
                     Timer::after(Duration::from_secs(time_updater.retry_after_secs)).await;
                     continue;
@@ -343,8 +333,8 @@ pub async fn time_updater(
                     info!("Day of week: {:?}", output.day_of_week);
                     output
                 }
-                Err(_e) => {
-                    error!("Failed to parse response body");
+                Err(e) => {
+                    error!("Failed to parse response body: {:?}", Debug2Format(&e));
                     return; // ToDo
                 }
             };

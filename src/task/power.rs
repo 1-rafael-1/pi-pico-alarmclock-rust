@@ -22,10 +22,8 @@ pub async fn usb_power(_spawner: Spawner, r: UsbPowerResources) {
     let mut vbus_in = Input::new(r.vbus_pin, Pull::None);
     let sender = EVENT_CHANNEL.sender();
     loop {
-        info!("usb_power task loop");
         sender.send(Events::Vbus(vbus_in.is_high())).await;
         vbus_in.wait_for_any_edge().await;
-        info!("usb_power edge detected");
     }
 }
 
@@ -45,12 +43,8 @@ pub async fn vsys_voltage(_spawner: Spawner, r: VsysResources) {
     loop {
         // read the adc value
         let adc_value = adc.read(&mut channel).await.unwrap();
+        // reference voltage is 3.3V, and the voltage divider ratio is 3.0. The ADC is 12-bit, so 2^12 = 4096
         let voltage = (adc_value as f32) * 3.3 * 3.0 / 4096.0;
-
-        info!(
-            "vsys_voltage: adc_value: {}, voltage: {}",
-            adc_value, &voltage
-        );
         sender.send(Events::Vsys(voltage)).await;
         Timer::after(Duration::from_secs(refresh_after_secs)).await;
     }
