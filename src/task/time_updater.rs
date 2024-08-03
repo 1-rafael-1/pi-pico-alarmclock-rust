@@ -1,29 +1,36 @@
-//! # Time Updater
+//! # Time Updater Task
 //! This module contains the task that updates the RTC using a time API.
 //! The task is responsible for connecting to a wifi network, making a request to a time API, parsing the response, and updating the RTC.
+//!
+//! # populate constants SSID and PASSWORD
+//! make sure to have a wifi_manager.json file in the config folder formatted as follows:
+//!```json
+//!  {
+//!     "ssid": "some_ssid_here",
+//!     "password": "some_password_here"
+//! }
+//! ```
+//! also make sure that build.rs loads the wifi_manager.json file and writes it to wifi_secrets.rs
+//!
+//! # populate constant TIME_SERVER_URL
+//! make sure to have a time_api_config.json file in the config folder formatted as follows:
+//! ```json
+//! // populate constant TIME_SERVER_URL
+//! make sure to have a time_api_config.json file in the config folder formatted as follows:
+//! {
+//!     "time api by zone": {
+//!         "baseurl": "http://worldtimeapi.org/api",
+//!         "timezone": "/timezone/Europe/Berlin"
+//!     }
+//! }
+//! ```
 
 include!(concat!(env!("OUT_DIR"), "/wifi_secrets.rs"));
-// populate constants SSID and PASSWORD
-// make sure to have a wifi_manager.json file in the config folder formatted as follows:
-// {
-//     "ssid": "some_ssid_here",
-//     "password": "some_password_here"
-// }
-// also make sure that build.rs loads the wifi_manager.json file and writes it to wifi_secrets.rs
-
 include!(concat!(env!("OUT_DIR"), "/time_api_config.rs"));
-// populate constant TIME_SERVER_URL
-// make sure to have a time_api_config.json file in the config folder formatted as follows:
-// {
-//     "time api by zone": {
-//         "baseurl": "http://worldtimeapi.org/api",
-//         "timezone": "/timezone/Europe/Berlin"
-//     }
-// }
 
-use crate::task::resources::Irqs;
+use crate::task::resources::{Irqs, WifiResources};
+use crate::task::state::{Events, EVENT_CHANNEL};
 use crate::utility::string_utils::StringUtils;
-use crate::WifiResources;
 use core::cell::RefCell;
 use core::str::from_utf8;
 use cyw43_pio::PioSpi;
@@ -171,7 +178,7 @@ pub async fn time_updater(
     unwrap!(spawner.spawn(net_task(stack)));
 
     info!("starting loop");
-    loop {
+    '_mainloop: loop {
         let (ssid, password) = time_updater.credentials();
         info!(
             "Joining WPA2 network with SSID: {:?} and password: {:?}",
@@ -325,6 +332,7 @@ pub async fn time_updater(
             #[derive(Deserialize)]
             struct ApiResponse<'a> {
                 datetime: &'a str,
+                day_of_week: u8,
             }
 
             let bytes = body.as_bytes();
@@ -332,6 +340,7 @@ pub async fn time_updater(
             {
                 Ok((output, _used)) => {
                     info!("Datetime: {:?}", output.datetime);
+                    info!("Day of week: {:?}", output.day_of_week);
                     output
                 }
                 Err(_e) => {
@@ -342,8 +351,11 @@ pub async fn time_updater(
 
             // set the RTC
             let dt: DateTime;
-            dt = StringUtils::convert_str_to_datetime(response.datetime);
+            dt = StringUtils::convert_str_to_datetime(response.datetime, response.day_of_week);
             rtc_ref.borrow_mut().set_datetime(dt).unwrap();
+
+            // send an event to the state manager
+            EVENT_CHANNEL.sender().send(Events::RtcUpdated).await;
         } // end of scope
 
         control.leave().await;
