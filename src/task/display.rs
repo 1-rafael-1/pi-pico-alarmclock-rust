@@ -17,7 +17,7 @@ use embassy_rp::rtc::{DateTime, DayOfWeek};
 use embedded_graphics::{
     image::Image,
     mono_font::{
-        ascii::{FONT_6X13, FONT_6X13_BOLD, FONT_7X13, FONT_9X18},
+        ascii::FONT_6X13,
         MonoTextStyleBuilder,
     },
     pixelcolor::{BinaryColor, Gray8},

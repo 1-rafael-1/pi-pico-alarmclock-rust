@@ -2,12 +2,9 @@
 //! This module contains utility functions around string handling that are used in the project.
 
 use core::fmt::Write;
-use defmt::info;
 use embassy_rp::rtc::{DateTime, DayOfWeek};
 use heapless::String;
 use heapless::Vec;
-
-use crate::task::orchestrate::info;
 
 pub struct StringUtils;
 
