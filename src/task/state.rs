@@ -107,7 +107,7 @@ impl StateManager {
             power_state: PowerState {
                 usb_power: false,
                 vsys: 0.0,
-                battery_voltage_fully_charged: 4.1,
+                battery_voltage_fully_charged: 4.07,
                 battery_voltage_empty: 2.6,
                 battery_level: BatteryLevel::Bat000,
             },
