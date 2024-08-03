@@ -19,7 +19,7 @@ use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::{
     image::Image,
     mono_font::{
-        ascii::{FONT_6X13, FONT_8X13, FONT_8X13_BOLD},
+        ascii::{FONT_6X13, FONT_8X13_BOLD},
         MonoTextStyleBuilder,
     },
     pixelcolor::{BinaryColor, Gray8},
