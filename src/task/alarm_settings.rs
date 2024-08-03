@@ -118,16 +118,14 @@ impl<'a> PersistedAlarmSettings<'a> {
     }
 }
 
-/// This function reads the alarm settings from the flash memory and sends it to the event channel.
-///
-/// It is done only once at the start of the program.
+/// This task reads the alarm settings from the flash memory on startup and sends it to the event channel.
 /// After that, it waits for commands to update the alarm settings.
 #[embassy_executor::task]
 pub async fn manage_alarm_settings(_spawner: Spawner, r: FlashResources) {
     let mut persisted_alarm_settings = PersistedAlarmSettings::new(r);
     let receiver = FLASH_CHANNEL.receiver();
 
-    {
+    'read_alarm_settings: {
         // Read the alarm settings from the flash memory only once at the start of the task
         // and send them to the event channel. After that, we can drop this scope.
         let alarm_settings = persisted_alarm_settings
@@ -140,7 +138,6 @@ pub async fn manage_alarm_settings(_spawner: Spawner, r: FlashResources) {
     }
 
     // and then we wait for commands to update the alarm settings
-    info!("Waiting for alarm settings commands");
     loop {
         let command = receiver.receive().await;
         match command {
