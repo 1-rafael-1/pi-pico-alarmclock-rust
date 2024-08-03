@@ -1,3 +1,6 @@
+//! # Button Tasks
+//! This module contains the tasks for the buttons. Each button has its own task.
+
 use crate::task::resources::{BlueButtonResources, GreenButtonResources, YellowButtonResources};
 use crate::task::state::{Events, EVENT_CHANNEL};
 use defmt::info;
