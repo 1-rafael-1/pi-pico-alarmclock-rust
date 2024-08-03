@@ -45,15 +45,15 @@ pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stati
             // react to the events
             match event {
                 Events::BlueBtn(presses) => {
-                    state_manager.handle_blue_button_press();
+                    state_manager.handle_blue_button_press().await;
                     DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                 }
                 Events::GreenBtn(presses) => {
-                    state_manager.handle_green_button_press();
+                    state_manager.handle_green_button_press().await;
                     DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                 }
                 Events::YellowBtn(presses) => {
-                    state_manager.handle_yellow_button_press();
+                    state_manager.handle_yellow_button_press().await;
                     DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                 }
                 Events::Vbus(usb) => {
@@ -79,6 +79,14 @@ pub async fn orchestrate(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stati
                 Events::RtcUpdated => {
                     info!("RTC updated event");
                     DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
+                }
+                Events::AlarmSettingsNeedUpdate => {
+                    info!("Alarm settings must be updated event");
+                    flash_sender
+                        .send(Commands::AlarmSettingsWriteToFlash(
+                            state_manager.alarm_settings.clone(),
+                        ))
+                        .await;
                 }
             }
         }

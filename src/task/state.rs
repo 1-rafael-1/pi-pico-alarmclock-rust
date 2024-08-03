@@ -17,6 +17,7 @@ pub enum Events {
     Vbus(bool),
     Vsys(f32),
     AlarmSettingsReadFromFlash(AlarmSettings),
+    AlarmSettingsNeedUpdate,
     MinuteTimer,
     RtcUpdated,
 }
@@ -83,6 +84,7 @@ pub struct StateManager {
     // more
 }
 
+/// State transitions
 impl StateManager {
     /// Create a new StateManager.             
     /// We will get the actual data pretty early in the system startup, so we can set all this to inits here
@@ -100,45 +102,106 @@ impl StateManager {
         manager
     }
 
-    fn toggle_alarm_enabled(&mut self) {
+    pub async fn toggle_alarm_enabled(&mut self) {
         self.alarm_settings.enabled = !self.alarm_settings.enabled;
+        self.save_alarm_settings().await;
     }
 
-    /// Handle presses of the green button
-    pub fn handle_green_button_press(&mut self) {
-        match self.operation_mode {
-            OperationMode::Normal => {
-                self.toggle_alarm_enabled();
-            }
-            _ => {
-                // ToDo: handle the green button press in other operation modes
-            }
-        }
+    pub fn set_menu_mode(&mut self) {
+        self.operation_mode = OperationMode::Menu;
     }
 
-    pub fn handle_blue_button_press(&mut self) {
+    pub fn set_normal_mode(&mut self) {
+        self.operation_mode = OperationMode::Normal;
+    }
+
+    pub fn set_set_alarm_time_mode(&mut self) {
+        self.operation_mode = OperationMode::SetAlarmTime;
+    }
+
+    pub fn set_alarm_mode(&mut self) {
+        self.operation_mode = OperationMode::Alarm;
+    }
+
+    pub fn set_system_info_mode(&mut self) {
+        self.operation_mode = OperationMode::SystemInfo;
+    }
+
+    pub fn increment_alarm_hour(&mut self) {
+        let mut hour = self.alarm_settings.get_hour();
+        hour = (hour + 1) % 24;
+        self.alarm_settings
+            .set_time((hour, self.alarm_settings.get_minute()));
+    }
+
+    pub fn increment_alarm_minute(&mut self) {
+        let mut minute = self.alarm_settings.get_minute();
+        minute = (minute + 1) % 60;
+        self.alarm_settings
+            .set_time((self.alarm_settings.get_hour(), minute));
+    }
+
+    pub async fn save_alarm_settings(&mut self) {
+        let sender = EVENT_CHANNEL.sender();
+        sender.send(Events::AlarmSettingsNeedUpdate).await;
+    }
+}
+
+/// User Input Handling
+impl StateManager {
+    /// Handle state changes when the green button is pressed
+    pub async fn handle_green_button_press(&mut self) {
         match self.operation_mode {
             OperationMode::Normal => {
-                self.operation_mode = OperationMode::SetAlarmTime;
+                self.toggle_alarm_enabled().await;
             }
             OperationMode::SetAlarmTime => {
-                // ToDo: save the alarm time
-                // ToDo: save the alarm time
-                self.operation_mode = OperationMode::Normal;
+                self.increment_alarm_hour();
             }
-            _ => {}
+            OperationMode::Menu => {
+                self.set_system_info_mode();
+            }
+            OperationMode::SystemInfo => {
+                self.set_normal_mode();
+            }
+            OperationMode::Alarm => {}
         }
     }
 
-    pub fn handle_yellow_button_press(&mut self) {
+    /// Handle state changes when the blue button is pressed
+    pub async fn handle_blue_button_press(&mut self) {
         match self.operation_mode {
             OperationMode::Normal => {
-                self.operation_mode = OperationMode::Menu;
+                self.set_set_alarm_time_mode();
+            }
+            OperationMode::SetAlarmTime => {
+                self.save_alarm_settings().await;
+                self.set_normal_mode();
+            }
+            OperationMode::Menu => {}
+            OperationMode::SystemInfo => {
+                self.set_normal_mode();
+            }
+            OperationMode::Alarm => {}
+        }
+    }
+
+    /// Handle state changes when the yellow button is pressed
+    pub async fn handle_yellow_button_press(&mut self) {
+        match self.operation_mode {
+            OperationMode::Normal => {
+                self.set_menu_mode();
             }
             OperationMode::Menu => {
-                self.operation_mode = OperationMode::Normal;
+                self.set_normal_mode();
             }
-            _ => {}
+            OperationMode::SetAlarmTime => {
+                self.increment_alarm_minute();
+            }
+            OperationMode::SystemInfo => {
+                self.set_normal_mode();
+            }
+            OperationMode::Alarm => {}
         }
     }
 }
