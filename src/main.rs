@@ -8,7 +8,7 @@ use crate::task::alarm_settings::manage_alarm_settings;
 use crate::task::buttons::{blue_button, green_button, yellow_button};
 use crate::task::dfplayer::sound;
 use crate::task::display::display;
-use crate::task::orchestrate::{minute_timer, orchestrate};
+use crate::task::orchestrate::{orchestrate, scheduler};
 use crate::task::power::{usb_power, vsys_voltage};
 use crate::task::resources::*;
 use crate::task::time_updater::time_updater;
@@ -136,7 +136,7 @@ async fn main(spawner: Spawner) {
 
     // Minute timer
     if task_config.minute_timer {
-        spawner.spawn(minute_timer(spawner, rtc_ref)).unwrap();
+        spawner.spawn(scheduler(spawner, rtc_ref)).unwrap();
     }
 }
 

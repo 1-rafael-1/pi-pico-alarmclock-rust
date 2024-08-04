@@ -62,8 +62,14 @@ pub async fn orchestrate(_spawner: Spawner) {
                     info!("Alarm time read from flash: {:?}", alarm_settings);
                     state_manager.alarm_settings = alarm_settings;
                 }
-                Events::MinuteTimer => {
-                    info!("Minute timer event");
+                Events::Scheduler((hour, minute, second)) => {
+                    info!("Scheduler event");
+                    if !state_manager.alarm_settings.get_enabled() {
+                        NEOPIXEL_CHANNEL
+                            .sender()
+                            .send(Commands::NeopixelUpdate((hour, minute, second)))
+                            .await;
+                    }
                     DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                 }
                 Events::RtcUpdated => {
@@ -118,9 +124,11 @@ pub async fn orchestrate(_spawner: Spawner) {
     }
 }
 
+/// This is the task that will handle scheduling timed events by sending events to the Event Channel when a given
+/// time has passed. It will also handle the alarm event.
 #[embassy_executor::task]
-pub async fn minute_timer(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'static, RTC>>) {
-    info!("Minute timer task started");
+pub async fn scheduler(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'static, RTC>>) {
+    info!("scheduler task started");
     loop {
         // see if we must halt the task, then wait for the start signal
         if TIMER_STOP_SIGNAL.signaled() {
@@ -130,9 +138,12 @@ pub async fn minute_timer(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stat
             info!("Minute timer task resumed");
         }
 
-        EVENT_CHANNEL.sender().send(Events::MinuteTimer).await;
+        let dt: DateTime = rtc_ref.borrow().now().unwrap();
+        EVENT_CHANNEL
+            .sender()
+            .send(Events::Scheduler((dt.hour, dt.minute, dt.second)))
+            .await;
 
-        // wait for 1 minute, unless we are in proximity of the alarm time, in which case we wait for 10 seconds
         // get the state of the system out of the mutex and quickly drop the mutex
         let state_manager_guard = STATE_MANAGER_MUTEX.lock().await;
         let state_manager = match state_manager_guard.clone() {
@@ -145,12 +156,10 @@ pub async fn minute_timer(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stat
         };
         drop(state_manager_guard);
 
-        let dt: DateTime = rtc_ref.borrow().now().unwrap();
-
         // calculate the downtime
         let downtime: Duration;
         if state_manager.alarm_settings.get_enabled() {
-            // if the current time is within 3 minutes of the alarm time, downtime will be 10 seconds, else 1 minute
+            // wait for 1 minute, unless we are in proximity of the alarm time, in which case we wait for 10 seconds
             let alarm_time_minutes = state_manager.alarm_settings.get_hour() * 60
                 + state_manager.alarm_settings.get_minute();
             let current_time_minutes = (dt.hour * 60) + dt.minute;
@@ -160,7 +169,9 @@ pub async fn minute_timer(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'stat
                 downtime = Duration::from_secs(60);
             }
         } else {
-            downtime = Duration::from_secs(60);
+            // if the alarm is not enabled, we will be using the neopixel analog clock effect, which will need to be updated often
+            // so we will wait for 3.75 seconds (60s / 16leds -> 3.75s until we must update the leds)
+            downtime = Duration::from_millis(3750);
         }
 
         // raise the alarm event

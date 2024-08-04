@@ -11,18 +11,31 @@ use embassy_sync::signal::Signal;
 /// Works in conjunction with the `EVENT_CHANNEL` channel in the orchestrator task.
 #[derive(PartialEq, Debug, Format)]
 pub enum Events {
+    /// The blue button was pressed, the data is the number of presses
     BlueBtn(u32),
+    /// The green button was pressed, the data is the number of presses
     GreenBtn(u32),
+    /// The yellow button was pressed, the data is the number of presses
     YellowBtn(u32),
+    /// The usb power state has changed, the data is the new state of the usb power
     Vbus(bool),
+    /// The system power state has changed, the data is the new voltage of the system power
     Vsys(f32),
+    /// The alarm settings have been read from the flash memory, the data is the alarm settings
     AlarmSettingsReadFromFlash(AlarmSettings),
+    /// The alarm settings need to be updated in the flash memory
     AlarmSettingsNeedUpdate,
-    MinuteTimer,
+    /// The scheduler has ticked, the data is the time in (hour, minute, second)
+    Scheduler((u8, u8, u8)),
+    /// The rtc has been updated
     RtcUpdated,
+    /// The system must go to standby mode
     Standby,
+    /// The system must wake up from standby mode
     WakeUp,
+    /// The alarm must be raised
     Alarm,
+    /// The alarm must be stopped
     AlarmStop,
 }
 
@@ -36,9 +49,12 @@ pub enum Commands {
     /// Update the display with the new state of the system
     /// Since we will need to update the display often and wizth a lot of data, we will not send the data in the command option
     DisplayUpdate,
-    /// Update the neopixel with the new state of the system
-    /// ToDo: decide if and what data we need to send to the neopixel
-    NeopixelUpdate,
+    /// Update the neopixel. The data is the time in (hour, minute, second), which will be displayed on the neopixel ring in the analog clock mode.
+    /// Since the neopixel task runs on a different core, we cannot access the rtc there directly, unless we put it into a mutex, which is overkill
+    /// for this simple task. So we will send the time to the neopixel task.
+    /// We could theoretically put the time into the state of the system, but that would be a bit of a hack, since the time is not really part of the state of the system.
+    /// Having two mutexes for the state of the system and the time would expose us to the risk of deadlocks, so all in all, it is better to send the time here.
+    NeopixelUpdate((u8, u8, u8)),
     /// Update the sound task with the new state of the system
     /// ToDo: decide if and what data we need to send to the sound task
     SoundUpdate,
@@ -64,7 +80,7 @@ pub static TIMER_START_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signa
 pub static FLASH_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 1> = Channel::new();
 
 /// Channel for the update commands that we want the orchestrator to send to the neopixel.
-// pub static NEOPIXEL_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 3> = Channel::new();
+pub static NEOPIXEL_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 3> = Channel::new();
 
 /// Channel for the update commands that we want the orchestrator to send to the mp3-player task.
 // pub static SOUND_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 1> = Channel::new();
