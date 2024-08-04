@@ -26,7 +26,7 @@ impl StringUtils {
                 4 => DayOfWeek::Thursday,
                 5 => DayOfWeek::Friday,
                 6 => DayOfWeek::Saturday,
-                7 => DayOfWeek::Sunday,
+                0 => DayOfWeek::Sunday, // as specified by worldtimeapi.org
                 _ => DayOfWeek::Monday,
             },
             hour: 0,

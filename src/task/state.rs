@@ -1,11 +1,14 @@
 //! # State of the system
 //! This module desccribes the state of the system and the events that can change the state of the system as well as the commands that can be sent to the tasks
 //! that control the system.
+use crate::task::buttons::Button;
 use defmt::*;
+use embassy_rp::clocks::RoscRng;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
 use embassy_sync::signal::Signal;
+use rand::Rng;
 
 /// Events that we want to react to together with the data that we need to react to the event.
 /// Works in conjunction with the `EVENT_CHANNEL` channel in the orchestrator task.
@@ -134,7 +137,8 @@ impl StateManager {
     }
 
     pub async fn toggle_alarm_enabled(&mut self) {
-        self.alarm_settings.enabled = !self.alarm_settings.enabled;
+        self.alarm_settings
+            .set_enabled(!self.alarm_settings.get_enabled());
         self.save_alarm_settings().await;
     }
 
@@ -154,24 +158,16 @@ impl StateManager {
         self.operation_mode = OperationMode::Alarm;
     }
 
-    fn randomize_alarm_stop_buttom_sequence(&mut self) {}
-
     pub fn set_system_info_mode(&mut self) {
         self.operation_mode = OperationMode::SystemInfo;
     }
 
     pub fn increment_alarm_hour(&mut self) {
-        let mut hour = self.alarm_settings.get_hour();
-        hour = (hour + 1) % 24;
-        self.alarm_settings
-            .set_time((hour, self.alarm_settings.get_minute()));
+        self.alarm_settings.increment_alarm_hour();
     }
 
     pub fn increment_alarm_minute(&mut self) {
-        let mut minute = self.alarm_settings.get_minute();
-        minute = (minute + 1) % 60;
-        self.alarm_settings
-            .set_time((self.alarm_settings.get_hour(), minute));
+        self.alarm_settings.increment_alarm_minute();
     }
 
     pub async fn save_alarm_settings(&mut self) {
@@ -189,6 +185,10 @@ impl StateManager {
         let sender = EVENT_CHANNEL.sender();
         self.set_normal_mode();
         sender.send(Events::WakeUp).await;
+    }
+
+    pub fn randomize_alarm_stop_buttom_sequence(&mut self) {
+        self.alarm_settings.randomize_stop_alarm_button_sequence();
     }
 }
 
@@ -292,6 +292,8 @@ pub struct AlarmSettings {
     time: (u8, u8),
     /// The alarm is enabled or disabled
     enabled: bool,
+    /// The color sequence of buttons that need to be pressed to stop the alarm
+    stop_alarm_button_sequence: [Button; 3],
 }
 
 impl AlarmSettings {
@@ -299,6 +301,7 @@ impl AlarmSettings {
         AlarmSettings {
             time: (0, 0),
             enabled: false,
+            stop_alarm_button_sequence: [Button::Green, Button::Blue, Button::Yellow],
         }
     }
 
@@ -320,6 +323,36 @@ impl AlarmSettings {
 
     pub fn get_enabled(&self) -> bool {
         self.enabled
+    }
+
+    pub fn increment_alarm_hour(&mut self) {
+        let mut hour = self.get_hour();
+        hour = (hour + 1) % 24;
+        self.set_time((hour, self.get_minute()));
+    }
+
+    pub fn increment_alarm_minute(&mut self) {
+        let mut minute = self.get_minute();
+        minute = (minute + 1) % 60;
+        self.set_time((self.get_hour(), minute));
+    }
+
+    pub fn get_stop_alarm_button_sequence(&self) -> [Button; 3] {
+        self.stop_alarm_button_sequence.clone()
+    }
+
+    fn set_stop_alarm_button_sequence(&mut self, sequence: [Button; 3]) {
+        self.stop_alarm_button_sequence = sequence;
+    }
+
+    pub fn randomize_stop_alarm_button_sequence(&mut self) {
+        let mut sequence = self.get_stop_alarm_button_sequence();
+        for i in 0..sequence.len() {
+            let j = RoscRng.gen_range(0..sequence.len());
+            sequence.swap(i, j);
+        }
+        info!("Randomized stop alarm button sequence: {:?}", sequence);
+        self.set_stop_alarm_button_sequence(sequence);
     }
 }
 

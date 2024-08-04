@@ -96,13 +96,17 @@ pub async fn orchestrate(_spawner: Spawner) {
                 }
                 Events::Alarm => {
                     info!("Alarm event");
+                    state_manager.randomize_alarm_stop_buttom_sequence();
                     state_manager.set_alarm_mode();
                     // ToDo:
                     // 1. send the state to the sound task
                     // 2. send the state to the neopixel task
-                    // 3. make the alarm stop sequence
                     // 4. handle the alarm stop sequence
                     DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
+                    NEOPIXEL_CHANNEL
+                        .sender()
+                        .send(Commands::NeopixelUpdate((0, 0, 0)))
+                        .await;
                 }
                 Events::AlarmStop => {
                     info!("Alarm stop event");
