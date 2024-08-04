@@ -22,6 +22,8 @@ pub enum Events {
     RtcUpdated,
     Standby,
     WakeUp,
+    Alarm,
+    AlarmStop,
 }
 
 /// Commands that we want to send from the orchestrator to the other tasks that we want to control.
@@ -135,6 +137,8 @@ impl StateManager {
     pub fn set_alarm_mode(&mut self) {
         self.operation_mode = OperationMode::Alarm;
     }
+
+    fn randomize_alarm_stop_buttom_sequence(&mut self) {}
 
     pub fn set_system_info_mode(&mut self) {
         self.operation_mode = OperationMode::SystemInfo;
@@ -269,9 +273,9 @@ pub enum OperationMode {
 #[derive(PartialEq, Debug, Format, Clone)]
 pub struct AlarmSettings {
     /// The alarm time is set to the specified time
-    pub time: (u8, u8),
+    time: (u8, u8),
     /// The alarm is enabled or disabled
-    pub enabled: bool,
+    enabled: bool,
 }
 
 impl AlarmSettings {
@@ -334,16 +338,16 @@ pub enum BatteryLevel {
 #[derive(PartialEq, Debug, Format, Clone)]
 pub struct PowerState {
     /// The system is running on usb power
-    pub usb_power: bool,
+    usb_power: bool,
     /// The voltage of the system power supply
-    pub vsys: f32,
+    vsys: f32,
     /// The battery voltage when fully charged
-    pub battery_voltage_fully_charged: f32,
+    battery_voltage_fully_charged: f32,
     /// The battery voltage when the charger board cuts off the battery
-    pub battery_voltage_empty: f32,
+    battery_voltage_empty: f32,
     /// The battery level of the system
     /// The battery level is provided in steps of 20% from 0 to 100. One additional state is provided for charging.
-    pub battery_level: BatteryLevel,
+    battery_level: BatteryLevel,
 }
 
 impl PowerState {
@@ -369,5 +373,33 @@ impl PowerState {
                 _ => BatteryLevel::Bat100,
             };
         }
+    }
+
+    pub fn get_battery_level(&self) -> BatteryLevel {
+        self.battery_level.clone()
+    }
+
+    pub fn get_vsys(&self) -> f32 {
+        self.vsys
+    }
+
+    pub fn get_usb_power(&self) -> bool {
+        self.usb_power
+    }
+
+    pub fn get_battery_voltage_fully_charged(&self) -> f32 {
+        self.battery_voltage_fully_charged
+    }
+
+    pub fn get_battery_voltage_empty(&self) -> f32 {
+        self.battery_voltage_empty
+    }
+
+    pub fn set_vsys(&mut self, vsys: f32) {
+        self.vsys = vsys;
+    }
+
+    pub fn set_usb_power(&mut self, usb_power: bool) {
+        self.usb_power = usb_power;
     }
 }

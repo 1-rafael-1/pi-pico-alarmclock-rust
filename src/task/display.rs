@@ -200,7 +200,7 @@ pub async fn display(
         '_state_area: {
             let state_indicator_position = settings.state_indicator_position.clone();
             match state_manager.operation_mode {
-                OperationMode::Normal => match state_manager.alarm_settings.enabled {
+                OperationMode::Normal => match state_manager.alarm_settings.get_enabled() {
                     true => {
                         let saber = Image::new(&settings.saber, state_indicator_position);
                         saber.draw(&mut display.color_converted()).unwrap();
@@ -239,7 +239,7 @@ pub async fn display(
         '_battery_area: {
             let bat_image: Image<Bmp<'static, Gray8>>;
             let bat_position = settings.bat_position.clone();
-            match state_manager.power_state.battery_level {
+            match state_manager.power_state.get_battery_level() {
                 BatteryLevel::Bat000 => {
                     bat_image = Image::new(&settings.bat[0], bat_position);
                 }
@@ -274,8 +274,8 @@ pub async fn display(
                     minutes = dt.minute;
                 }
                 OperationMode::SetAlarmTime => {
-                    hours = state_manager.alarm_settings.time.0;
-                    minutes = state_manager.alarm_settings.time.1;
+                    hours = state_manager.alarm_settings.get_hour();
+                    minutes = state_manager.alarm_settings.get_minute();
                 }
                 _ => {
                     hours = 0;
@@ -361,13 +361,16 @@ pub async fn display(
                 }
                 OperationMode::SystemInfo => {
                     let mut content_next_position = settings.content_start_position.clone();
-                    let vsys = state_manager.power_state.vsys.clone();
-                    let usb_power = state_manager.power_state.usb_power.clone();
+                    let vsys = state_manager.power_state.get_vsys().clone();
+                    let usb_power = state_manager.power_state.get_usb_power().clone();
                     let upper = state_manager
                         .power_state
-                        .battery_voltage_fully_charged
+                        .get_battery_voltage_fully_charged()
                         .clone();
-                    let lower = state_manager.power_state.battery_voltage_empty.clone();
+                    let lower = state_manager
+                        .power_state
+                        .get_battery_voltage_empty()
+                        .clone();
                     let mut vsys_txt: String<20> = String::new();
                     let _ = write!(vsys_txt, "Vsys:  {}V", vsys);
                     Text::with_baseline(

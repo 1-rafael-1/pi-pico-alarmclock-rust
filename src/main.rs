@@ -62,7 +62,7 @@ async fn main(spawner: Spawner) {
     // Orchestrate
     // there is no main loop, the tasks are spawned and run in parallel
     // orchestrating the tasks is done here:
-    spawner.spawn(orchestrate(spawner, rtc_ref)).unwrap();
+    spawner.spawn(orchestrate(spawner)).unwrap();
 
     // Alarm settings
     if task_config.alarm_settings {
@@ -136,7 +136,7 @@ async fn main(spawner: Spawner) {
 
     // Minute timer
     if task_config.minute_timer {
-        spawner.spawn(minute_timer(spawner)).unwrap();
+        spawner.spawn(minute_timer(spawner, rtc_ref)).unwrap();
     }
 }
 
