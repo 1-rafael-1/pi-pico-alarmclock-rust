@@ -91,17 +91,17 @@ codegen-units = 16
 debug = 2
 debug-assertions = true
 incremental = true
-opt-level = 'z'
+opt-level = 's'
 overflow-checks = true
 
 # cargo build/run --release
 [profile.release]
 codegen-units = 1
-debug = 0
+debug = 2                # is not flashed to the device
 debug-assertions = false
-incremental = false
+incremental = true
 lto = 'fat'
-opt-level = 'z'
+opt-level = 's'
 overflow-checks = false
 
 # cargo test
