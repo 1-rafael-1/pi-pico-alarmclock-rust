@@ -78,7 +78,7 @@ rand = { version = "0.8.5", default-features = false }
 reqwless = { version = "0.12.0", features = ["defmt"] }
 tinybmp = "0.6.0"
 assign-resources = { git = "https://github.com/adamgreig/assign-resources", rev = "94ad10e2729afdf0fd5a77cd12e68409a982f58a" }
-dfplayer-serial = { git = "https://github.com/1-rafael-1/dfplayer-serial" }
+dfplayer-serial = { git = "https://github.com/1-rafael-1/dfplayer-serial", rev = "181b88ad3a0a550d83067f2559b98a433b943ad0" }
 
 [build-dependencies]
 serde = "1.0"

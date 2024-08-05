@@ -85,5 +85,7 @@ pub async fn analog_clock(_spawner: Spawner, r: NeopixelResources) {
         // Set all LEDs to off
         let data = [RGB8::default(); 16];
         let _ = np.write(brightness(data.iter().cloned(), 0)).await;
+
+        break;
     }
 }
