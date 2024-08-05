@@ -209,7 +209,14 @@ impl StateManager {
             OperationMode::SystemInfo => {
                 self.set_normal_mode();
             }
-            OperationMode::Alarm => {}
+            OperationMode::Alarm => {
+                if self.alarm_settings.get_first_valid_stop_alarm_button() == Button::Green {
+                    self.alarm_settings.erase_first_valid_stop_alarm_button();
+                };
+                if self.alarm_settings.is_alarm_stop_button_sequence_complete() {
+                    EVENT_CHANNEL.sender().send(Events::AlarmStop).await;
+                }
+            }
             OperationMode::Standby => {
                 self.wake_up().await;
             }
@@ -232,7 +239,14 @@ impl StateManager {
             OperationMode::SystemInfo => {
                 self.set_normal_mode();
             }
-            OperationMode::Alarm => {}
+            OperationMode::Alarm => {
+                if self.alarm_settings.get_first_valid_stop_alarm_button() == Button::Blue {
+                    self.alarm_settings.erase_first_valid_stop_alarm_button();
+                };
+                if self.alarm_settings.is_alarm_stop_button_sequence_complete() {
+                    EVENT_CHANNEL.sender().send(Events::AlarmStop).await;
+                }
+            }
             OperationMode::Standby => {
                 self.wake_up().await;
             }
@@ -254,7 +268,14 @@ impl StateManager {
             OperationMode::SystemInfo => {
                 self.set_normal_mode();
             }
-            OperationMode::Alarm => {}
+            OperationMode::Alarm => {
+                if self.alarm_settings.get_first_valid_stop_alarm_button() == Button::Yellow {
+                    self.alarm_settings.erase_first_valid_stop_alarm_button();
+                };
+                if self.alarm_settings.is_alarm_stop_button_sequence_complete() {
+                    EVENT_CHANNEL.sender().send(Events::AlarmStop).await;
+                }
+            }
             OperationMode::Standby => {
                 self.wake_up().await;
             }
@@ -345,14 +366,52 @@ impl AlarmSettings {
         self.stop_alarm_button_sequence = sequence;
     }
 
+    /// Randomize the stop alarm button sequence. In no-std, we have limited options for random number generation and there is no shuffle method.
+    /// So we will use a Fisher-Yates shuffle algorithm likeness to shuffle the sequence.
     pub fn randomize_stop_alarm_button_sequence(&mut self) {
-        let mut sequence = self.get_stop_alarm_button_sequence();
+        let mut sequence = [Button::Green, Button::Blue, Button::Yellow];
         for i in 0..sequence.len() {
             let j = RoscRng.gen_range(0..sequence.len());
             sequence.swap(i, j);
         }
-        info!("Randomized stop alarm button sequence: {:?}", sequence);
         self.set_stop_alarm_button_sequence(sequence);
+    }
+
+    /// The sequence gets iterated and the first of its values that is not None is set to None.
+    pub fn erase_first_valid_stop_alarm_button(&mut self) {
+        let mut sequence = self.get_stop_alarm_button_sequence();
+        let mut i = 0;
+        while i < sequence.len() && sequence[i] == Button::None {
+            i += 1;
+        }
+        if i < sequence.len() {
+            sequence[i] = Button::None;
+        }
+        self.set_stop_alarm_button_sequence(sequence);
+    }
+
+    /// The sequence gets iterated and the first of its values that is None is returned.
+    pub fn get_first_valid_stop_alarm_button(&self) -> Button {
+        let sequence = self.get_stop_alarm_button_sequence();
+        let mut i = 0;
+        while i < sequence.len() && sequence[i] == Button::None {
+            i += 1;
+        }
+        if i < sequence.len() {
+            sequence[i].clone()
+        } else {
+            Button::None
+        }
+    }
+
+    pub fn is_alarm_stop_button_sequence_complete(&self) -> bool {
+        let sequence = self.get_stop_alarm_button_sequence();
+        for i in 0..sequence.len() {
+            if sequence[i] != Button::None {
+                return false;
+            }
+        }
+        true
     }
 }
 
@@ -367,8 +426,6 @@ pub enum AlarmState {
     /// We are past the sunrise effect. The alarm sound is playing, the neopixel waker effect is playing. The user can stop the alarm by pressing
     /// the buttons in the correct sequence.
     Noise,
-    /// The alarm is being stopped after the correct button sequence has been pressed. The next state will be None.
-    StopAlarm,
 }
 
 /// The battery level of the system in steps of 20% from 0 to 100. One additional state is provided for charging.

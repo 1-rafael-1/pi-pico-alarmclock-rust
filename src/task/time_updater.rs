@@ -334,18 +334,34 @@ pub async fn time_updater(
                     output
                 }
                 Err(e) => {
-                    error!("Failed to parse response body: {:?}", Debug2Format(&e));
-                    return; // ToDo
+                    error!(
+                        "Failed to parse response body. Retrying in {:?} seconds: {:?}",
+                        time_updater.retry_after_secs,
+                        Debug2Format(&e)
+                    );
+                    Timer::after(Duration::from_secs(time_updater.retry_after_secs)).await;
+                    continue;
                 }
             };
 
             // set the RTC
             let dt: DateTime;
             dt = StringUtils::convert_str_to_datetime(response.datetime, response.day_of_week);
-            rtc_ref.borrow_mut().set_datetime(dt).unwrap();
-
-            // send an event to the state manager
-            EVENT_CHANNEL.sender().send(Events::RtcUpdated).await;
+            match rtc_ref.borrow_mut().set_datetime(dt) {
+                Ok(_) => {
+                    // send an event to the state manager
+                    EVENT_CHANNEL.sender().send(Events::RtcUpdated).await;
+                }
+                Err(e) => {
+                    error!(
+                        "Failed to set datetime. Retrying in {:?} seconds: {:?}",
+                        time_updater.retry_after_secs,
+                        Debug2Format(&e)
+                    );
+                    Timer::after(Duration::from_secs(time_updater.retry_after_secs)).await;
+                    continue;
+                }
+            }
         } // end of scope
 
         control.leave().await;

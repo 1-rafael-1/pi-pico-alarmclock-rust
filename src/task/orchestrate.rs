@@ -5,6 +5,7 @@ use core::cell::RefCell;
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_rp::peripherals::RTC;
+use embassy_rp::rtc::DayOfWeek;
 use embassy_rp::rtc::{DateTime, Rtc};
 use embassy_time::{Duration, Timer};
 
@@ -114,12 +115,8 @@ pub async fn orchestrate(_spawner: Spawner) {
                     DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                 }
             }
-        }
-
-        // log the state of the system
-        match _spawner.spawn(info(_spawner)) {
-            Ok(_) => {}
-            Err(_) => error!("info_task spawn failed"),
+            // log the state of the system
+            info!("{:?}", state_manager);
         }
 
         // ToDo: send the state to the sound task. This will be straightforward, as there is only one sound to play, the alarm sound.
@@ -142,7 +139,23 @@ pub async fn scheduler(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'static,
             info!("Minute timer task resumed");
         }
 
-        let dt: DateTime = rtc_ref.borrow().now().unwrap();
+        let dt = match rtc_ref.borrow().now() {
+            Ok(dt) => dt,
+            Err(e) => {
+                info!("RTC not running: {:?}", Debug2Format(&e));
+                // return an empty DateTime
+                DateTime {
+                    year: 0,
+                    month: 0,
+                    day: 0,
+                    day_of_week: DayOfWeek::Monday,
+                    hour: 0,
+                    minute: 0,
+                    second: 0,
+                }
+            }
+        };
+
         EVENT_CHANNEL
             .sender()
             .send(Events::Scheduler((dt.hour, dt.minute, dt.second)))
@@ -161,7 +174,7 @@ pub async fn scheduler(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'static,
         drop(state_manager_guard);
 
         // calculate the downtime
-        let downtime: Duration;
+        let mut downtime: Duration;
         if state_manager.alarm_settings.get_enabled() {
             // wait for 1 minute, unless we are in proximity of the alarm time, in which case we wait for 10 seconds
             let alarm_time_minutes = state_manager.alarm_settings.get_hour() * 60
@@ -179,30 +192,17 @@ pub async fn scheduler(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'static,
         }
 
         // raise the alarm event
-        if state_manager.alarm_settings.get_enabled()
+        if state_manager.operation_mode != OperationMode::Alarm
+            && state_manager.alarm_settings.get_enabled()
             && state_manager.alarm_settings.get_hour() == dt.hour
             && state_manager.alarm_settings.get_minute() == dt.minute
         {
             EVENT_CHANNEL.sender().send(Events::Alarm).await;
+            // wait for slightly more than a minute, to avoid the alarm being raised again when the user was really quick to stop it
+            downtime = Duration::from_secs(61);
         }
 
+        info!("Scheduler task sleeping for {:?}", downtime);
         Timer::after(downtime).await;
-    }
-}
-
-/// Task to log the state of the system.
-///
-/// This task is responsible for logging the state of the system. It is triggered by the orchestrate task.
-/// This is just a simple way to prove the Mutex is working as expected.
-#[embassy_executor::task]
-pub async fn info(_spawner: Spawner) {
-    let mut state_manager_guard = STATE_MANAGER_MUTEX.lock().await;
-    match state_manager_guard.as_mut() {
-        Some(state_manager) => {
-            info!("{:?}", state_manager);
-        }
-        None => {
-            info!("Info task started, but the state manager is not initialized yet");
-        }
     }
 }

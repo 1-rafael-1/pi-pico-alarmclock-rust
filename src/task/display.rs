@@ -205,7 +205,9 @@ pub async fn display(
                         let saber = Image::new(&settings.saber, state_indicator_position);
                         saber.draw(&mut display.color_converted()).unwrap();
                     }
-                    false => {}
+                    false => {
+                        // showing nothing here
+                    }
                 },
                 OperationMode::SetAlarmTime => {
                     let settings = Image::new(&settings.settings, state_indicator_position);
@@ -231,8 +233,24 @@ pub async fn display(
                     .draw(&mut display)
                     .unwrap();
                 }
-                OperationMode::Alarm => {}
-                OperationMode::Standby => {}
+                OperationMode::Alarm => {
+                    let btn = state_manager
+                        .alarm_settings
+                        .get_first_valid_stop_alarm_button();
+                    let mut btn_txt: String<13> = String::new();
+                    let _ = write!(btn_txt, "Press {:?}!", btn);
+                    Text::with_baseline(
+                        &btn_txt,
+                        settings.state_indicator_position,
+                        settings.state_indicator_text_style,
+                        Baseline::Top,
+                    )
+                    .draw(&mut display)
+                    .unwrap();
+                }
+                OperationMode::Standby => {
+                    // showing nothing here
+                }
             }
         }
 

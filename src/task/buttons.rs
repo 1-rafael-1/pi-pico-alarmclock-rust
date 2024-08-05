@@ -26,6 +26,7 @@ pub struct ButtonManager<'a> {
 /// The buttons of the system
 #[derive(Debug, Format, PartialEq, Clone)]
 pub enum Button {
+    None,
     Green,
     Blue,
     Yellow,
