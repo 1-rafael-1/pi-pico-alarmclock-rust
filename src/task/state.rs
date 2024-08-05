@@ -1,27 +1,45 @@
 //! # State of the system
 //! This module desccribes the state of the system and the events that can change the state of the system as well as the commands that can be sent to the tasks
 //! that control the system.
+use crate::task::buttons::Button;
 use defmt::*;
+use embassy_rp::clocks::RoscRng;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
 use embassy_sync::signal::Signal;
+use rand::Rng;
 
 /// Events that we want to react to together with the data that we need to react to the event.
 /// Works in conjunction with the `EVENT_CHANNEL` channel in the orchestrator task.
 #[derive(PartialEq, Debug, Format)]
 pub enum Events {
+    /// The blue button was pressed, the data is the number of presses
     BlueBtn(u32),
+    /// The green button was pressed, the data is the number of presses
     GreenBtn(u32),
+    /// The yellow button was pressed, the data is the number of presses
     YellowBtn(u32),
+    /// The usb power state has changed, the data is the new state of the usb power
     Vbus(bool),
+    /// The system power state has changed, the data is the new voltage of the system power
     Vsys(f32),
+    /// The alarm settings have been read from the flash memory, the data is the alarm settings
     AlarmSettingsReadFromFlash(AlarmSettings),
+    /// The alarm settings need to be updated in the flash memory
     AlarmSettingsNeedUpdate,
-    MinuteTimer,
+    /// The scheduler has ticked, the data is the time in (hour, minute, second)
+    Scheduler((u8, u8, u8)),
+    /// The rtc has been updated
     RtcUpdated,
+    /// The system must go to standby mode
     Standby,
+    /// The system must wake up from standby mode
     WakeUp,
+    /// The alarm must be raised
+    Alarm,
+    /// The alarm must be stopped
+    AlarmStop,
 }
 
 /// Commands that we want to send from the orchestrator to the other tasks that we want to control.
@@ -34,9 +52,12 @@ pub enum Commands {
     /// Update the display with the new state of the system
     /// Since we will need to update the display often and wizth a lot of data, we will not send the data in the command option
     DisplayUpdate,
-    /// Update the neopixel with the new state of the system
-    /// ToDo: decide if and what data we need to send to the neopixel
-    NeopixelUpdate,
+    /// Update the neopixel. The data is the time in (hour, minute, second), which will be displayed on the neopixel ring in the analog clock mode.
+    /// Since the neopixel task runs on a different core, we cannot access the rtc there directly, unless we put it into a mutex, which is overkill
+    /// for this simple task. So we will send the time to the neopixel task.
+    /// We could theoretically put the time into the state of the system, but that would be a bit of a hack, since the time is not really part of the state of the system.
+    /// Having two mutexes for the state of the system and the time would expose us to the risk of deadlocks, so all in all, it is better to send the time here.
+    NeopixelUpdate((u8, u8, u8)),
     /// Update the sound task with the new state of the system
     /// ToDo: decide if and what data we need to send to the sound task
     SoundUpdate,
@@ -62,7 +83,7 @@ pub static TIMER_START_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signa
 pub static FLASH_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 1> = Channel::new();
 
 /// Channel for the update commands that we want the orchestrator to send to the neopixel.
-// pub static NEOPIXEL_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 3> = Channel::new();
+pub static NEOPIXEL_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 3> = Channel::new();
 
 /// Channel for the update commands that we want the orchestrator to send to the mp3-player task.
 // pub static SOUND_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 1> = Channel::new();
@@ -116,7 +137,8 @@ impl StateManager {
     }
 
     pub async fn toggle_alarm_enabled(&mut self) {
-        self.alarm_settings.enabled = !self.alarm_settings.enabled;
+        self.alarm_settings
+            .set_enabled(!self.alarm_settings.get_enabled());
         self.save_alarm_settings().await;
     }
 
@@ -141,17 +163,11 @@ impl StateManager {
     }
 
     pub fn increment_alarm_hour(&mut self) {
-        let mut hour = self.alarm_settings.get_hour();
-        hour = (hour + 1) % 24;
-        self.alarm_settings
-            .set_time((hour, self.alarm_settings.get_minute()));
+        self.alarm_settings.increment_alarm_hour();
     }
 
     pub fn increment_alarm_minute(&mut self) {
-        let mut minute = self.alarm_settings.get_minute();
-        minute = (minute + 1) % 60;
-        self.alarm_settings
-            .set_time((self.alarm_settings.get_hour(), minute));
+        self.alarm_settings.increment_alarm_minute();
     }
 
     pub async fn save_alarm_settings(&mut self) {
@@ -169,6 +185,10 @@ impl StateManager {
         let sender = EVENT_CHANNEL.sender();
         self.set_normal_mode();
         sender.send(Events::WakeUp).await;
+    }
+
+    pub fn randomize_alarm_stop_buttom_sequence(&mut self) {
+        self.alarm_settings.randomize_stop_alarm_button_sequence();
     }
 }
 
@@ -189,7 +209,14 @@ impl StateManager {
             OperationMode::SystemInfo => {
                 self.set_normal_mode();
             }
-            OperationMode::Alarm => {}
+            OperationMode::Alarm => {
+                if self.alarm_settings.get_first_valid_stop_alarm_button() == Button::Green {
+                    self.alarm_settings.erase_first_valid_stop_alarm_button();
+                };
+                if self.alarm_settings.is_alarm_stop_button_sequence_complete() {
+                    EVENT_CHANNEL.sender().send(Events::AlarmStop).await;
+                }
+            }
             OperationMode::Standby => {
                 self.wake_up().await;
             }
@@ -212,7 +239,14 @@ impl StateManager {
             OperationMode::SystemInfo => {
                 self.set_normal_mode();
             }
-            OperationMode::Alarm => {}
+            OperationMode::Alarm => {
+                if self.alarm_settings.get_first_valid_stop_alarm_button() == Button::Blue {
+                    self.alarm_settings.erase_first_valid_stop_alarm_button();
+                };
+                if self.alarm_settings.is_alarm_stop_button_sequence_complete() {
+                    EVENT_CHANNEL.sender().send(Events::AlarmStop).await;
+                }
+            }
             OperationMode::Standby => {
                 self.wake_up().await;
             }
@@ -234,7 +268,14 @@ impl StateManager {
             OperationMode::SystemInfo => {
                 self.set_normal_mode();
             }
-            OperationMode::Alarm => {}
+            OperationMode::Alarm => {
+                if self.alarm_settings.get_first_valid_stop_alarm_button() == Button::Yellow {
+                    self.alarm_settings.erase_first_valid_stop_alarm_button();
+                };
+                if self.alarm_settings.is_alarm_stop_button_sequence_complete() {
+                    EVENT_CHANNEL.sender().send(Events::AlarmStop).await;
+                }
+            }
             OperationMode::Standby => {
                 self.wake_up().await;
             }
@@ -269,9 +310,11 @@ pub enum OperationMode {
 #[derive(PartialEq, Debug, Format, Clone)]
 pub struct AlarmSettings {
     /// The alarm time is set to the specified time
-    pub time: (u8, u8),
+    time: (u8, u8),
     /// The alarm is enabled or disabled
-    pub enabled: bool,
+    enabled: bool,
+    /// The color sequence of buttons that need to be pressed to stop the alarm
+    stop_alarm_button_sequence: [Button; 3],
 }
 
 impl AlarmSettings {
@@ -279,6 +322,7 @@ impl AlarmSettings {
         AlarmSettings {
             time: (0, 0),
             enabled: false,
+            stop_alarm_button_sequence: [Button::Green, Button::Blue, Button::Yellow],
         }
     }
 
@@ -301,6 +345,74 @@ impl AlarmSettings {
     pub fn get_enabled(&self) -> bool {
         self.enabled
     }
+
+    pub fn increment_alarm_hour(&mut self) {
+        let mut hour = self.get_hour();
+        hour = (hour + 1) % 24;
+        self.set_time((hour, self.get_minute()));
+    }
+
+    pub fn increment_alarm_minute(&mut self) {
+        let mut minute = self.get_minute();
+        minute = (minute + 1) % 60;
+        self.set_time((self.get_hour(), minute));
+    }
+
+    pub fn get_stop_alarm_button_sequence(&self) -> [Button; 3] {
+        self.stop_alarm_button_sequence.clone()
+    }
+
+    fn set_stop_alarm_button_sequence(&mut self, sequence: [Button; 3]) {
+        self.stop_alarm_button_sequence = sequence;
+    }
+
+    /// Randomize the stop alarm button sequence. In no-std, we have limited options for random number generation and there is no shuffle method.
+    /// So we will use a Fisher-Yates shuffle algorithm likeness to shuffle the sequence.
+    pub fn randomize_stop_alarm_button_sequence(&mut self) {
+        let mut sequence = [Button::Green, Button::Blue, Button::Yellow];
+        for i in 0..sequence.len() {
+            let j = RoscRng.gen_range(0..sequence.len());
+            sequence.swap(i, j);
+        }
+        self.set_stop_alarm_button_sequence(sequence);
+    }
+
+    /// The sequence gets iterated and the first of its values that is not None is set to None.
+    pub fn erase_first_valid_stop_alarm_button(&mut self) {
+        let mut sequence = self.get_stop_alarm_button_sequence();
+        let mut i = 0;
+        while i < sequence.len() && sequence[i] == Button::None {
+            i += 1;
+        }
+        if i < sequence.len() {
+            sequence[i] = Button::None;
+        }
+        self.set_stop_alarm_button_sequence(sequence);
+    }
+
+    /// The sequence gets iterated and the first of its values that is None is returned.
+    pub fn get_first_valid_stop_alarm_button(&self) -> Button {
+        let sequence = self.get_stop_alarm_button_sequence();
+        let mut i = 0;
+        while i < sequence.len() && sequence[i] == Button::None {
+            i += 1;
+        }
+        if i < sequence.len() {
+            sequence[i].clone()
+        } else {
+            Button::None
+        }
+    }
+
+    pub fn is_alarm_stop_button_sequence_complete(&self) -> bool {
+        let sequence = self.get_stop_alarm_button_sequence();
+        for i in 0..sequence.len() {
+            if sequence[i] != Button::None {
+                return false;
+            }
+        }
+        true
+    }
 }
 
 /// The state of the alarm
@@ -314,8 +426,6 @@ pub enum AlarmState {
     /// We are past the sunrise effect. The alarm sound is playing, the neopixel waker effect is playing. The user can stop the alarm by pressing
     /// the buttons in the correct sequence.
     Noise,
-    /// The alarm is being stopped after the correct button sequence has been pressed. The next state will be None.
-    StopAlarm,
 }
 
 /// The battery level of the system in steps of 20% from 0 to 100. One additional state is provided for charging.
@@ -334,16 +444,16 @@ pub enum BatteryLevel {
 #[derive(PartialEq, Debug, Format, Clone)]
 pub struct PowerState {
     /// The system is running on usb power
-    pub usb_power: bool,
+    usb_power: bool,
     /// The voltage of the system power supply
-    pub vsys: f32,
+    vsys: f32,
     /// The battery voltage when fully charged
-    pub battery_voltage_fully_charged: f32,
+    battery_voltage_fully_charged: f32,
     /// The battery voltage when the charger board cuts off the battery
-    pub battery_voltage_empty: f32,
+    battery_voltage_empty: f32,
     /// The battery level of the system
     /// The battery level is provided in steps of 20% from 0 to 100. One additional state is provided for charging.
-    pub battery_level: BatteryLevel,
+    battery_level: BatteryLevel,
 }
 
 impl PowerState {
@@ -369,5 +479,33 @@ impl PowerState {
                 _ => BatteryLevel::Bat100,
             };
         }
+    }
+
+    pub fn get_battery_level(&self) -> BatteryLevel {
+        self.battery_level.clone()
+    }
+
+    pub fn get_vsys(&self) -> f32 {
+        self.vsys
+    }
+
+    pub fn get_usb_power(&self) -> bool {
+        self.usb_power
+    }
+
+    pub fn get_battery_voltage_fully_charged(&self) -> f32 {
+        self.battery_voltage_fully_charged
+    }
+
+    pub fn get_battery_voltage_empty(&self) -> f32 {
+        self.battery_voltage_empty
+    }
+
+    pub fn set_vsys(&mut self, vsys: f32) {
+        self.vsys = vsys;
+    }
+
+    pub fn set_usb_power(&mut self, usb_power: bool) {
+        self.usb_power = usb_power;
     }
 }
