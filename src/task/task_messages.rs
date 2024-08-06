@@ -8,7 +8,6 @@ use crate::task::state::AlarmSettings;
 use defmt::Format;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
-use embassy_sync::mutex::Mutex;
 use embassy_sync::signal::Signal;
 
 /// Events that we want to react to together with the data that we need to react to the event.
