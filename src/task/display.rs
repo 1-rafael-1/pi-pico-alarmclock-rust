@@ -2,9 +2,10 @@
 //! This module contains the task that displays information on the OLED display.
 //!
 //! The task is responsible for initializing the display, displaying images and text, and updating the display.
+use crate::task::task_messages::DISPLAY_SIGNAL;
 use crate::task::{
     resources::{DisplayResources, Irqs},
-    state::{BatteryLevel, OperationMode, DISPLAY_SIGNAL, STATE_MANAGER_MUTEX},
+    state::{BatteryLevel, OperationMode, STATE_MANAGER_MUTEX},
 };
 use crate::utility::string_utils::StringUtils;
 use core::cell::RefCell;
@@ -133,7 +134,7 @@ impl<'a> Settings<'a> {
 }
 
 #[embassy_executor::task]
-pub async fn display(
+pub async fn display_handler(
     _spawner: Spawner,
     r: DisplayResources,
     rtc_ref: &'static RefCell<Rtc<'static, RTC>>,

@@ -3,7 +3,8 @@
 //!
 //! The alarm settings are stored in the flash memory as three separate key/value pairs.
 use crate::task::resources::FlashResources;
-use crate::task::state::{AlarmSettings, Commands, Events, EVENT_CHANNEL, FLASH_CHANNEL};
+use crate::task::state::AlarmSettings;
+use crate::task::task_messages::{Commands, Events, EVENT_CHANNEL, FLASH_CHANNEL};
 use core::ops::Range;
 use defmt::*;
 use embassy_executor::Spawner;
@@ -121,7 +122,7 @@ impl<'a> PersistedAlarmSettings<'a> {
 /// This task reads the alarm settings from the flash memory on startup and sends it to the event channel.
 /// After that, it waits for commands to update the alarm settings.
 #[embassy_executor::task]
-pub async fn manage_alarm_settings(_spawner: Spawner, r: FlashResources) {
+pub async fn alarm_settings_handler(_spawner: Spawner, r: FlashResources) {
     let mut persisted_alarm_settings = PersistedAlarmSettings::new(r);
     let receiver = FLASH_CHANNEL.receiver();
 

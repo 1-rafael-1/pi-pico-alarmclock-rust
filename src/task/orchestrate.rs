@@ -1,6 +1,7 @@
 //! # Orchestrate Tasks
 //! Task to orchestrate the state transitions of the system.
 use crate::task::state::*;
+use crate::task::task_messages::*;
 use core::cell::RefCell;
 use defmt::*;
 use embassy_executor::Spawner;
@@ -12,7 +13,7 @@ use embassy_time::{Duration, Timer};
 /// This task is responsible for the state transitions of the system. It acts as the main task of the system.
 /// It receives events from the other tasks and reacts to them by changing the state of the system.
 #[embassy_executor::task]
-pub async fn orchestrate(_spawner: Spawner) {
+pub async fn orchestrator(_spawner: Spawner) {
     info!("Orchestrate task starting");
     // initialize the state manager and put it into the mutex
     {

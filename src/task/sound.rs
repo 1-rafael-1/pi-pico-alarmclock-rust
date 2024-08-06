@@ -11,7 +11,7 @@ use embassy_rp::uart::{BufferedUart, Config};
 use embassy_time::{Duration, Timer};
 
 #[embassy_executor::task]
-pub async fn sound(_spawner: Spawner, r: DfPlayerResources) {
+pub async fn sound_handler(_spawner: Spawner, r: DfPlayerResources) {
     info!("Sound task started");
 
     let mut config = Config::default();

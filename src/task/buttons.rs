@@ -2,7 +2,7 @@
 //! This module contains the tasks for the buttons. Each button has its own task.
 
 use crate::task::resources::{BlueButtonResources, GreenButtonResources, YellowButtonResources};
-use crate::task::state::{Events, EVENT_CHANNEL};
+use crate::task::task_messages::{Events, EVENT_CHANNEL};
 use defmt::info;
 use defmt::Format;
 use embassy_executor::Spawner;
@@ -113,7 +113,7 @@ impl<'a> ButtonManager<'a> {
 }
 
 #[embassy_executor::task]
-pub async fn green_button(_spawner: Spawner, r: GreenButtonResources) {
+pub async fn green_button_handler(_spawner: Spawner, r: GreenButtonResources) {
     let input = gpio::Input::new(r.button_pin, gpio::Pull::Up);
     let sender = EVENT_CHANNEL.sender();
     let mut btn = ButtonManager::new(input, Events::GreenBtn(0), Button::Green, sender);
@@ -122,7 +122,7 @@ pub async fn green_button(_spawner: Spawner, r: GreenButtonResources) {
 }
 
 #[embassy_executor::task]
-pub async fn blue_button(_spawner: Spawner, r: BlueButtonResources) {
+pub async fn blue_button_handler(_spawner: Spawner, r: BlueButtonResources) {
     let input = gpio::Input::new(r.button_pin, gpio::Pull::Up);
     let sender = EVENT_CHANNEL.sender();
     let mut btn = ButtonManager::new(input, Events::BlueBtn(0), Button::Blue, sender);
@@ -131,7 +131,7 @@ pub async fn blue_button(_spawner: Spawner, r: BlueButtonResources) {
 }
 
 #[embassy_executor::task]
-pub async fn yellow_button(_spawner: Spawner, r: YellowButtonResources) {
+pub async fn yellow_button_handler(_spawner: Spawner, r: YellowButtonResources) {
     let input = gpio::Input::new(r.button_pin, gpio::Pull::Up);
     let sender = EVENT_CHANNEL.sender();
     let mut btn = ButtonManager::new(input, Events::YellowBtn(0), Button::Yellow, sender);

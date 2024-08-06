@@ -46,7 +46,7 @@ impl NeopixelManager {
 }
 
 #[embassy_executor::task]
-pub async fn analog_clock(_spawner: Spawner, r: NeopixelResources) {
+pub async fn light_effects_handler(_spawner: Spawner, r: NeopixelResources) {
     info!("Analog clock task start");
 
     // Spi configuration for the neopixel
