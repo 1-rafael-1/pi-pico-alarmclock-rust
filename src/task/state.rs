@@ -1,6 +1,5 @@
 //! # State of the system
-//! This module desccribes the state of the system and the events that can change the state of the system as well as the commands that can be sent to the tasks
-//! that control the system.
+//! This module desccribes the state of the system and the operations that can be performed on the state.
 use crate::task::buttons::Button;
 use crate::task::task_messages::{Events, EVENT_CHANNEL};
 use defmt::*;
@@ -34,7 +33,6 @@ pub struct StateManager {
     pub alarm_settings: AlarmSettings,
     pub alarm_state: AlarmState,
     pub power_state: PowerState,
-    // more
 }
 
 /// State transitions
@@ -69,6 +67,7 @@ impl StateManager {
 
     pub fn set_normal_mode(&mut self) {
         self.operation_mode = OperationMode::Normal;
+        self.set_alarm_state(AlarmState::None);
     }
 
     pub fn set_set_alarm_time_mode(&mut self) {
@@ -77,6 +76,11 @@ impl StateManager {
 
     pub fn set_alarm_mode(&mut self) {
         self.operation_mode = OperationMode::Alarm;
+        self.set_alarm_state(AlarmState::Sunrise);
+    }
+
+    pub fn set_alarm_state(&mut self, state: AlarmState) {
+        self.alarm_state = state;
     }
 
     pub fn set_system_info_mode(&mut self) {

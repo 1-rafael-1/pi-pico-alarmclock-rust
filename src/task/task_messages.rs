@@ -40,6 +40,8 @@ pub enum Events {
     Alarm,
     /// The alarm must be stopped
     AlarmStop,
+    /// The light effect `sunrise` has finished
+    SunriseEffectFinished,
 }
 
 /// Commands that we want to send from the orchestrator to the other tasks that we want to control.
@@ -57,7 +59,7 @@ pub enum Commands {
     /// for this simple task. So we will send the time to the neopixel task.
     /// We could theoretically put the time into the state of the system, but that would be a bit of a hack, since the time is not really part of the state of the system.
     /// Having two mutexes for the state of the system and the time would expose us to the risk of deadlocks, so all in all, it is better to send the time here.
-    NeopixelUpdate((u8, u8, u8)),
+    LightFXUpdate((u8, u8, u8)),
     /// Update the sound task with the new state of the system
     /// ToDo: decide if and what data we need to send to the sound task
     SoundUpdate,
@@ -82,5 +84,10 @@ pub static TIMER_START_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signa
 /// Channel for the update commands that we want the orchestrator to send to the flash task.
 pub static FLASH_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 1> = Channel::new();
 
-/// Channel for the update commands that we want the orchestrator to send to the neopixel.
-pub static NEOPIXEL_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 3> = Channel::new();
+/// Signal for the update commands that we want the orchestrator to send to the neopixel.
+pub static LIGHTFX_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
+/// Signal for the stop command that we want the orchestrator to send to the neopixel.
+pub static LIGHTFX_STOP_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
+
+/// Signal for the update commands that we want the orchestrator to send to the sound task.
+pub static SOUND_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();

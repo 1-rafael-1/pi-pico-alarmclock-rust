@@ -3,6 +3,10 @@
 //!
 //! The tasks are responsible for initializing the neopixel, setting the colors of the LEDs, and updating the LEDs.
 use crate::task::resources::NeopixelResources;
+use crate::task::state::{AlarmState, OperationMode, STATE_MANAGER_MUTEX};
+use crate::task::task_messages::{
+    Commands, Events, EVENT_CHANNEL, LIGHTFX_SIGNAL, LIGHTFX_STOP_SIGNAL,
+};
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_rp::spi::{Config, Phase, Polarity, Spi};
@@ -59,33 +63,127 @@ pub async fn light_effects_handler(_spawner: Spawner, r: NeopixelResources) {
     let mut np: Ws2812<_, { 12 * NUM_LEDS }> = Ws2812::new(spi);
 
     loop {
-        // Set all LEDs to off
+        // all off
         let data = [RGB8::default(); 16];
-        np.write(brightness(
-            data.iter().cloned(),
-            neopixel_mgr.alarm_brightness(),
-        ))
-        .await
-        .ok();
+        np.write(brightness(data.iter().cloned(), 0)).await.ok();
 
-        Timer::after(Duration::from_secs(1)).await;
+        // wait for the signal to update the neopixel
+        let command = LIGHTFX_SIGNAL.wait().await;
+        let (hour, minute, second) = match command {
+            Commands::LightFXUpdate((hour, minute, second)) => (hour, minute, second),
+            _ => (0, 0, 0),
+        };
 
-        // Set all LEDs to blue
-        let blue = neopixel_mgr.rgb_to_grb((0, 0, 255));
-        let data = [blue; 16];
-        let _ = np
-            .write(brightness(
-                data.iter().cloned(),
-                neopixel_mgr.clock_brightness(),
-            ))
-            .await;
+        // get the state of the system out of the mutex and quickly drop the mutex
+        let state_manager_guard = STATE_MANAGER_MUTEX.lock().await;
+        let state_manager = match state_manager_guard.clone() {
+            Some(state_manager) => state_manager,
+            None => {
+                error!("State manager not initialized");
+                continue;
+            }
+        };
+        drop(state_manager_guard);
 
-        Timer::after(Duration::from_secs(1)).await;
+        match state_manager.operation_mode {
+            OperationMode::Normal
+            | OperationMode::Menu
+            | OperationMode::SetAlarmTime
+            | OperationMode::SystemInfo => {
+                if !state_manager.alarm_settings.get_enabled() {
+                    info!("Analog clock mode");
+                    // no loop, just set the time on the neopixel ring
+                    // just a simple effect for now
+                    // Set all LEDs to green
+                    let color = neopixel_mgr.rgb_to_grb((0, 255, 0));
+                    let data = [color; 16];
+                    let _ = np
+                        .write(brightness(
+                            data.iter().cloned(),
+                            neopixel_mgr.clock_brightness(),
+                        ))
+                        .await;
+                    Timer::after(Duration::from_millis(300)).await;
+                } else {
+                    // we do nothing
+                }
+            }
+            OperationMode::Alarm => {
+                info!("Alarm mode");
+                match state_manager.alarm_state {
+                    AlarmState::Sunrise => {
+                        info!("Sunrise effect");
 
-        // Set all LEDs to off
-        let data = [RGB8::default(); 16];
-        let _ = np.write(brightness(data.iter().cloned(), 0)).await;
+                        // ToDo: loop through the sunrise effect, just a simple blinking effect for now
+                        let mut cntr = 0;
+                        loop {
+                            if cntr > 10 {
+                                break;
+                            }
 
-        break;
+                            // Set all LEDs to blue
+                            let color = neopixel_mgr.rgb_to_grb((0, 0, 255));
+                            let data = [color; 16];
+                            let _ = np
+                                .write(brightness(
+                                    data.iter().cloned(),
+                                    neopixel_mgr.clock_brightness(),
+                                ))
+                                .await;
+                            Timer::after(Duration::from_secs(1)).await;
+
+                            // all off
+                            let data = [RGB8::default(); 16];
+                            np.write(brightness(data.iter().cloned(), 0)).await.ok();
+                            Timer::after(Duration::from_secs(1)).await;
+
+                            cntr += 1;
+                        }
+
+                        EVENT_CHANNEL
+                            .sender()
+                            .send(Events::SunriseEffectFinished)
+                            .await;
+                    }
+                    AlarmState::Noise => {
+                        info!("Noise effect");
+                        // ToDo: loop through the noise effect, until the alarm is stopped
+                        loop {
+                            if LIGHTFX_STOP_SIGNAL.signaled() {
+                                info!("Noise effect aborting");
+                                LIGHTFX_STOP_SIGNAL.reset();
+                                break;
+                            }
+
+                            // Set all LEDs to red
+                            let color = neopixel_mgr.rgb_to_grb((255, 0, 0));
+                            let data = [color; 16];
+                            let _ = np
+                                .write(brightness(
+                                    data.iter().cloned(),
+                                    neopixel_mgr.clock_brightness(),
+                                ))
+                                .await;
+                            Timer::after(Duration::from_secs(1)).await;
+
+                            // all off
+                            let data = [RGB8::default(); 16];
+                            np.write(brightness(data.iter().cloned(), 0)).await.ok();
+                            Timer::after(Duration::from_secs(1)).await;
+
+                            Timer::after(Duration::from_secs(1)).await;
+                        }
+                    }
+                    AlarmState::None => {
+                        // we do nothing, and even getting here is an error
+                        error!("Alarm state is None, this should not happen");
+                    }
+                }
+            }
+            OperationMode::Standby => {
+                info!("Standby mode");
+                // we do nothing
+            }
+        }
     }
 }

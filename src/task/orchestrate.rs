@@ -67,10 +67,7 @@ pub async fn orchestrator(_spawner: Spawner) {
                 Events::Scheduler((hour, minute, second)) => {
                     info!("Scheduler event");
                     if !state_manager.alarm_settings.get_enabled() {
-                        NEOPIXEL_CHANNEL
-                            .sender()
-                            .send(Commands::NeopixelUpdate((hour, minute, second)))
-                            .await;
+                        LIGHTFX_SIGNAL.signal(Commands::LightFXUpdate((hour, minute, second)));
                     }
                     DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                 }
@@ -88,41 +85,43 @@ pub async fn orchestrator(_spawner: Spawner) {
                 }
                 Events::Standby => {
                     info!("Standby event");
-                    DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                     TIMER_STOP_SIGNAL.signal(Commands::MinuteTimerStop);
+                    DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
+                    LIGHTFX_SIGNAL.signal(Commands::LightFXUpdate((0, 0, 0)));
+                    SOUND_SIGNAL.signal(Commands::SoundUpdate);
                 }
                 Events::WakeUp => {
                     info!("Wake up event");
-                    DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                     TIMER_START_SIGNAL.signal(Commands::MinuteTimerStart);
                 }
                 Events::Alarm => {
                     info!("Alarm event");
                     state_manager.randomize_alarm_stop_buttom_sequence();
                     state_manager.set_alarm_mode();
-                    // ToDo:
-                    // 1. send the state to the sound task
-                    // 2. send the state to the neopixel task
-                    // 4. handle the alarm stop sequence
                     DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
-                    NEOPIXEL_CHANNEL
-                        .sender()
-                        .send(Commands::NeopixelUpdate((0, 0, 0)))
-                        .await;
+                    LIGHTFX_SIGNAL.signal(Commands::LightFXUpdate((0, 0, 0)));
                 }
                 Events::AlarmStop => {
                     info!("Alarm stop event");
                     state_manager.set_normal_mode();
                     DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
+                    LIGHTFX_STOP_SIGNAL.signal(Commands::LightFXUpdate((0, 0, 0)));
+                    LIGHTFX_SIGNAL.signal(Commands::LightFXUpdate((0, 0, 0)));
+                    SOUND_SIGNAL.signal(Commands::SoundUpdate);
+                }
+                Events::SunriseEffectFinished => {
+                    info!("Sunrise effect finished event");
+                    state_manager.set_alarm_state(AlarmState::Noise);
+                    SOUND_SIGNAL.signal(Commands::SoundUpdate);
+                    LIGHTFX_SIGNAL.signal(Commands::LightFXUpdate((0, 0, 0)));
+                    // ToDo: state manager must go to the next alarm state
+                    // ToDo: neopixel must go to the next effect
+                    // ToDo: sound must play
                 }
             }
             // log the state of the system
             info!("{:?}", state_manager);
         }
-
-        // ToDo: send the state to the sound task. This will be straightforward, as there is only one sound to play, the alarm sound.
-
-        // ToDo: send the state to the neopixel task. This will need a little thinking, as the neopixel hs different effects to display
     }
 }
 
@@ -134,10 +133,10 @@ pub async fn scheduler(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'static,
     loop {
         // see if we must halt the task, then wait for the start signal
         if TIMER_STOP_SIGNAL.signaled() {
-            info!("Minute timer task halted");
+            info!("scheduler task halted");
             TIMER_STOP_SIGNAL.reset();
             TIMER_START_SIGNAL.wait().await;
-            info!("Minute timer task resumed");
+            info!("scheduler task resumed");
         }
 
         let dt = match rtc_ref.borrow().now() {
