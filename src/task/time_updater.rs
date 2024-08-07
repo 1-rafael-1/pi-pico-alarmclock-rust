@@ -29,7 +29,7 @@ include!(concat!(env!("OUT_DIR"), "/wifi_secrets.rs"));
 include!(concat!(env!("OUT_DIR"), "/time_api_config.rs"));
 
 use crate::task::resources::{Irqs, WifiResources};
-use crate::task::state::{Events, EVENT_CHANNEL};
+use crate::task::task_messages::{Events, EVENT_CHANNEL};
 use crate::utility::string_utils::StringUtils;
 use core::cell::RefCell;
 use core::str::from_utf8;

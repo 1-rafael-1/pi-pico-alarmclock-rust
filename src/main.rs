@@ -4,13 +4,13 @@
 #![no_std]
 #![no_main]
 
-use crate::task::alarm_settings::manage_alarm_settings;
-use crate::task::buttons::{blue_button, green_button, yellow_button};
-use crate::task::dfplayer::sound;
-use crate::task::display::display;
-use crate::task::orchestrate::{orchestrate, scheduler};
-use crate::task::power::{usb_power, vsys_voltage};
+use crate::task::alarm_settings::alarm_settings_handler;
+use crate::task::buttons::{blue_button_handler, green_button_handler, yellow_button_handler};
+use crate::task::display::display_handler;
+use crate::task::orchestrate::{orchestrator, scheduler};
+use crate::task::power::{usb_power_detector, vsys_voltage_reader};
 use crate::task::resources::*;
+use crate::task::sound::sound_handler;
 use crate::task::time_updater::time_updater;
 use core::cell::RefCell;
 use defmt::*;
@@ -41,17 +41,7 @@ async fn main(spawner: Spawner) {
     // the tasks are all spawned in main.rs, so we can disable them here
     // clutter in the output aside, the binary size is conveniently reduced by disabling tasks
     let mut task_config = TaskConfig::new();
-    // task_config.time_updater = false;
-    // task_config.btn_green = false;
-    // task_config.btn_blue = false;
-    // task_config.btn_yellow = false;
-    task_config.neopixel = false;
-    // task_config.display = false;
-    task_config.dfplayer = false;
-    // task_config.usb_power = false;
-    // task_config.vsys_voltage = false;
-    // task_config.alarm_settings = false;
-    // task_config.minute_timer = false;
+    task_config.sound_handler = false;
 
     // RTC
     // Initialize the RTC in a static cell, we will need it in multiple places
@@ -62,35 +52,46 @@ async fn main(spawner: Spawner) {
     // Orchestrate
     // there is no main loop, the tasks are spawned and run in parallel
     // orchestrating the tasks is done here:
-    spawner.spawn(orchestrate(spawner)).unwrap();
+    if task_config.orchestrator {
+        spawner.spawn(orchestrator(spawner)).unwrap();
+        spawner.spawn(scheduler(spawner, rtc_ref)).unwrap();
+    }
 
     // Alarm settings
-    if task_config.alarm_settings {
+    if task_config.alarm_settings_handler {
         spawner
-            .spawn(manage_alarm_settings(spawner, r.flash))
+            .spawn(alarm_settings_handler(spawner, r.flash))
             .unwrap();
     };
 
     // Power
     if task_config.usb_power {
-        spawner.spawn(usb_power(spawner, r.vbus_power)).unwrap();
+        spawner
+            .spawn(usb_power_detector(spawner, r.vbus_power))
+            .unwrap();
     };
 
-    if task_config.vsys_voltage {
+    if task_config.vsys_voltage_reader {
         spawner
-            .spawn(vsys_voltage(spawner, r.vsys_resources))
+            .spawn(vsys_voltage_reader(spawner, r.vsys_resources))
             .unwrap();
     };
 
     // Buttons
-    if task_config.btn_green {
-        spawner.spawn(green_button(spawner, r.btn_green)).unwrap();
+    if task_config.btn_green_handler {
+        spawner
+            .spawn(green_button_handler(spawner, r.btn_green))
+            .unwrap();
     };
-    if task_config.btn_blue {
-        spawner.spawn(blue_button(spawner, r.btn_blue)).unwrap();
+    if task_config.btn_blue_handler {
+        spawner
+            .spawn(blue_button_handler(spawner, r.btn_blue))
+            .unwrap();
     };
-    if task_config.btn_yellow {
-        spawner.spawn(yellow_button(spawner, r.btn_yellow)).unwrap();
+    if task_config.btn_yellow_handler {
+        spawner
+            .spawn(yellow_button_handler(spawner, r.btn_yellow))
+            .unwrap();
     };
 
     // update the RTC
@@ -115,9 +116,11 @@ async fn main(spawner: Spawner) {
         move || {
             let executor1 = EXECUTOR1.init(Executor::new());
             executor1.run(|spawner| {
-                if task_config.neopixel {
+                if task_config.light_effects_handler {
                     spawner
-                        .spawn(task::neopixel::analog_clock(spawner, r.neopixel))
+                        .spawn(task::light_effects::light_effects_handler(
+                            spawner, r.neopixel,
+                        ))
                         .unwrap();
                 }
             });
@@ -125,18 +128,15 @@ async fn main(spawner: Spawner) {
     );
 
     // Display
-    if task_config.display {
-        spawner.spawn(display(spawner, r.display, rtc_ref)).unwrap();
+    if task_config.display_handler {
+        spawner
+            .spawn(display_handler(spawner, r.display, rtc_ref))
+            .unwrap();
     }
 
     // DFPlayer
-    if task_config.dfplayer {
-        spawner.spawn(sound(spawner, r.dfplayer)).unwrap();
-    }
-
-    // Minute timer
-    if task_config.minute_timer {
-        spawner.spawn(scheduler(spawner, rtc_ref)).unwrap();
+    if task_config.sound_handler {
+        spawner.spawn(sound_handler(spawner, r.dfplayer)).unwrap();
     }
 }
 
@@ -146,33 +146,33 @@ async fn main(spawner: Spawner) {
 /// Also, we can disable tasks that are not needed for the current development stage and also test tasks in isolation.
 /// For a production build we will need all tasks enabled
 pub struct TaskConfig {
-    pub btn_green: bool,
-    pub btn_blue: bool,
-    pub btn_yellow: bool,
+    pub btn_green_handler: bool,
+    pub btn_blue_handler: bool,
+    pub btn_yellow_handler: bool,
     pub time_updater: bool,
-    pub neopixel: bool,
-    pub display: bool,
-    pub dfplayer: bool,
+    pub light_effects_handler: bool,
+    pub display_handler: bool,
+    pub sound_handler: bool,
     pub usb_power: bool,
-    pub vsys_voltage: bool,
-    pub alarm_settings: bool,
-    pub minute_timer: bool,
+    pub vsys_voltage_reader: bool,
+    pub alarm_settings_handler: bool,
+    pub orchestrator: bool,
 }
 
 impl Default for TaskConfig {
     fn default() -> Self {
         TaskConfig {
-            btn_green: true,
-            btn_blue: true,
-            btn_yellow: true,
+            btn_green_handler: true,
+            btn_blue_handler: true,
+            btn_yellow_handler: true,
             time_updater: true,
-            neopixel: true,
-            display: true,
-            dfplayer: true,
+            light_effects_handler: true,
+            display_handler: true,
+            sound_handler: true,
             usb_power: true,
-            vsys_voltage: true,
-            alarm_settings: true,
-            minute_timer: true,
+            vsys_voltage_reader: true,
+            alarm_settings_handler: true,
+            orchestrator: true,
         }
     }
 }

@@ -1,9 +1,11 @@
 //! # Orchestrate Tasks
 //! Task to orchestrate the state transitions of the system.
 use crate::task::state::*;
+use crate::task::task_messages::*;
 use core::cell::RefCell;
 use defmt::*;
 use embassy_executor::Spawner;
+use embassy_futures::select::{select, Either};
 use embassy_rp::peripherals::RTC;
 use embassy_rp::rtc::DayOfWeek;
 use embassy_rp::rtc::{DateTime, Rtc};
@@ -12,7 +14,7 @@ use embassy_time::{Duration, Timer};
 /// This task is responsible for the state transitions of the system. It acts as the main task of the system.
 /// It receives events from the other tasks and reacts to them by changing the state of the system.
 #[embassy_executor::task]
-pub async fn orchestrate(_spawner: Spawner) {
+pub async fn orchestrator(_spawner: Spawner) {
     info!("Orchestrate task starting");
     // initialize the state manager and put it into the mutex
     {
@@ -65,12 +67,7 @@ pub async fn orchestrate(_spawner: Spawner) {
                 }
                 Events::Scheduler((hour, minute, second)) => {
                     info!("Scheduler event");
-                    if !state_manager.alarm_settings.get_enabled() {
-                        NEOPIXEL_CHANNEL
-                            .sender()
-                            .send(Commands::NeopixelUpdate((hour, minute, second)))
-                            .await;
-                    }
+                    LIGHTFX_SIGNAL.signal(Commands::LightFXUpdate((hour, minute, second)));
                     DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                 }
                 Events::RtcUpdated => {
@@ -84,44 +81,47 @@ pub async fn orchestrate(_spawner: Spawner) {
                             state_manager.alarm_settings.clone(),
                         ))
                         .await;
+                    SCHEDULER_WAKE_SIGNAL.signal(Commands::SchedulerWakeUp);
                 }
                 Events::Standby => {
                     info!("Standby event");
+                    SCHEDULER_STOP_SIGNAL.signal(Commands::SchedulerStop);
                     DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
-                    TIMER_STOP_SIGNAL.signal(Commands::MinuteTimerStop);
+                    LIGHTFX_SIGNAL.signal(Commands::LightFXUpdate((0, 0, 0)));
+                    SOUND_SIGNAL.signal(Commands::SoundUpdate);
                 }
                 Events::WakeUp => {
                     info!("Wake up event");
-                    DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
-                    TIMER_START_SIGNAL.signal(Commands::MinuteTimerStart);
+                    SCHEDULER_START_SIGNAL.signal(Commands::SchedulerStart);
                 }
                 Events::Alarm => {
                     info!("Alarm event");
                     state_manager.randomize_alarm_stop_buttom_sequence();
                     state_manager.set_alarm_mode();
-                    // ToDo:
-                    // 1. send the state to the sound task
-                    // 2. send the state to the neopixel task
-                    // 4. handle the alarm stop sequence
                     DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
-                    NEOPIXEL_CHANNEL
-                        .sender()
-                        .send(Commands::NeopixelUpdate((0, 0, 0)))
-                        .await;
+                    LIGHTFX_SIGNAL.signal(Commands::LightFXUpdate((0, 0, 0)));
                 }
                 Events::AlarmStop => {
                     info!("Alarm stop event");
                     state_manager.set_normal_mode();
                     DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
+                    LIGHTFX_STOP_SIGNAL.signal(Commands::LightFXUpdate((0, 0, 0)));
+                    LIGHTFX_SIGNAL.signal(Commands::LightFXUpdate((0, 0, 0)));
+                    SOUND_SIGNAL.signal(Commands::SoundUpdate);
+                }
+                Events::SunriseEffectFinished => {
+                    info!("Sunrise effect finished event");
+                    state_manager.set_alarm_state(AlarmState::Noise);
+                    SOUND_SIGNAL.signal(Commands::SoundUpdate);
+                    LIGHTFX_SIGNAL.signal(Commands::LightFXUpdate((0, 0, 0)));
+                    // ToDo: state manager must go to the next alarm state
+                    // ToDo: neopixel must go to the next effect
+                    // ToDo: sound must play
                 }
             }
             // log the state of the system
             info!("{:?}", state_manager);
         }
-
-        // ToDo: send the state to the sound task. This will be straightforward, as there is only one sound to play, the alarm sound.
-
-        // ToDo: send the state to the neopixel task. This will need a little thinking, as the neopixel hs different effects to display
     }
 }
 
@@ -132,26 +132,37 @@ pub async fn scheduler(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'static,
     info!("scheduler task started");
     loop {
         // see if we must halt the task, then wait for the start signal
-        if TIMER_STOP_SIGNAL.signaled() {
-            info!("Minute timer task halted");
-            TIMER_STOP_SIGNAL.reset();
-            TIMER_START_SIGNAL.wait().await;
-            info!("Minute timer task resumed");
+        if SCHEDULER_STOP_SIGNAL.signaled() {
+            info!("scheduler task halted");
+            SCHEDULER_STOP_SIGNAL.reset();
+            SCHEDULER_START_SIGNAL.wait().await;
+            info!("scheduler task resumed");
         }
 
-        let dt = match rtc_ref.borrow().now() {
-            Ok(dt) => dt,
-            Err(e) => {
-                info!("RTC not running: {:?}", Debug2Format(&e));
-                // return an empty DateTime
-                DateTime {
-                    year: 0,
-                    month: 0,
-                    day: 0,
-                    day_of_week: DayOfWeek::Monday,
-                    hour: 0,
-                    minute: 0,
-                    second: 0,
+        let dt = {
+            let rtc = match rtc_ref.try_borrow() {
+                Ok(rtc) => rtc,
+                Err(_) => {
+                    error!("RTC borrow failed");
+                    Timer::after(Duration::from_secs(1)).await;
+                    continue;
+                }
+            };
+
+            match rtc.now() {
+                Ok(dt) => dt,
+                Err(e) => {
+                    info!("RTC not running: {:?}", Debug2Format(&e));
+                    // Return an empty DateTime
+                    DateTime {
+                        year: 0,
+                        month: 0,
+                        day: 0,
+                        day_of_week: DayOfWeek::Monday,
+                        hour: 0,
+                        minute: 0,
+                        second: 0,
+                    }
                 }
             }
         };
@@ -202,7 +213,11 @@ pub async fn scheduler(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'static,
             downtime = Duration::from_secs(61);
         }
 
-        info!("Scheduler task sleeping for {:?}", downtime);
-        Timer::after(downtime).await;
+        // we either wait for the downtime or until we are woken up early. Whatever comes first, starts the next iteration.
+        let downtime_timer = Timer::after(downtime);
+        match select(downtime_timer, SCHEDULER_WAKE_SIGNAL.wait()).await {
+            Either::First(_) => {}
+            Either::Second(_) => {}
+        }
     }
 }

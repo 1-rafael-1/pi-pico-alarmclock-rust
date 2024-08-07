@@ -3,7 +3,7 @@
 //! Detremine the supply voltage of the system.
 
 use crate::task::resources::{Irqs, UsbPowerResources};
-use crate::task::state::{Events, EVENT_CHANNEL};
+use crate::task::task_messages::{Events, EVENT_CHANNEL};
 use crate::VsysResources;
 use defmt::*;
 use embassy_executor::Spawner;
@@ -17,7 +17,7 @@ use embassy_time::{Duration, Timer};
 /// the VBUS pin is not available for direct use (it is run through the wifi module, and there is no safe way to use wifi and the
 /// vbus concurrently).
 #[embassy_executor::task]
-pub async fn usb_power(_spawner: Spawner, r: UsbPowerResources) {
+pub async fn usb_power_detector(_spawner: Spawner, r: UsbPowerResources) {
     info!("usb_power task started");
     let mut vbus_in = Input::new(r.vbus_pin, Pull::None);
     let sender = EVENT_CHANNEL.sender();
@@ -37,7 +37,7 @@ pub async fn usb_power(_spawner: Spawner, r: UsbPowerResources) {
 /// the VSYS pin is not available for direct use (it is run through the wifi module, and there is no safe way to use wifi and the
 /// vsys concurrently).
 #[embassy_executor::task]
-pub async fn vsys_voltage(_spawner: Spawner, r: VsysResources) {
+pub async fn vsys_voltage_reader(_spawner: Spawner, r: VsysResources) {
     info!("vsys_voltage task started");
     let mut adc = Adc::new(r.adc, Irqs, Config::default());
     let vsys_in = r.pin_27;
