@@ -11,7 +11,6 @@ use defmt::*;
 use embassy_executor::Spawner;
 use embassy_rp::spi::{Config, Phase, Polarity, Spi};
 use embassy_time::{Duration, Timer};
-use micromath::F32Ext;
 use smart_leds::{brightness, RGB8};
 use ws2812_async::Ws2812;
 use {defmt_rtt as _, panic_probe as _};
