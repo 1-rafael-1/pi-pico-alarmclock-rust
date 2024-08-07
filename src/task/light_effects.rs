@@ -94,24 +94,28 @@ pub async fn light_effects_handler(_spawner: Spawner, r: NeopixelResources) {
             | OperationMode::SetAlarmTime
             | OperationMode::SystemInfo => {
                 if !state_manager.alarm_settings.get_enabled() {
-                    info!("Analog clock mode");
+                    // Analog Clock mode
 
                     // Calculate the LED indices for each hand
                     // the hour hand will deliberately be dragging behind since we choose to not account for minutes passed in the hour
 
                     // Convert the hour value to an index on the ring of 16 LEDs
                     let hour = if (hour % 12) == 0 { 12 } else { hour % 12 };
-                    let hour_index = (hour as f32 / 12.0 * NUM_LEDS as f32) as u8
-                        - (NUM_LEDS as f32 / 2.0) as u8;
+                    let hour_index = ((hour as f32 / 12.0 * NUM_LEDS as f32) as u8
+                        - (NUM_LEDS as f32 / 2.0) as u8
+                        + 1)
+                        % NUM_LEDS as u8;
 
                     // Convert the minute value to an index on the ring of 16 LEDs
                     let minute_index = (((minute % 60) as f32 * NUM_LEDS as f32 / 60.0
-                        + NUM_LEDS as f32 / 2.0)
+                        + NUM_LEDS as f32 / 2.0
+                        + 1.0)
                         % NUM_LEDS as f32) as u8;
 
                     // Convert the second value to an index on the ring of 16 LEDs
                     let second_index = (((second % 60) as f32 * NUM_LEDS as f32 / 60.0
-                        + NUM_LEDS as f32 / 2.0)
+                        + NUM_LEDS as f32 / 2.0
+                        + 1.0)
                         % NUM_LEDS as f32) as u8;
 
                     // clear the data
@@ -122,12 +126,19 @@ pub async fn light_effects_handler(_spawner: Spawner, r: NeopixelResources) {
                     data[minute_index as usize] = green;
                     data[second_index as usize] = blue;
 
-                    info!("Hour: {}, Minute: {}, Second: {}", hour, minute, second);
-                    info!(
-                        "Hour index: {}, Minute index: {}, Second index: {}",
-                        hour_index, minute_index, second_index
-                    );
-                    info!("Data: {:?}", Debug2Format(&data));
+                    // but when any hands are on the same index, their colors must be mixed
+                    if hour_index == minute_index {
+                        data[hour_index as usize] = neopixel_mgr.rgb_to_grb((255, 255, 0));
+                    };
+                    if hour_index == second_index {
+                        data[hour_index as usize] = neopixel_mgr.rgb_to_grb((255, 0, 255));
+                    };
+                    if minute_index == second_index {
+                        data[minute_index as usize] = neopixel_mgr.rgb_to_grb((0, 255, 255));
+                    };
+                    if minute_index == second_index && hour_index == minute_index {
+                        data[hour_index as usize] = neopixel_mgr.rgb_to_grb((255, 255, 255));
+                    };
 
                     let _ = np
                         .write(brightness(
@@ -135,9 +146,10 @@ pub async fn light_effects_handler(_spawner: Spawner, r: NeopixelResources) {
                             neopixel_mgr.clock_brightness(),
                         ))
                         .await;
-                    //Timer::after(Duration::from_secs(1)).await;
                 } else {
-                    // we do nothing
+                    // all off
+                    let data = [RGB8::default(); NUM_LEDS];
+                    let _ = np.write(brightness(data.iter().cloned(), 0)).await;
                 }
             }
             OperationMode::Alarm => {
@@ -216,7 +228,7 @@ pub async fn light_effects_handler(_spawner: Spawner, r: NeopixelResources) {
                 info!("Standby mode");
                 // all off
                 let data = [RGB8::default(); NUM_LEDS];
-                np.write(brightness(data.iter().cloned(), 0)).await.ok();
+                let _ = np.write(brightness(data.iter().cloned(), 0)).await;
                 // we do nothing
             }
         }

@@ -63,10 +63,12 @@ pub enum Commands {
     /// Update the sound task with the new state of the system
     /// ToDo: decide if and what data we need to send to the sound task
     SoundUpdate,
-    /// Stop the minute timer
-    MinuteTimerStop,
-    /// Start the minute timer
-    MinuteTimerStart,
+    /// Stop the scheduler
+    SchedulerStop,
+    /// Start the scheduler
+    SchedulerStart,
+    /// Wake the scheduler early when awaiting the next tick
+    SchedulerWakeUp,
 }
 
 /// For the events that we want the orchestrator to react to, all state events are of the type Enum Events.
@@ -76,10 +78,11 @@ pub static EVENT_CHANNEL: Channel<CriticalSectionRawMutex, Events, 10> = Channel
 /// the system, we will not send any data in the command option and we can afford to work only with a simple state of "the display needs to be updated".
 pub static DISPLAY_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
 
-/// For the update commands that we want the orchestrator to send to the minute timer task. Since we only ever want to update the minute timer according to the state of
-/// the system, we will not send any data in the command option and we can afford to work only with a simple state of "the minute timer needs to be stopped".
-pub static TIMER_STOP_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
-pub static TIMER_START_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
+/// For the update commands that we want the orchestrator to send to the scheduler task. Since we only ever want to update the scheduler according to the state of
+/// the system, we will not send any data in the command option and we can afford to work only with a simple state of "the scheduler needs to be stopped/woken/...".
+pub static SCHEDULER_STOP_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
+pub static SCHEDULER_START_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
+pub static SCHEDULER_WAKE_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
 
 /// Channel for the update commands that we want the orchestrator to send to the flash task.
 pub static FLASH_CHANNEL: Channel<CriticalSectionRawMutex, Commands, 1> = Channel::new();
