@@ -11,9 +11,9 @@ use defmt::*;
 use embassy_executor::Spawner;
 use embassy_rp::spi::{Config, Phase, Polarity, Spi};
 use embassy_time::{Duration, Timer};
+use micromath::F32Ext;
 use smart_leds::{brightness, RGB8};
 use ws2812_async::Ws2812;
-
 use {defmt_rtt as _, panic_probe as _};
 
 const NUM_LEDS: usize = 16;
@@ -24,10 +24,10 @@ pub struct NeopixelManager {
 }
 
 impl NeopixelManager {
-    pub fn new(alarm_brightness: u8, clock_brightness: u8) -> Self {
+    pub fn new() -> Self {
         Self {
-            alarm_brightness,
-            clock_brightness,
+            alarm_brightness: 90,
+            clock_brightness: 1,
         }
     }
 
@@ -59,14 +59,18 @@ pub async fn light_effects_handler(_spawner: Spawner, r: NeopixelResources) {
     spi_config.phase = Phase::CaptureOnFirstTransition;
     spi_config.polarity = Polarity::IdleLow;
     let spi = Spi::new_txonly(r.inner_spi, r.clk_pin, r.mosi_pin, r.tx_dma_ch, spi_config);
-    let neopixel_mgr = NeopixelManager::new(100, 10);
+    let neopixel_mgr = NeopixelManager::new();
     let mut np: Ws2812<_, { 12 * NUM_LEDS }> = Ws2812::new(spi);
 
-    loop {
-        // all off
-        let data = [RGB8::default(); 16];
-        np.write(brightness(data.iter().cloned(), 0)).await.ok();
+    let red = neopixel_mgr.rgb_to_grb((255, 0, 0));
+    let green = neopixel_mgr.rgb_to_grb((0, 255, 0));
+    let blue = neopixel_mgr.rgb_to_grb((0, 0, 255));
 
+    // all off
+    let mut data = [RGB8::default(); NUM_LEDS];
+    np.write(brightness(data.iter().cloned(), 0)).await.ok();
+
+    loop {
         // wait for the signal to update the neopixel
         let command = LIGHTFX_SIGNAL.wait().await;
         let (hour, minute, second) = match command {
@@ -92,18 +96,47 @@ pub async fn light_effects_handler(_spawner: Spawner, r: NeopixelResources) {
             | OperationMode::SystemInfo => {
                 if !state_manager.alarm_settings.get_enabled() {
                     info!("Analog clock mode");
-                    // no loop, just set the time on the neopixel ring
-                    // just a simple effect for now
-                    // Set all LEDs to green
-                    let color = neopixel_mgr.rgb_to_grb((0, 255, 0));
-                    let data = [color; 16];
+
+                    // Calculate the LED indices for each hand
+                    // the hour hand will deliberately be dragging behind since we choose to not account for minutes passed in the hour
+
+                    // Convert the hour value to an index on the ring of 16 LEDs
+                    let hour = if (hour % 12) == 0 { 12 } else { hour % 12 };
+                    let hour_index = ((hour as f32 / 12.0 * NUM_LEDS as f32) as u8
+                        - (NUM_LEDS as f32 / 2.0) as u8);
+
+                    // Convert the minute value to an index on the ring of 16 LEDs
+                    let minute_index = (((minute % 60) as f32 * NUM_LEDS as f32 / 60.0
+                        + NUM_LEDS as f32 / 2.0)
+                        % NUM_LEDS as f32) as u8;
+
+                    // Convert the second value to an index on the ring of 16 LEDs
+                    let second_index = (((second % 60) as f32 * NUM_LEDS as f32 / 60.0
+                        + NUM_LEDS as f32 / 2.0)
+                        % NUM_LEDS as f32) as u8;
+
+                    // clear the data
+                    data = [RGB8::default(); NUM_LEDS];
+
+                    // Set the colors of the hands
+                    data[hour_index as usize] = red;
+                    data[minute_index as usize] = green;
+                    data[second_index as usize] = blue;
+
+                    info!("Hour: {}, Minute: {}, Second: {}", hour, minute, second);
+                    info!(
+                        "Hour index: {}, Minute index: {}, Second index: {}",
+                        hour_index, minute_index, second_index
+                    );
+                    info!("Data: {:?}", Debug2Format(&data));
+
                     let _ = np
                         .write(brightness(
                             data.iter().cloned(),
                             neopixel_mgr.clock_brightness(),
                         ))
                         .await;
-                    Timer::after(Duration::from_millis(300)).await;
+                    //Timer::after(Duration::from_secs(1)).await;
                 } else {
                     // we do nothing
                 }
@@ -123,7 +156,7 @@ pub async fn light_effects_handler(_spawner: Spawner, r: NeopixelResources) {
 
                             // Set all LEDs to blue
                             let color = neopixel_mgr.rgb_to_grb((0, 0, 255));
-                            let data = [color; 16];
+                            let data = [color; NUM_LEDS];
                             let _ = np
                                 .write(brightness(
                                     data.iter().cloned(),
@@ -133,7 +166,7 @@ pub async fn light_effects_handler(_spawner: Spawner, r: NeopixelResources) {
                             Timer::after(Duration::from_secs(1)).await;
 
                             // all off
-                            let data = [RGB8::default(); 16];
+                            let data = [RGB8::default(); NUM_LEDS];
                             np.write(brightness(data.iter().cloned(), 0)).await.ok();
                             Timer::after(Duration::from_secs(1)).await;
 
@@ -157,7 +190,7 @@ pub async fn light_effects_handler(_spawner: Spawner, r: NeopixelResources) {
 
                             // Set all LEDs to red
                             let color = neopixel_mgr.rgb_to_grb((255, 0, 0));
-                            let data = [color; 16];
+                            let data = [color; NUM_LEDS];
                             let _ = np
                                 .write(brightness(
                                     data.iter().cloned(),
@@ -167,7 +200,7 @@ pub async fn light_effects_handler(_spawner: Spawner, r: NeopixelResources) {
                             Timer::after(Duration::from_secs(1)).await;
 
                             // all off
-                            let data = [RGB8::default(); 16];
+                            let data = [RGB8::default(); NUM_LEDS];
                             np.write(brightness(data.iter().cloned(), 0)).await.ok();
                             Timer::after(Duration::from_secs(1)).await;
 
@@ -182,6 +215,9 @@ pub async fn light_effects_handler(_spawner: Spawner, r: NeopixelResources) {
             }
             OperationMode::Standby => {
                 info!("Standby mode");
+                // all off
+                let mut data = [RGB8::default(); NUM_LEDS];
+                np.write(brightness(data.iter().cloned(), 0)).await.ok();
                 // we do nothing
             }
         }
