@@ -101,8 +101,8 @@ pub async fn light_effects_handler(_spawner: Spawner, r: NeopixelResources) {
 
                     // Convert the hour value to an index on the ring of 16 LEDs
                     let hour = if (hour % 12) == 0 { 12 } else { hour % 12 };
-                    let hour_index = ((hour as f32 / 12.0 * NUM_LEDS as f32) as u8
-                        - (NUM_LEDS as f32 / 2.0) as u8);
+                    let hour_index = (hour as f32 / 12.0 * NUM_LEDS as f32) as u8
+                        - (NUM_LEDS as f32 / 2.0) as u8;
 
                     // Convert the minute value to an index on the ring of 16 LEDs
                     let minute_index = (((minute % 60) as f32 * NUM_LEDS as f32 / 60.0
@@ -215,7 +215,7 @@ pub async fn light_effects_handler(_spawner: Spawner, r: NeopixelResources) {
             OperationMode::Standby => {
                 info!("Standby mode");
                 // all off
-                let mut data = [RGB8::default(); NUM_LEDS];
+                let data = [RGB8::default(); NUM_LEDS];
                 np.write(brightness(data.iter().cloned(), 0)).await.ok();
                 // we do nothing
             }
