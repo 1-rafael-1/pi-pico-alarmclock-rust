@@ -20,7 +20,7 @@ use sequential_storage::map::{fetch_item, store_item};
 const FLASH_SIZE: usize = 2 * 1024 * 1024;
 
 /// # PersistedAlarmTime
-/// This struct is used to persist the alarm time in the flash memory.
+/// This struct is used to persist the alarm settings in the flash memory.
 pub struct PersistedAlarmSettings<'a> {
     flash: Flash<'a, FLASH, Async, { FLASH_SIZE }>,
     flash_range: Range<u32>,

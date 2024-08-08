@@ -15,14 +15,17 @@ use smart_leds::{brightness, RGB8};
 use ws2812_async::Ws2812;
 use {defmt_rtt as _, panic_probe as _};
 
+// Number of LEDs in the ring
 const NUM_LEDS: usize = 16;
 
+/// Manages the neopixel LED ring, including brightness settings for alarm and clock modes.
 pub struct NeopixelManager {
     alarm_brightness: u8,
     clock_brightness: u8,
 }
 
 impl NeopixelManager {
+    /// Creates a new `NeopixelManager` with default brightness settings.
     pub fn new() -> Self {
         Self {
             alarm_brightness: 90,

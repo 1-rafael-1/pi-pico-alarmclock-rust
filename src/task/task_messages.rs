@@ -67,8 +67,10 @@ pub enum Commands {
     SchedulerStop,
     /// Start the scheduler
     SchedulerStart,
-    /// Wake the scheduler early when awaiting the next tick
+    /// Wake the scheduler early when awaiting the next iteration
     SchedulerWakeUp,
+    /// Wake the vsys_voltage_reader task early when awaiting the next iteration
+    VsysWakeUp,
 }
 
 /// For the events that we want the orchestrator to react to, all state events are of the type Enum Events.
@@ -94,3 +96,5 @@ pub static LIGHTFX_STOP_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Sign
 
 /// Signal for the update commands that we want the orchestrator to send to the sound task.
 pub static SOUND_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
+
+pub static VSYS_WAKE_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
