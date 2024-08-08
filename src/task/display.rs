@@ -178,19 +178,30 @@ pub async fn display_handler(
         drop(state_manager_guard);
 
         // get the system datetime
-        let dt = match rtc_ref.borrow().now() {
-            Ok(dt) => dt,
-            Err(e) => {
-                info!("RTC not running: {:?}", Debug2Format(&e));
-                // return an empty DateTime
-                DateTime {
-                    year: 0,
-                    month: 0,
-                    day: 0,
-                    day_of_week: DayOfWeek::Monday,
-                    hour: 0,
-                    minute: 0,
-                    second: 0,
+        let dt = {
+            let rtc = match rtc_ref.try_borrow() {
+                Ok(rtc) => rtc,
+                Err(_) => {
+                    error!("RTC borrow failed");
+                    Timer::after(Duration::from_secs(1)).await;
+                    continue;
+                }
+            };
+
+            match rtc.now() {
+                Ok(dt) => dt,
+                Err(e) => {
+                    info!("RTC not running: {:?}", Debug2Format(&e));
+                    // Return an empty DateTime
+                    DateTime {
+                        year: 0,
+                        month: 0,
+                        day: 0,
+                        day_of_week: DayOfWeek::Monday,
+                        hour: 0,
+                        minute: 0,
+                        second: 0,
+                    }
                 }
             }
         };
