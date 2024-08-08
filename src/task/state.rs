@@ -432,5 +432,6 @@ impl PowerState {
 
     pub fn set_usb_power(&mut self, usb_power: bool) {
         self.usb_power = usb_power;
+        self.set_battery_level();
     }
 }

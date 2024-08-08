@@ -15,8 +15,6 @@
 //! # populate constant TIME_SERVER_URL
 //! make sure to have a time_api_config.json file in the config folder formatted as follows:
 //! ```json
-//! // populate constant TIME_SERVER_URL
-//! make sure to have a time_api_config.json file in the config folder formatted as follows:
 //! {
 //!     "time api by zone": {
 //!         "baseurl": "http://worldtimeapi.org/api",

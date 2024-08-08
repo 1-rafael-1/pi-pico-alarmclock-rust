@@ -12,9 +12,9 @@ use embassy_sync::channel::Sender;
 use embassy_time::{with_deadline, Duration, Instant, Timer};
 use {defmt_rtt as _, panic_probe as _};
 
-// Button Manager
-// Handles button press, hold, and long hold
-// Debounces button press
+/// Button Manager
+/// Handles button press, hold, and long hold
+/// Debounces button press
 pub struct ButtonManager<'a> {
     input: Input<'a>,
     debounce_duration: Duration,

@@ -5,7 +5,7 @@ use crate::task::task_messages::*;
 use core::cell::RefCell;
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_futures::select::{select, Either};
+use embassy_futures::select::select;
 use embassy_rp::peripherals::RTC;
 use embassy_rp::rtc::DayOfWeek;
 use embassy_rp::rtc::{DateTime, Rtc};
@@ -22,7 +22,10 @@ pub async fn orchestrator(_spawner: Spawner) {
         *(STATE_MANAGER_MUTEX.lock().await) = Some(state_manager);
     }
 
+    // init the receiver for the event channel, this is the line we are listening on
     let event_receiver = EVENT_CHANNEL.receiver();
+
+    // init the sender for the flash channel
     let flash_sender = FLASH_CHANNEL.sender();
 
     loop {
@@ -52,7 +55,9 @@ pub async fn orchestrator(_spawner: Spawner) {
                 Events::Vbus(usb) => {
                     info!("Vbus event, usb: {}", usb);
                     state_manager.power_state.set_usb_power(usb);
-                    state_manager.power_state.set_battery_level();
+                    if !state_manager.power_state.get_usb_power() {
+                        VSYS_WAKE_SIGNAL.signal(Commands::VsysWakeUp);
+                    };
                     DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                 }
                 Events::Vsys(voltage) => {
@@ -184,7 +189,7 @@ pub async fn scheduler(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'static,
         };
         drop(state_manager_guard);
 
-        // calculate the downtime
+        // calculate the downtime we need to wait until the next iteration
         let mut downtime: Duration;
         if state_manager.alarm_settings.get_enabled() {
             // wait for 1 minute, unless we are in proximity of the alarm time, in which case we wait for 10 seconds
@@ -215,9 +220,6 @@ pub async fn scheduler(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'static,
 
         // we either wait for the downtime or until we are woken up early. Whatever comes first, starts the next iteration.
         let downtime_timer = Timer::after(downtime);
-        match select(downtime_timer, SCHEDULER_WAKE_SIGNAL.wait()).await {
-            Either::First(_) => {}
-            Either::Second(_) => {}
-        }
+        select(downtime_timer, SCHEDULER_WAKE_SIGNAL.wait()).await;
     }
 }
