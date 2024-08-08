@@ -40,8 +40,7 @@ async fn main(spawner: Spawner) {
     // configure, which tasks to spawn. For a production build we need all tasks, for troubleshooting we can disable some
     // the tasks are all spawned in main.rs, so we can disable them here
     // clutter in the output aside, the binary size is conveniently reduced by disabling tasks
-    let mut task_config = TaskConfig::new();
-    task_config.sound_handler = false;
+    let task_config = TaskConfig::new();
 
     // RTC
     // Initialize the RTC in a static cell, we will need it in multiple places
@@ -102,9 +101,6 @@ async fn main(spawner: Spawner) {
     }
 
     // Neopixel
-    // Note! -> we may need more than one neopixel task eventually, in that case we will need mutexes around the resources
-    // i want to keep it simple for now
-
     // the neopixel task will be spawned on core1, because it will run in parallel to the other tasks and it may block
     // spawn the neopixel tasks, on core1 as opposed to the other tasks
     static mut CORE1_STACK: Stack<4096> = Stack::new();

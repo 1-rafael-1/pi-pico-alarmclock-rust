@@ -93,7 +93,9 @@ pub async fn orchestrator(_spawner: Spawner) {
                     SCHEDULER_STOP_SIGNAL.signal(Commands::SchedulerStop);
                     DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                     LIGHTFX_SIGNAL.signal(Commands::LightFXUpdate((0, 0, 0)));
-                    SOUND_SIGNAL.signal(Commands::SoundUpdate);
+                    if SOUND_START_SIGNAL.signaled() {
+                        SOUND_STOP_SIGNAL.signal(Commands::SoundUpdate);
+                    }
                 }
                 Events::WakeUp => {
                     info!("Wake up event");
@@ -112,16 +114,13 @@ pub async fn orchestrator(_spawner: Spawner) {
                     DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                     LIGHTFX_STOP_SIGNAL.signal(Commands::LightFXUpdate((0, 0, 0)));
                     LIGHTFX_SIGNAL.signal(Commands::LightFXUpdate((0, 0, 0)));
-                    SOUND_SIGNAL.signal(Commands::SoundUpdate);
+                    SOUND_STOP_SIGNAL.signal(Commands::SoundUpdate);
                 }
                 Events::SunriseEffectFinished => {
                     info!("Sunrise effect finished event");
                     state_manager.set_alarm_state(AlarmState::Noise);
-                    SOUND_SIGNAL.signal(Commands::SoundUpdate);
+                    SOUND_START_SIGNAL.signal(Commands::SoundUpdate);
                     LIGHTFX_SIGNAL.signal(Commands::LightFXUpdate((0, 0, 0)));
-                    // ToDo: state manager must go to the next alarm state
-                    // ToDo: neopixel must go to the next effect
-                    // ToDo: sound must play
                 }
             }
             // log the state of the system

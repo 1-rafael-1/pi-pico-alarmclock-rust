@@ -3,6 +3,7 @@
 //!
 //! The task is responsible for initializing the DFPlayer Mini module, powering it on, playing a sound, and powering it off.
 use crate::task::resources::{DfPlayerResources, Irqs};
+use crate::task::task_messages::{SOUND_START_SIGNAL, SOUND_STOP_SIGNAL};
 use defmt::{info, Debug2Format};
 use dfplayer_serial::{DfPlayer, Equalizer, PlayBackSource};
 use embassy_executor::Spawner;
@@ -38,6 +39,9 @@ pub async fn sound_handler(_spawner: Spawner, r: DfPlayerResources) {
     let mut pwr = Output::new(r.power_pin, Level::Low);
 
     loop {
+        // wait for the signal to start playing sound
+        SOUND_START_SIGNAL.wait().await;
+
         // power on the dfplayer
         info!("Powering on the dfplayer");
         pwr.set_high();
@@ -57,24 +61,23 @@ pub async fn sound_handler(_spawner: Spawner, r: DfPlayerResources) {
 
         info!("Playing sound");
         if let Ok(ref mut dfp) = dfp_result {
-            let _ = dfp.volume(5).await;
+            let _ = dfp.volume(20).await;
             Timer::after(Duration::from_millis(100)).await;
             let _ = dfp.equalizer(Equalizer::Classic).await;
             Timer::after(Duration::from_millis(100)).await;
             let _ = dfp.playback_source(PlayBackSource::SDCard).await;
             Timer::after(Duration::from_millis(100)).await;
             let _ = dfp.play(1).await;
-            Timer::after(Duration::from_secs(100)).await;
+            Timer::after(Duration::from_millis(200)).await;
         } else {
             info!("DfPlayer not initialized, skipping sound playback.");
         }
-        Timer::after(Duration::from_secs(10)).await;
+
+        // wait for the signal to stop playing sound
+        SOUND_STOP_SIGNAL.wait().await;
 
         // power off the dfplayer
         info!("Powering off the dfplayer");
         pwr.set_low();
-        Timer::after(Duration::from_secs(1)).await;
-
-        Timer::after(Duration::from_secs(10)).await;
     }
 }

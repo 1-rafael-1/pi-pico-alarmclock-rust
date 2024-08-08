@@ -268,13 +268,13 @@ pub async fn light_effects_handler(_spawner: Spawner, r: NeopixelResources) {
                         let mut data = [RGB8::default(); NUM_LEDS];
 
                         'noise: loop {
-                            if LIGHTFX_STOP_SIGNAL.signaled() {
-                                info!("Noise effect aborting");
-                                LIGHTFX_STOP_SIGNAL.reset();
-                                break 'noise;
-                            };
-
                             for j in 0..(256 * 5) {
+                                if LIGHTFX_STOP_SIGNAL.signaled() {
+                                    info!("Noise effect aborting");
+                                    LIGHTFX_STOP_SIGNAL.reset();
+                                    break 'noise;
+                                };
+
                                 for i in 0..NUM_LEDS {
                                     data[i] = neopixel_mgr.wheel(
                                         (((i * 256) as u16 / NUM_LEDS as u16 + j as u16) & 255)

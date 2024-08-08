@@ -95,6 +95,8 @@ pub static LIGHTFX_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::n
 pub static LIGHTFX_STOP_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
 
 /// Signal for the update commands that we want the orchestrator to send to the sound task.
-pub static SOUND_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
+pub static SOUND_START_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
+pub static SOUND_STOP_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
 
+/// Signal for the wake command that we want the orchestrator to send to the vsys_voltage_reader task.
 pub static VSYS_WAKE_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
