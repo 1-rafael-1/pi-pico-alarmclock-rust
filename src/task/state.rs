@@ -4,8 +4,6 @@ use crate::task::buttons::Button;
 use crate::task::task_messages::{Events, EVENT_CHANNEL};
 use defmt::*;
 use embassy_rp::clocks::RoscRng;
-use embassy_rp::peripherals;
-use embassy_rp::rtc::Rtc;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use rand::Rng;

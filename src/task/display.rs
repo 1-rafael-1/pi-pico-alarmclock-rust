@@ -10,14 +10,10 @@ use crate::task::{
     state::{BatteryLevel, OperationMode, STATE_MANAGER_MUTEX},
 };
 use crate::utility::string_utils::StringUtils;
-use core::cell::RefCell;
 use core::fmt::Write;
-use cyw43::State;
 use defmt::{error, info, Debug2Format};
 use embassy_executor::Spawner;
 use embassy_rp::i2c::{Config, I2c};
-use embassy_rp::peripherals::RTC;
-use embassy_rp::rtc::Rtc;
 use embassy_rp::rtc::{DateTime, DayOfWeek};
 use embassy_time::{Duration, Timer};
 use embedded_graphics::mono_font::MonoTextStyle;

@@ -30,8 +30,6 @@ use crate::task::resources::{Irqs, WifiResources};
 use crate::task::task_messages::{Events, EVENT_CHANNEL};
 use crate::utility::string_utils::StringUtils;
 use crate::RtcResources;
-use core::borrow::BorrowMut;
-use core::cell::RefCell;
 use core::str::from_utf8;
 use cyw43_pio::PioSpi;
 use defmt::*;
@@ -50,10 +48,9 @@ use embassy_rp::pio::Pio;
 use embassy_rp::rtc::Rtc;
 use embassy_rp::{clocks::RoscRng, rtc::DateTime};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::mutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{with_timeout, Duration, Timer};
-use rand::{Error, RngCore};
+use rand::RngCore;
 use reqwless::client::HttpClient;
 use reqwless::client::TlsConfig;
 use reqwless::client::TlsVerify;
@@ -362,7 +359,7 @@ pub async fn time_updater(spawner: Spawner, r: WifiResources, t: RtcResources) {
                 dt = StringUtils::convert_str_to_datetime(response.datetime, response.day_of_week);
 
                 let mut rtc_guard = RTC_MUTEX.lock().await;
-                let mut rtc = rtc_guard.as_mut().unwrap();
+                let rtc = rtc_guard.as_mut().unwrap();
 
                 match rtc.set_datetime(dt) {
                     Ok(_) => {

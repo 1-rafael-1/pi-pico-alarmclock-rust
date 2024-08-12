@@ -3,13 +3,10 @@
 use crate::task::state::*;
 use crate::task::task_messages::*;
 use crate::task::time_updater::RTC_MUTEX;
-use core::cell::RefCell;
 use defmt::*;
-use embassy_executor::Spawner;
 use embassy_futures::select::select;
-use embassy_rp::peripherals::RTC;
 use embassy_rp::rtc::DayOfWeek;
-use embassy_rp::rtc::{DateTime, Rtc};
+use embassy_rp::rtc::DateTime;
 use embassy_time::{Duration, Timer};
 
 /// This task is responsible for the state transitions of the system. It acts as the main task of the system.

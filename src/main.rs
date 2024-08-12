@@ -12,16 +12,11 @@ use crate::task::power::{usb_power_detector, vsys_voltage_reader};
 use crate::task::resources::*;
 use crate::task::sound::sound_handler;
 use crate::task::time_updater::time_updater;
-use core::cell::RefCell;
 use defmt::*;
 use embassy_executor::{main, Executor, InterruptExecutor, Spawner};
 use embassy_rp::interrupt;
 use embassy_rp::interrupt::{InterruptExt, Priority};
 use embassy_rp::multicore::{spawn_core1, Stack};
-use embassy_rp::peripherals;
-use embassy_rp::rtc::Rtc;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::mutex::Mutex;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
