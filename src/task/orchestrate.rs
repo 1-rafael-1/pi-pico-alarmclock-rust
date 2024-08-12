@@ -2,6 +2,7 @@
 //! Task to orchestrate the state transitions of the system.
 use crate::task::state::*;
 use crate::task::task_messages::*;
+use crate::task::time_updater::RTC_MUTEX;
 use core::cell::RefCell;
 use defmt::*;
 use embassy_executor::Spawner;
@@ -14,7 +15,7 @@ use embassy_time::{Duration, Timer};
 /// This task is responsible for the state transitions of the system. It acts as the main task of the system.
 /// It receives events from the other tasks and reacts to them by changing the state of the system.
 #[embassy_executor::task]
-pub async fn orchestrator(_spawner: Spawner) {
+pub async fn orchestrator() {
     info!("Orchestrate task starting");
     // initialize the state manager and put it into the mutex
     {
@@ -132,28 +133,31 @@ pub async fn orchestrator(_spawner: Spawner) {
 /// This is the task that will handle scheduling timed events by sending events to the Event Channel when a given
 /// time has passed. It will also handle the alarm event.
 #[embassy_executor::task]
-pub async fn scheduler(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'static, RTC>>) {
+pub async fn scheduler() {
     info!("scheduler task started");
-    loop {
+    'mainloop: loop {
         // see if we must halt the task, then wait for the start signal
         if SCHEDULER_STOP_SIGNAL.signaled() {
             info!("scheduler task halted");
             SCHEDULER_STOP_SIGNAL.reset();
             SCHEDULER_START_SIGNAL.wait().await;
             info!("scheduler task resumed");
-        }
+        };
 
-        let dt = {
-            let rtc = match rtc_ref.try_borrow() {
-                Ok(rtc) => rtc,
-                Err(_) => {
-                    error!("RTC borrow failed");
-                    Timer::after(Duration::from_secs(1)).await;
-                    continue;
+        // get the current time
+        let dt: DateTime;
+        '_rtc_mutex: {
+            let rtc_guard = RTC_MUTEX.lock().await;
+            let rtc = match rtc_guard.as_ref() {
+                Some(rtc) => rtc,
+                None => {
+                    error!("RTC not initialized");
+                    drop(rtc_guard);
+                    Timer::after(Duration::from_secs(3)).await;
+                    continue 'mainloop;
                 }
             };
-
-            match rtc.now() {
+            dt = match rtc.now() {
                 Ok(dt) => dt,
                 Err(e) => {
                     info!("RTC not running: {:?}", Debug2Format(&e));
@@ -168,7 +172,7 @@ pub async fn scheduler(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'static,
                         second: 0,
                     }
                 }
-            }
+            };
         };
 
         EVENT_CHANNEL
@@ -177,16 +181,19 @@ pub async fn scheduler(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'static,
             .await;
 
         // get the state of the system out of the mutex and quickly drop the mutex
-        let state_manager_guard = STATE_MANAGER_MUTEX.lock().await;
-        let state_manager = match state_manager_guard.clone() {
-            Some(state_manager) => state_manager,
-            None => {
-                error!("State manager not initialized");
-                Timer::after(Duration::from_secs(1)).await;
-                continue;
-            }
-        };
-        drop(state_manager_guard);
+        let state_manager: StateManager;
+        '_state_manager_mutex: {
+            let state_manager_guard = STATE_MANAGER_MUTEX.lock().await;
+            state_manager = match state_manager_guard.clone() {
+                Some(state_manager) => state_manager,
+                None => {
+                    error!("State manager not initialized");
+                    drop(state_manager_guard);
+                    Timer::after(Duration::from_secs(1)).await;
+                    continue 'mainloop;
+                }
+            };
+        }
 
         // calculate the downtime we need to wait until the next iteration
         let mut downtime: Duration;
@@ -202,8 +209,8 @@ pub async fn scheduler(_spawner: Spawner, rtc_ref: &'static RefCell<Rtc<'static,
             }
         } else {
             // if the alarm is not enabled, we will be using the neopixel analog clock effect, which will need to be updated often
-            // so we will wait for 3.75 seconds (60s / 16leds -> 3.75s until we must update the leds)
-            downtime = Duration::from_millis(3750);
+            // so we must wait for 3.75 seconds (60s / 16leds -> 3.75s until we must update the leds). To avoid visual glitches, we reduce that time by 10ms
+            downtime = Duration::from_millis(3740);
         }
 
         // raise the alarm event

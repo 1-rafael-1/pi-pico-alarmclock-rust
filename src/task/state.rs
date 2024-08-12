@@ -4,6 +4,8 @@ use crate::task::buttons::Button;
 use crate::task::task_messages::{Events, EVENT_CHANNEL};
 use defmt::*;
 use embassy_rp::clocks::RoscRng;
+use embassy_rp::peripherals;
+use embassy_rp::rtc::Rtc;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use rand::Rng;
@@ -30,8 +32,11 @@ pub static STATE_MANAGER_MUTEX: StateManagerType = Mutex::new(None);
 pub struct StateManager {
     /// The operation mode of the system
     pub operation_mode: OperationMode,
+    /// The settings for the alarm
     pub alarm_settings: AlarmSettings,
+    /// The state of the alarm
     pub alarm_state: AlarmState,
+    /// The power state of the system
     pub power_state: PowerState,
 }
 

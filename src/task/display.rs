@@ -2,7 +2,9 @@
 //! This module contains the task that displays information on the OLED display.
 //!
 //! The task is responsible for initializing the display, displaying images and text, and updating the display.
+use crate::task::state::StateManager;
 use crate::task::task_messages::DISPLAY_SIGNAL;
+use crate::task::time_updater::RTC_MUTEX;
 use crate::task::{
     resources::{DisplayResources, Irqs},
     state::{BatteryLevel, OperationMode, STATE_MANAGER_MUTEX},
@@ -10,6 +12,7 @@ use crate::task::{
 use crate::utility::string_utils::StringUtils;
 use core::cell::RefCell;
 use core::fmt::Write;
+use cyw43::State;
 use defmt::{error, info, Debug2Format};
 use embassy_executor::Spawner;
 use embassy_rp::i2c::{Config, I2c};
@@ -134,11 +137,7 @@ impl<'a> Settings<'a> {
 }
 
 #[embassy_executor::task]
-pub async fn display_handler(
-    _spawner: Spawner,
-    r: DisplayResources,
-    rtc_ref: &'static RefCell<Rtc<'static, RTC>>,
-) {
+pub async fn display_handler(_spawner: Spawner, r: DisplayResources) {
     info!("Display task started");
 
     let scl = r.scl;
@@ -162,33 +161,24 @@ pub async fn display_handler(
 
     let settings = Settings::new();
 
-    loop {
+    'mainloop: loop {
         // Wait for a signal to update the display
         DISPLAY_SIGNAL.wait().await;
 
-        // get the state of the system out of the mutex and quickly drop the mutex
-        let state_manager_guard = STATE_MANAGER_MUTEX.lock().await;
-        let state_manager = match state_manager_guard.clone() {
-            Some(state_manager) => state_manager,
-            None => {
-                error!("State manager not initialized");
-                continue;
-            }
-        };
-        drop(state_manager_guard);
-
-        // get the system datetime
-        let dt = {
-            let rtc = match rtc_ref.try_borrow() {
-                Ok(rtc) => rtc,
-                Err(_) => {
-                    error!("RTC borrow failed");
+        // get the current time out of the mutex and quickly drop the mutex
+        let dt: DateTime;
+        '_rtc_mutex: {
+            let rtc_guard = RTC_MUTEX.lock().await;
+            let rtc = match rtc_guard.as_ref() {
+                Some(rtc) => rtc,
+                None => {
+                    error!("RTC not initialized");
+                    drop(rtc_guard);
                     Timer::after(Duration::from_secs(1)).await;
-                    continue;
+                    continue 'mainloop;
                 }
             };
-
-            match rtc.now() {
+            dt = match rtc.now() {
                 Ok(dt) => dt,
                 Err(e) => {
                     info!("RTC not running: {:?}", Debug2Format(&e));
@@ -203,8 +193,23 @@ pub async fn display_handler(
                         second: 0,
                     }
                 }
-            }
-        };
+            };
+        }
+
+        // get the state of the system out of the mutex and quickly drop the mutex
+        let state_manager: StateManager;
+        '_state_manager_mutex: {
+            let state_manager_guard = STATE_MANAGER_MUTEX.lock().await;
+            state_manager = match state_manager_guard.clone() {
+                Some(state_manager) => state_manager,
+                None => {
+                    error!("State manager not initialized");
+                    drop(state_manager_guard);
+                    Timer::after(Duration::from_secs(1)).await;
+                    continue 'mainloop;
+                }
+            };
+        }
 
         // prepare the display, note that nothing is sent to the display before flush()
         display.clear();

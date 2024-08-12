@@ -14,10 +14,14 @@ use crate::task::sound::sound_handler;
 use crate::task::time_updater::time_updater;
 use core::cell::RefCell;
 use defmt::*;
-use embassy_executor::{Executor, Spawner};
+use embassy_executor::{main, Executor, InterruptExecutor, Spawner};
+use embassy_rp::interrupt;
+use embassy_rp::interrupt::{InterruptExt, Priority};
 use embassy_rp::multicore::{spawn_core1, Stack};
 use embassy_rp::peripherals;
 use embassy_rp::rtc::Rtc;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::mutex::Mutex;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
@@ -27,8 +31,19 @@ mod task;
 // import the utility module (submodule of src)
 mod utility;
 
+// after observing somewhat jumpy behavior of the neopixel task, I decided to set the scheduler and orhestrator to high priority
+// hight priority runs on interrupt
+static EXECUTOR_HIGH: InterruptExecutor = InterruptExecutor::new();
+// low priority runs in thread-mode
+static EXECUTOR_LOW: StaticCell<Executor> = StaticCell::new();
+
+#[interrupt]
+unsafe fn SWI_IRQ_1() {
+    EXECUTOR_HIGH.on_interrupt()
+}
+
 /// Entry point
-#[embassy_executor::main]
+#[main]
 async fn main(spawner: Spawner) {
     info!("Program start");
 
@@ -42,98 +57,98 @@ async fn main(spawner: Spawner) {
     // clutter in the output aside, the binary size is conveniently reduced by disabling tasks
     let task_config = TaskConfig::new();
 
-    // RTC
-    // Initialize the RTC in a static cell, we will need it in multiple places
-    static RTC: StaticCell<RefCell<Rtc<'static, peripherals::RTC>>> = StaticCell::new();
-    let rtc_instance: Rtc<'static, peripherals::RTC> = Rtc::new(r.real_time_clock.rtc);
-    let rtc_ref = RTC.init(RefCell::new(rtc_instance));
+    // High-priority executor: SWI_IRQ_1, priority level 2
+    interrupt::SWI_IRQ_1.set_priority(Priority::P2);
+    let spawner = EXECUTOR_HIGH.start(interrupt::SWI_IRQ_1);
 
     // Orchestrate
     // there is no main loop, the tasks are spawned and run in parallel
     // orchestrating the tasks is done here:
     if task_config.orchestrator {
-        spawner.spawn(orchestrator(spawner)).unwrap();
-        spawner.spawn(scheduler(spawner, rtc_ref)).unwrap();
+        spawner.spawn(orchestrator()).unwrap();
+        spawner.spawn(scheduler()).unwrap();
     }
 
-    // Alarm settings
-    if task_config.alarm_settings_handler {
-        spawner
-            .spawn(alarm_settings_handler(spawner, r.flash))
-            .unwrap();
-    };
+    // Low priority executor: runs in thread mode, using WFE/SEV
+    let executor = EXECUTOR_LOW.init(Executor::new());
+    executor.run(|spawner| {
+        // update the RTC
+        if task_config.time_updater {
+            spawner
+                .spawn(time_updater(spawner, r.wifi, r.real_time_clock))
+                .unwrap();
+        }
 
-    // Power
-    if task_config.usb_power {
-        spawner
-            .spawn(usb_power_detector(spawner, r.vbus_power))
-            .unwrap();
-    };
+        // Alarm settings
+        if task_config.alarm_settings_handler {
+            spawner
+                .spawn(alarm_settings_handler(spawner, r.flash))
+                .unwrap();
+        };
 
-    if task_config.vsys_voltage_reader {
-        spawner
-            .spawn(vsys_voltage_reader(spawner, r.vsys_resources))
-            .unwrap();
-    };
+        // Power
+        if task_config.usb_power {
+            spawner
+                .spawn(usb_power_detector(spawner, r.vbus_power))
+                .unwrap();
+        };
 
-    // Buttons
-    if task_config.btn_green_handler {
-        spawner
-            .spawn(green_button_handler(spawner, r.btn_green))
-            .unwrap();
-    };
-    if task_config.btn_blue_handler {
-        spawner
-            .spawn(blue_button_handler(spawner, r.btn_blue))
-            .unwrap();
-    };
-    if task_config.btn_yellow_handler {
-        spawner
-            .spawn(yellow_button_handler(spawner, r.btn_yellow))
-            .unwrap();
-    };
+        if task_config.vsys_voltage_reader {
+            spawner
+                .spawn(vsys_voltage_reader(spawner, r.vsys_resources))
+                .unwrap();
+        };
 
-    // update the RTC
-    if task_config.time_updater {
-        spawner
-            .spawn(time_updater(spawner, r.wifi, rtc_ref))
-            .unwrap();
-    }
+        // Buttons
+        if task_config.btn_green_handler {
+            spawner
+                .spawn(green_button_handler(spawner, r.btn_green))
+                .unwrap();
+        };
+        if task_config.btn_blue_handler {
+            spawner
+                .spawn(blue_button_handler(spawner, r.btn_blue))
+                .unwrap();
+        };
+        if task_config.btn_yellow_handler {
+            spawner
+                .spawn(yellow_button_handler(spawner, r.btn_yellow))
+                .unwrap();
+        };
 
-    // Neopixel
-    // the neopixel task will be spawned on core1, because it will run in parallel to the other tasks and it may block
-    // spawn the neopixel tasks, on core1 as opposed to the other tasks
-    static mut CORE1_STACK: Stack<4096> = Stack::new();
-    static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
+        // Display
+        if task_config.display_handler {
+            spawner.spawn(display_handler(spawner, r.display)).unwrap();
+        }
 
-    spawn_core1(
-        p.CORE1,
-        unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
-        move || {
-            let executor1 = EXECUTOR1.init(Executor::new());
-            executor1.run(|spawner| {
-                if task_config.light_effects_handler {
-                    spawner
-                        .spawn(task::light_effects::light_effects_handler(
-                            spawner, r.neopixel,
-                        ))
-                        .unwrap();
-                }
-            });
-        },
-    );
+        // DFPlayer
+        if task_config.sound_handler {
+            spawner.spawn(sound_handler(spawner, r.dfplayer)).unwrap();
+        }
 
-    // Display
-    if task_config.display_handler {
-        spawner
-            .spawn(display_handler(spawner, r.display, rtc_ref))
-            .unwrap();
-    }
+        // Neopixel
+        // the neopixel task will be spawned on core1, because it will run in parallel to the other tasks and it may block
+        // spawn the neopixel tasks, on core1 as opposed to the other tasks
+        static mut CORE1_STACK: Stack<4096> = Stack::new();
+        static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 
-    // DFPlayer
-    if task_config.sound_handler {
-        spawner.spawn(sound_handler(spawner, r.dfplayer)).unwrap();
-    }
+        spawn_core1(
+            p.CORE1,
+            unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
+            move || {
+                let executor1 = EXECUTOR1.init(Executor::new());
+                executor1.run(|spawner| {
+                    if task_config.light_effects_handler {
+                        spawner
+                            .spawn(task::light_effects::light_effects_handler(
+                                spawner, r.neopixel,
+                            ))
+                            .unwrap();
+                    }
+                });
+            },
+        );
+    });
 }
 
 /// This struct is used to configure which tasks are enabled

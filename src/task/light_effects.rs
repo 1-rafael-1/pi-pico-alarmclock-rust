@@ -29,7 +29,7 @@ impl NeopixelManager {
     /// Creates a new `NeopixelManager` with default brightness settings.
     pub fn new() -> Self {
         Self {
-            alarm_brightness: 90,
+            alarm_brightness: 40,
             clock_brightness: 1,
         }
     }
