@@ -30,8 +30,11 @@ pub static STATE_MANAGER_MUTEX: StateManagerType = Mutex::new(None);
 pub struct StateManager {
     /// The operation mode of the system
     pub operation_mode: OperationMode,
+    /// The settings for the alarm
     pub alarm_settings: AlarmSettings,
+    /// The state of the alarm
     pub alarm_state: AlarmState,
+    /// The power state of the system
     pub power_state: PowerState,
 }
 

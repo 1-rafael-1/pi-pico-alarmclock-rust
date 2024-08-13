@@ -29,7 +29,7 @@ include!(concat!(env!("OUT_DIR"), "/time_api_config.rs"));
 use crate::task::resources::{Irqs, WifiResources};
 use crate::task::task_messages::{Events, EVENT_CHANNEL};
 use crate::utility::string_utils::StringUtils;
-use core::cell::RefCell;
+use crate::RtcResources;
 use core::str::from_utf8;
 use cyw43_pio::PioSpi;
 use defmt::*;
@@ -47,6 +47,8 @@ use embassy_rp::peripherals::{DMA_CH0, PIO0};
 use embassy_rp::pio::Pio;
 use embassy_rp::rtc::Rtc;
 use embassy_rp::{clocks::RoscRng, rtc::DateTime};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::mutex::Mutex;
 use embassy_time::{with_timeout, Duration, Timer};
 use rand::RngCore;
 use reqwless::client::HttpClient;
@@ -57,6 +59,11 @@ use serde::Deserialize;
 use serde_json_core;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
+
+/// Type alias for the RTC mutex.
+type RtcType = Mutex<CriticalSectionRawMutex, Option<Rtc<'static, peripherals::RTC>>>;
+/// The RTC mutex, which is used to access the RTC from multiple tasks. There was no apparent place to put this anywhere else, so it is here.
+pub static RTC_MUTEX: RtcType = Mutex::new(None);
 
 pub struct TimeUpdater {
     ssid: &'static str,
@@ -112,11 +119,15 @@ async fn net_task(stack: &'static Stack<cyw43::NetDriver<'static>>) -> ! {
     stack.run().await
 }
 #[embassy_executor::task]
-pub async fn time_updater(
-    spawner: Spawner,
-    r: WifiResources,
-    rtc_ref: &'static RefCell<Rtc<'static, peripherals::RTC>>,
-) {
+pub async fn time_updater(spawner: Spawner, r: WifiResources, t: RtcResources) {
+    info!("time updater task started");
+
+    info!("init rtc");
+    // initialize the rtc and put it into a mutex
+    {
+        *(RTC_MUTEX.lock().await) = Some(Rtc::new(t.rtc));
+    }
+
     info!("init wifi");
     let pwr = Output::new(r.pwr_pin, Level::Low);
     let cs = Output::new(r.cs_pin, Level::High);
@@ -261,7 +272,7 @@ pub async fn time_updater(
             TlsVerify::None,
         );
 
-        {
+        '_http_client: {
             // create a new scope to limit the lifetime of the HttpClient and the request
             // scope for request, response, and body. This is to ensure that the request is dropped before the next iteration of the loop.
 
@@ -281,7 +292,7 @@ pub async fn time_updater(
                         Debug2Format(&e)
                     );
                     Timer::after(Duration::from_secs(time_updater.retry_after_secs)).await;
-                    continue;
+                    continue '_mainloop;
                 }
             };
 
@@ -296,7 +307,7 @@ pub async fn time_updater(
                         Debug2Format(&e)
                     );
                     Timer::after(Duration::from_secs(time_updater.retry_after_secs)).await;
-                    continue;
+                    continue '_mainloop;
                 }
             };
 
@@ -311,7 +322,7 @@ pub async fn time_updater(
                         Debug2Format(&e)
                     );
                     Timer::after(Duration::from_secs(time_updater.retry_after_secs)).await;
-                    continue;
+                    continue '_mainloop;
                 }
             };
             info!("Response body: {:?}", &body);
@@ -338,29 +349,36 @@ pub async fn time_updater(
                         Debug2Format(&e)
                     );
                     Timer::after(Duration::from_secs(time_updater.retry_after_secs)).await;
-                    continue;
+                    continue '_mainloop;
                 }
             };
 
             // set the RTC
-            let dt: DateTime;
-            dt = StringUtils::convert_str_to_datetime(response.datetime, response.day_of_week);
-            match rtc_ref.borrow_mut().set_datetime(dt) {
-                Ok(_) => {
-                    // send an event to the state manager
-                    EVENT_CHANNEL.sender().send(Events::RtcUpdated).await;
-                }
-                Err(e) => {
-                    error!(
-                        "Failed to set datetime. Retrying in {:?} seconds: {:?}",
-                        time_updater.retry_after_secs,
-                        Debug2Format(&e)
-                    );
-                    Timer::after(Duration::from_secs(time_updater.retry_after_secs)).await;
-                    continue;
+            '_rtc_mutex: {
+                let dt: DateTime;
+                dt = StringUtils::convert_str_to_datetime(response.datetime, response.day_of_week);
+
+                let mut rtc_guard = RTC_MUTEX.lock().await;
+                let rtc = rtc_guard.as_mut().unwrap();
+
+                match rtc.set_datetime(dt) {
+                    Ok(_) => {
+                        // send an event to the state manager
+                        EVENT_CHANNEL.sender().send(Events::RtcUpdated).await;
+                    }
+                    Err(e) => {
+                        error!(
+                            "Failed to set datetime. Retrying in {:?} seconds: {:?}",
+                            time_updater.retry_after_secs,
+                            Debug2Format(&e)
+                        );
+                        drop(rtc_guard);
+                        Timer::after(Duration::from_secs(time_updater.retry_after_secs)).await;
+                        continue '_mainloop;
+                    }
                 }
             }
-        } // end of scope
+        }
 
         control.leave().await;
         control.gpio_set(0, false).await; // Turn off the onboard LED

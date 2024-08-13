@@ -29,6 +29,7 @@ embassy-rp = { git = "https://github.com/embassy-rs/embassy", features = [
     "unstable-pac",
     "time-driver",
     "critical-section-impl",
+    "rp2040",
 ] }
 embassy-net = { git = "https://github.com/embassy-rs/embassy", features = [
     "defmt",
