@@ -3,7 +3,7 @@
 //!
 //! The tasks are responsible for initializing the neopixel, setting the colors of the LEDs, and updating the LEDs.
 use crate::task::resources::NeopixelResources;
-use crate::task::state::{AlarmState, OperationMode, STATE_MANAGER_MUTEX};
+use crate::task::state::{AlarmState, OperationMode, StateManager, STATE_MANAGER_MUTEX};
 use crate::task::task_messages::{
     Commands, Events, EVENT_CHANNEL, LIGHTFX_SIGNAL, LIGHTFX_STOP_SIGNAL,
 };
@@ -29,7 +29,7 @@ impl NeopixelManager {
     /// Creates a new `NeopixelManager` with default brightness settings.
     pub fn new() -> Self {
         Self {
-            alarm_brightness: 40,
+            alarm_brightness: 10,
             clock_brightness: 1,
         }
     }
@@ -87,7 +87,7 @@ pub async fn light_effects_handler(_spawner: Spawner, r: NeopixelResources) {
     let mut data = [RGB8::default(); NUM_LEDS];
     np.write(brightness(data.iter().cloned(), 0)).await.ok();
 
-    '_outer: loop {
+    'mainloop: loop {
         // wait for the signal to update the neopixel
         let command = LIGHTFX_SIGNAL.wait().await;
         info!("LightFX signal received: {:?}", command);
@@ -97,15 +97,21 @@ pub async fn light_effects_handler(_spawner: Spawner, r: NeopixelResources) {
         };
 
         // get the state of the system out of the mutex and quickly drop the mutex
-        let state_manager_guard = STATE_MANAGER_MUTEX.lock().await;
-        let state_manager = match state_manager_guard.clone() {
-            Some(state_manager) => state_manager,
-            None => {
-                error!("State manager not initialized");
-                continue;
-            }
-        };
-        drop(state_manager_guard);
+        let state_manager: StateManager;
+        '_state_manager_mutex: {
+            let state_manager_guard = STATE_MANAGER_MUTEX.lock().await;
+            state_manager = match state_manager_guard.clone() {
+                Some(state_manager) => state_manager,
+                None => {
+                    error!("State manager not initialized");
+                    drop(state_manager_guard);
+                    Timer::after(Duration::from_secs(1)).await;
+                    continue 'mainloop;
+                }
+            };
+        }
+
+        info!("{}", state_manager);
 
         match state_manager.operation_mode {
             OperationMode::Normal

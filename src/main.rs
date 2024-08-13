@@ -37,9 +37,9 @@ unsafe fn SWI_IRQ_1() {
     EXECUTOR_HIGH.on_interrupt()
 }
 
-/// Entry point
+/// The main entry point of the program. This is where the tasks are spawned and run. Nothing else happens here.
 #[main]
-async fn main(spawner: Spawner) {
+async fn main(_spawner: Spawner) {
     info!("Program start");
 
     // Initialize the peripherals for the RP2040

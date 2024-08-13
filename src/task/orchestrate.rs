@@ -5,8 +5,8 @@ use crate::task::task_messages::*;
 use crate::task::time_updater::RTC_MUTEX;
 use defmt::*;
 use embassy_futures::select::select;
-use embassy_rp::rtc::DayOfWeek;
 use embassy_rp::rtc::DateTime;
+use embassy_rp::rtc::DayOfWeek;
 use embassy_time::{Duration, Timer};
 
 /// This task is responsible for the state transitions of the system. It acts as the main task of the system.
@@ -30,7 +30,7 @@ pub async fn orchestrator() {
         // receive the events, halting the task until an event is received
         let event = event_receiver.receive().await;
 
-        '_mutex_guard: {
+        '_state_manager_mutex: {
             // Lock the mutex to get a mutable reference to the state manager
             let mut state_manager_guard = STATE_MANAGER_MUTEX.lock().await;
             // Get a mutable reference to the state manager. We can unwrap here because we know that the state manager is initialized
@@ -70,7 +70,12 @@ pub async fn orchestrator() {
                 }
                 Events::Scheduler((hour, minute, second)) => {
                     info!("Scheduler event");
-                    LIGHTFX_SIGNAL.signal(Commands::LightFXUpdate((hour, minute, second)));
+                    // we only update the light effects if the alarm is not enabled and the alarm state is None
+                    if state_manager.alarm_state == AlarmState::None
+                        && !state_manager.alarm_settings.get_enabled()
+                    {
+                        LIGHTFX_SIGNAL.signal(Commands::LightFXUpdate((hour, minute, second)));
+                    }
                     DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                 }
                 Events::RtcUpdated => {
@@ -84,7 +89,13 @@ pub async fn orchestrator() {
                             state_manager.alarm_settings.clone(),
                         ))
                         .await;
-                    SCHEDULER_WAKE_SIGNAL.signal(Commands::SchedulerWakeUp);
+                    if state_manager.alarm_settings.get_enabled() {
+                        // if the alarm is enabled, we must update the light effects once more
+                        LIGHTFX_SIGNAL.signal(Commands::LightFXUpdate((0, 0, 0)));
+                    } else {
+                        // if the alarm is disabled, we must wake up the scheduler early
+                        SCHEDULER_WAKE_SIGNAL.signal(Commands::SchedulerWakeUp);
+                    }
                 }
                 Events::Standby => {
                     info!("Standby event");
@@ -122,7 +133,8 @@ pub async fn orchestrator() {
                 }
             }
             // log the state of the system
-            info!("{:?}", state_manager);
+            info!("{}", state_manager);
+            drop(state_manager_guard);
         }
     }
 }
@@ -196,12 +208,18 @@ pub async fn scheduler() {
         let mut downtime: Duration;
         if state_manager.alarm_settings.get_enabled() {
             // wait for 1 minute, unless we are in proximity of the alarm time, in which case we wait for 10 seconds
-            let alarm_time_minutes = state_manager.alarm_settings.get_hour() * 60
-                + state_manager.alarm_settings.get_minute();
-            let current_time_minutes = (dt.hour * 60) + dt.minute;
-            if (alarm_time_minutes - current_time_minutes) <= 3 {
-                downtime = Duration::from_secs(10);
+            let alarm_time_minutes = state_manager.alarm_settings.get_hour() as u32 * 60
+                + state_manager.alarm_settings.get_minute() as u32;
+            let current_time_minutes = (dt.hour as u32 * 60) + dt.minute as u32;
+            if alarm_time_minutes > current_time_minutes {
+                // if the alarm time is in the future, we wait for 60 seconds, unless we are in the proximity of the alarm time
+                if (alarm_time_minutes - current_time_minutes) <= 3 {
+                    downtime = Duration::from_secs(10);
+                } else {
+                    downtime = Duration::from_secs(60);
+                }
             } else {
+                // if the alarm time is in the past, we wait for 60 seconds
                 downtime = Duration::from_secs(60);
             }
         } else {

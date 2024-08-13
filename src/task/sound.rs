@@ -61,7 +61,7 @@ pub async fn sound_handler(_spawner: Spawner, r: DfPlayerResources) {
 
         info!("Playing sound");
         if let Ok(ref mut dfp) = dfp_result {
-            let _ = dfp.volume(20).await;
+            let _ = dfp.volume(13).await;
             Timer::after(Duration::from_millis(100)).await;
             let _ = dfp.equalizer(Equalizer::Classic).await;
             Timer::after(Duration::from_millis(100)).await;
