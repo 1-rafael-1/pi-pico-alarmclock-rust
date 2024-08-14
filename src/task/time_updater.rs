@@ -118,6 +118,7 @@ async fn wifi_task(
 async fn net_task(stack: &'static Stack<cyw43::NetDriver<'static>>) -> ! {
     stack.run().await
 }
+
 #[embassy_executor::task]
 pub async fn time_updater(spawner: Spawner, r: WifiResources, t: RtcResources) {
     info!("time updater task started");
@@ -144,20 +145,25 @@ pub async fn time_updater(spawner: Spawner, r: WifiResources, t: RtcResources) {
 
     let time_updater = TimeUpdater::new();
 
-    let fw = unsafe { core::slice::from_raw_parts(0x10100000 as *const u8, 230321) };
-    let clm = unsafe { core::slice::from_raw_parts(0x10140000 as *const u8, 4752) };
+    let fw = include_bytes!("../../wifi-firmware/cyw43-firmware/43439A0.bin");
+    let clm = include_bytes!("../../wifi-firmware/cyw43-firmware/43439A0_clm.bin");
+    // To make flashing faster for development, you may want to flash the firmwares independently
+    // at hardcoded addresses, instead of baking them into the program with `include_bytes!`:
+    //     probe-rs download 43439A0.bin --binary-format bin --chip RP2040 --base-address 0x10100000
+    //     probe-rs download 43439A0_clm.bin --binary-format bin --chip RP2040 --base-address 0x10140000
+    // let fw = unsafe { core::slice::from_raw_parts(0x10100000 as *const u8, 230321) };
+    // let clm = unsafe { core::slice::from_raw_parts(0x10140000 as *const u8, 4752) };
 
     static STATE: StaticCell<cyw43::State> = StaticCell::new();
     let state = STATE.init(cyw43::State::new());
 
     let (net_device, mut control, runner) = cyw43::new(state, pwr, spi, fw).await;
-
     unwrap!(spawner.spawn(wifi_task(runner)));
 
     info!("init control");
     control.init(clm).await;
     control
-        .set_power_management(cyw43::PowerManagementMode::PowerSave)
+        .set_power_management(cyw43::PowerManagementMode::Aggressive)
         .await;
 
     let mut default_config: DhcpConfig = Default::default();
@@ -188,6 +194,10 @@ pub async fn time_updater(spawner: Spawner, r: WifiResources, t: RtcResources) {
             "Joining WPA2 network with SSID: {:?} and password: {:?}",
             &ssid, &password
         );
+
+        control
+            .set_power_management(cyw43::PowerManagementMode::Performance)
+            .await;
 
         // Join the network
         let join_result = with_timeout(
@@ -383,6 +393,10 @@ pub async fn time_updater(spawner: Spawner, r: WifiResources, t: RtcResources) {
         control.leave().await;
         control.gpio_set(0, false).await; // Turn off the onboard LED
         info!("Disconnected from wifi");
+
+        control
+            .set_power_management(cyw43::PowerManagementMode::Aggressive)
+            .await;
 
         info!(
             "Waiting for {:?} seconds before reconnecting",
