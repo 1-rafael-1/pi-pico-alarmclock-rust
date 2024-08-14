@@ -289,7 +289,7 @@ pub async fn light_effects_handler(_spawner: Spawner, r: NeopixelResources) {
                                 }
                                 np.write(brightness(
                                     data.iter().cloned(),
-                                    neopixel_mgr.alarm_brightness,
+                                    neopixel_mgr.alarm_brightness(),
                                 ))
                                 .await
                                 .ok();
