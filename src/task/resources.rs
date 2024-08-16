@@ -28,7 +28,7 @@ assign_resources! {
     },
     neopixel: NeopixelResources {
         inner_spi: SPI0,
-        clk_pin: PIN_18,
+        clk_pin: PIN_18, // this is just a dummy pin, the neopixel uses only the mosi pin
         mosi_pin: PIN_19,
         tx_dma_ch: DMA_CH1,
     },

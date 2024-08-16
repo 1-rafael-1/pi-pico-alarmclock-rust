@@ -49,3 +49,7 @@ The functionality is as follows:
     + the neopixel plays a sunrise effect, starting with morning-red light and adding more and more leds slowly changing all led colors towards warm white light. When that is concluded a whirling ranibow effect is played until the alarm state is left.
     + as soon as the sunrise effect on the neopixel is done, the alarm sound plays the Imperial March exactly one time. It is a long song, and after testing my ass of I am throughly fed up with it.
     + The device randomizes a sequence of buttons and on the display in the state area shows text to "Press Yellow!" or one of teh other two. The user must then proceed to press the requestetd color until all three buttons have been pressed. That being donem the alarm is stopped.
+
+## Circuit
+
+![Circuit Diagram](circuit/circuit.png)
