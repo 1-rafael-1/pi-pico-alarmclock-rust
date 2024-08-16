@@ -85,7 +85,7 @@ This is my best attempt at a circuit diagram. Not knowing much about electronics
 
 The enclosure is designed in Autodesk Fusion, a project Export of the design can be found here: [enclosure](enclosure/). 
 
-A gallery of images can be found [here](circuit/gallery.md).
+A gallery of images can be found [here](enclosure/gallery.md).
 
 ## Assembly
 
