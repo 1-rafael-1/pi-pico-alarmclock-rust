@@ -1,6 +1,9 @@
 # pi-pico-alarmclock-rust
 
+[![ci](https://github.com/1-rafael-1/pi-pico-alarmclock-rust/actions/workflows/ci.yml/badge.svg)](https://github.com/1-rafael-1/pi-pico-alarmclock-rust/actions/workflows/ci.yml)
+
 Building a (hopefully working) alarmclock based on a Raspberry Pi Pico W written in Rust and using the Embassy framework.
+
 
 ## Disclaimer and Thanks
 
