@@ -145,8 +145,8 @@ pub async fn time_updater(spawner: Spawner, r: WifiResources, t: RtcResources) {
 
     let time_updater = TimeUpdater::new();
 
-    let fw = include_bytes!("../../wifi-firmware/cyw43-firmware/43439A0.bin");
-    let clm = include_bytes!("../../wifi-firmware/cyw43-firmware/43439A0_clm.bin");
+    let fw = include_bytes!("../wifi-firmware/cyw43-firmware/43439A0.bin");
+    let clm = include_bytes!("../wifi-firmware/cyw43-firmware/43439A0_clm.bin");
     // To make flashing faster for development, you may want to flash the firmwares independently
     // at hardcoded addresses, instead of baking them into the program with `include_bytes!`:
     //     probe-rs download 43439A0.bin --binary-format bin --chip RP2040 --base-address 0x10100000

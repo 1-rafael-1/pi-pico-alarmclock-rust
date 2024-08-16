@@ -67,49 +67,49 @@ struct Settings<'a> {
 impl<'a> Settings<'a> {
     fn new() -> Self {
         Self {
-            saber: Bmp::from_slice(include_bytes!("../../media/saber.bmp"))
+            saber: Bmp::from_slice(include_bytes!("../media/saber.bmp"))
                 .expect("Failed to load BMP image"),
-            colon: Bmp::from_slice(include_bytes!("../../media/colon.bmp"))
+            colon: Bmp::from_slice(include_bytes!("../media/colon.bmp"))
                 .expect("Failed to load BMP image"),
             digits: [
-                Bmp::from_slice(include_bytes!("../../media/0.bmp"))
+                Bmp::from_slice(include_bytes!("../media/0.bmp"))
                     .expect("Failed to load BMP image"),
-                Bmp::from_slice(include_bytes!("../../media/1.bmp"))
+                Bmp::from_slice(include_bytes!("../media/1.bmp"))
                     .expect("Failed to load BMP image"),
-                Bmp::from_slice(include_bytes!("../../media/2.bmp"))
+                Bmp::from_slice(include_bytes!("../media/2.bmp"))
                     .expect("Failed to load BMP image"),
-                Bmp::from_slice(include_bytes!("../../media/3.bmp"))
+                Bmp::from_slice(include_bytes!("../media/3.bmp"))
                     .expect("Failed to load BMP image"),
-                Bmp::from_slice(include_bytes!("../../media/4.bmp"))
+                Bmp::from_slice(include_bytes!("../media/4.bmp"))
                     .expect("Failed to load BMP image"),
-                Bmp::from_slice(include_bytes!("../../media/5.bmp"))
+                Bmp::from_slice(include_bytes!("../media/5.bmp"))
                     .expect("Failed to load BMP image"),
-                Bmp::from_slice(include_bytes!("../../media/6.bmp"))
+                Bmp::from_slice(include_bytes!("../media/6.bmp"))
                     .expect("Failed to load BMP image"),
-                Bmp::from_slice(include_bytes!("../../media/7.bmp"))
+                Bmp::from_slice(include_bytes!("../media/7.bmp"))
                     .expect("Failed to load BMP image"),
-                Bmp::from_slice(include_bytes!("../../media/8.bmp"))
+                Bmp::from_slice(include_bytes!("../media/8.bmp"))
                     .expect("Failed to load BMP image"),
-                Bmp::from_slice(include_bytes!("../../media/9.bmp"))
+                Bmp::from_slice(include_bytes!("../media/9.bmp"))
                     .expect("Failed to load BMP image"),
             ],
             bat: [
-                Bmp::from_slice(include_bytes!("../../media/bat_000.bmp"))
+                Bmp::from_slice(include_bytes!("../media/bat_000.bmp"))
                     .expect("Failed to load BMP image"),
-                Bmp::from_slice(include_bytes!("../../media/bat_020.bmp"))
+                Bmp::from_slice(include_bytes!("../media/bat_020.bmp"))
                     .expect("Failed to load BMP image"),
-                Bmp::from_slice(include_bytes!("../../media/bat_040.bmp"))
+                Bmp::from_slice(include_bytes!("../media/bat_040.bmp"))
                     .expect("Failed to load BMP image"),
-                Bmp::from_slice(include_bytes!("../../media/bat_060.bmp"))
+                Bmp::from_slice(include_bytes!("../media/bat_060.bmp"))
                     .expect("Failed to load BMP image"),
-                Bmp::from_slice(include_bytes!("../../media/bat_080.bmp"))
+                Bmp::from_slice(include_bytes!("../media/bat_080.bmp"))
                     .expect("Failed to load BMP image"),
-                Bmp::from_slice(include_bytes!("../../media/bat_100.bmp"))
+                Bmp::from_slice(include_bytes!("../media/bat_100.bmp"))
                     .expect("Failed to load BMP image"),
             ],
-            bat_mains: Bmp::from_slice(include_bytes!("../../media/bat_mains.bmp"))
+            bat_mains: Bmp::from_slice(include_bytes!("../media/bat_mains.bmp"))
                 .expect("Failed to load BMP image"),
-            settings: Bmp::from_slice(include_bytes!("../../media/settings.bmp"))
+            settings: Bmp::from_slice(include_bytes!("../media/settings.bmp"))
                 .expect("Failed to load BMP image"),
             state_indicator_position: Point::new(0, 0),
             bat_position: Point::new(108, 0),
