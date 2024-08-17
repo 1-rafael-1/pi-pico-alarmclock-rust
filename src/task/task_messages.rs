@@ -71,6 +71,8 @@ pub enum Commands {
     SchedulerWakeUp,
     /// Wake the vsys_voltage_reader task early when awaiting the next iteration
     VsysWakeUp,
+    /// Handle the expiry of a running alarm
+    AlarmExpiry,
 }
 
 /// For the events that we want the orchestrator to react to, all state events are of the type Enum Events.
@@ -100,3 +102,6 @@ pub static SOUND_STOP_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal
 
 /// Signal for the wake command that we want the orchestrator to send to the vsys_voltage_reader task.
 pub static VSYS_WAKE_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
+
+/// Signal for the alarm expiry command that we want the orchestrator to send to the alarm expiration task.
+pub static ALARM_EXPIRER_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
