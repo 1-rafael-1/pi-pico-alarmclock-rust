@@ -1,18 +1,18 @@
 [package]
 edition = "2021"
 name = "pi-pico-alarmclock"
-version = "0.0.1"
+version = "0.2.0"
 license = "MIT"
 resolver = "2"
 
 [dependencies]
-embassy-embedded-hal = { git = "https://github.com/embassy-rs/embassy", features = [
+embassy-embedded-hal = { git = "https://github.com/embassy-rs/embassy", rev = "cd4e199065bef50637d61622318c6dd1b5443f9f", features = [
     "defmt",
 ] }
-embassy-sync = { git = "https://github.com/embassy-rs/embassy", features = [
+embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "cd4e199065bef50637d61622318c6dd1b5443f9f", features = [
     "defmt",
 ] }
-embassy-executor = { git = "https://github.com/embassy-rs/embassy", features = [
+embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "cd4e199065bef50637d61622318c6dd1b5443f9f", features = [
     "task-arena-size-98304",
     "arch-cortex-m",
     "executor-thread",
@@ -20,18 +20,18 @@ embassy-executor = { git = "https://github.com/embassy-rs/embassy", features = [
     "defmt",
     "integrated-timers",
 ] }
-embassy-time = { git = "https://github.com/embassy-rs/embassy", features = [
+embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "cd4e199065bef50637d61622318c6dd1b5443f9f", features = [
     "defmt",
     "defmt-timestamp-uptime",
 ] }
-embassy-rp = { git = "https://github.com/embassy-rs/embassy", features = [
+embassy-rp = { git = "https://github.com/embassy-rs/embassy", rev = "cd4e199065bef50637d61622318c6dd1b5443f9f", features = [
     "defmt",
     "unstable-pac",
     "time-driver",
     "critical-section-impl",
     "rp2040",
 ] }
-embassy-net = { git = "https://github.com/embassy-rs/embassy", features = [
+embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "cd4e199065bef50637d61622318c6dd1b5443f9f", features = [
     "defmt",
     "tcp",
     "udp",
@@ -41,12 +41,12 @@ embassy-net = { git = "https://github.com/embassy-rs/embassy", features = [
     "dns",
     "dhcpv4-hostname",
 ] }
-embassy-futures = { git = "https://github.com/embassy-rs/embassy" }
-cyw43 = { git = "https://github.com/embassy-rs/embassy", features = [
+embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "cd4e199065bef50637d61622318c6dd1b5443f9f" }
+cyw43 = { git = "https://github.com/embassy-rs/embassy", rev = "cd4e199065bef50637d61622318c6dd1b5443f9f", features = [
     "defmt",
     "firmware-logs",
 ] }
-cyw43-pio = { git = "https://github.com/embassy-rs/embassy", features = [
+cyw43-pio = { git = "https://github.com/embassy-rs/embassy", rev = "cd4e199065bef50637d61622318c6dd1b5443f9f", features = [
     "defmt",
     "overclock",
 ] }
@@ -79,7 +79,7 @@ rand = { version = "0.8.5", default-features = false }
 reqwless = { version = "0.12.0", features = ["defmt"] }
 tinybmp = "0.6.0"
 assign-resources = { git = "https://github.com/adamgreig/assign-resources", rev = "94ad10e2729afdf0fd5a77cd12e68409a982f58a" }
-dfplayer-serial = { git = "https://github.com/1-rafael-1/dfplayer-serial", rev = "181b88ad3a0a550d83067f2559b98a433b943ad0" }
+dfplayer-serial = { git = "https://github.com/1-rafael-1/dfplayer-serial", rev = "8ca839af25a1ab3d5bc390954272f657cfdca445" }
 
 [build-dependencies]
 serde = "1.0"
