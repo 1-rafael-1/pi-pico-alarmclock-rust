@@ -38,15 +38,15 @@ pub async fn orchestrator() {
 
             // react to the events
             match event {
-                Events::BlueBtn(_presses) => {
+                Events::BlueBtn => {
                     state_manager.handle_blue_button_press().await;
                     DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                 }
-                Events::GreenBtn(_presses) => {
+                Events::GreenBtn => {
                     state_manager.handle_green_button_press().await;
                     DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                 }
-                Events::YellowBtn(_presses) => {
+                Events::YellowBtn => {
                     state_manager.handle_yellow_button_press().await;
                     DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                 }

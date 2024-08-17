@@ -15,11 +15,11 @@ use embassy_sync::signal::Signal;
 #[derive(PartialEq, Debug, Format)]
 pub enum Events {
     /// The blue button was pressed, the data is the number of presses
-    BlueBtn(u32),
+    BlueBtn,
     /// The green button was pressed, the data is the number of presses
-    GreenBtn(u32),
+    GreenBtn,
     /// The yellow button was pressed, the data is the number of presses
-    YellowBtn(u32),
+    YellowBtn,
     /// The usb power state has changed, the data is the new state of the usb power
     Vbus(bool),
     /// The system power state has changed, the data is the new voltage of the system power
