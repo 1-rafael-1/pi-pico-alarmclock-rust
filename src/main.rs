@@ -7,7 +7,7 @@
 use crate::task::alarm_settings::alarm_settings_handler;
 use crate::task::buttons::{blue_button_handler, green_button_handler, yellow_button_handler};
 use crate::task::display::display_handler;
-use crate::task::orchestrate::{orchestrator, scheduler};
+use crate::task::orchestrate::{alarm_expirer, orchestrator, scheduler};
 use crate::task::power::{usb_power_detector, vsys_voltage_reader};
 use crate::task::resources::*;
 use crate::task::sound::sound_handler;
@@ -62,6 +62,7 @@ async fn main(_spawner: Spawner) {
     if task_config.orchestrator {
         spawner.spawn(orchestrator()).unwrap();
         spawner.spawn(scheduler()).unwrap();
+        spawner.spawn(alarm_expirer()).unwrap();
     }
 
     // Low priority executor: runs in thread mode, using WFE/SEV

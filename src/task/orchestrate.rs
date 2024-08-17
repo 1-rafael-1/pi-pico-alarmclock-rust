@@ -70,12 +70,13 @@ pub async fn orchestrator() {
                 }
                 Events::Scheduler((hour, minute, second)) => {
                     info!("Scheduler event");
-                    // we only update the light effects if the alarm is not enabled and the alarm state is None
+                    // update the light effects if the alarm is not enabled and the alarm state is None
                     if state_manager.alarm_state == AlarmState::None
                         && !state_manager.alarm_settings.get_enabled()
                     {
                         LIGHTFX_SIGNAL.signal(Commands::LightFXUpdate((hour, minute, second)));
                     }
+                    // update the display
                     DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                 }
                 Events::RtcUpdated => {
@@ -116,14 +117,17 @@ pub async fn orchestrator() {
                     state_manager.set_alarm_mode();
                     DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
                     LIGHTFX_SIGNAL.signal(Commands::LightFXUpdate((0, 0, 0)));
+                    ALARM_EXPIRER_SIGNAL.signal(Commands::AlarmExpiry);
                 }
                 Events::AlarmStop => {
                     info!("Alarm stop event");
-                    state_manager.set_normal_mode();
-                    DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
-                    LIGHTFX_STOP_SIGNAL.signal(Commands::LightFXUpdate((0, 0, 0)));
-                    LIGHTFX_SIGNAL.signal(Commands::LightFXUpdate((0, 0, 0)));
-                    SOUND_STOP_SIGNAL.signal(Commands::SoundUpdate);
+                    if state_manager.alarm_state.is_active() {
+                        state_manager.set_normal_mode();
+                        DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
+                        LIGHTFX_STOP_SIGNAL.signal(Commands::LightFXUpdate((0, 0, 0)));
+                        LIGHTFX_SIGNAL.signal(Commands::LightFXUpdate((0, 0, 0)));
+                        SOUND_STOP_SIGNAL.signal(Commands::SoundUpdate);
+                    };
                 }
                 Events::SunriseEffectFinished => {
                     info!("Sunrise effect finished event");
@@ -132,8 +136,6 @@ pub async fn orchestrator() {
                     LIGHTFX_SIGNAL.signal(Commands::LightFXUpdate((0, 0, 0)));
                 }
             }
-            // log the state of the system
-            info!("{}", state_manager);
             drop(state_manager_guard);
         }
     }
@@ -242,5 +244,19 @@ pub async fn scheduler() {
         // we either wait for the downtime or until we are woken up early. Whatever comes first, starts the next iteration.
         let downtime_timer = Timer::after(downtime);
         select(downtime_timer, SCHEDULER_WAKE_SIGNAL.wait()).await;
+    }
+}
+
+/// This task handles the expiration of the alarm after 5 minutes.
+#[embassy_executor::task]
+pub async fn alarm_expirer() {
+    info!("Alarm expirer task started");
+    '_mainloop: loop {
+        // wait for the alarm expiry watcher signal
+        ALARM_EXPIRER_SIGNAL.wait().await;
+        // wait for 5 minutes
+        Timer::after(Duration::from_secs(300)).await;
+        // send the alarm stop event
+        EVENT_CHANNEL.sender().send(Events::AlarmStop).await;
     }
 }

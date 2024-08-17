@@ -346,7 +346,7 @@ impl AlarmSettings {
 /// The state of the alarm
 #[derive(PartialEq, Debug, Format, Clone)]
 pub enum AlarmState {
-    /// The alarm is not active, the alarm time has not been reached
+    /// The alarm is not active
     None,
     /// The alarm time has been reached, the alarm is active and the sunrise effect is displayed on the neopixel ring. The user
     /// can stop the alarm by pressing the buttons in the correct sequence.
@@ -354,6 +354,12 @@ pub enum AlarmState {
     /// We are past the sunrise effect. The alarm sound is playing, the neopixel waker effect is playing. The user can stop the alarm by pressing
     /// the buttons in the correct sequence.
     Noise,
+}
+
+impl AlarmState {
+    pub fn is_active(&self) -> bool {
+        self != &AlarmState::None
+    }
 }
 
 /// The battery level of the system in steps of 20% from 0 to 100. One additional state is provided for charging.
