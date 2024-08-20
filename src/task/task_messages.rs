@@ -73,6 +73,10 @@ pub enum Commands {
     VsysWakeUp,
     /// Handle the expiry of a running alarm
     AlarmExpiry,
+    /// Suspend the time updater task
+    TimeUpdaterSuspend,
+    /// Resume the time updater task
+    TimeUpdaterResume,
 }
 
 /// For the events that we want the orchestrator to react to, all state events are of the type Enum Events.
@@ -105,3 +109,8 @@ pub static VSYS_WAKE_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal:
 
 /// Signal for the alarm expiry command that we want the orchestrator to send to the alarm expiration task.
 pub static ALARM_EXPIRER_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
+
+/// Signal for the time updater task to suspend.
+pub static TIME_UPDATER_SUSPEND_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
+/// Signal for the time updater task to resume.
+pub static TIME_UPDATER_RESUME_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();

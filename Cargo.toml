@@ -1,7 +1,7 @@
 [package]
 edition = "2021"
 name = "pi-pico-alarmclock"
-version = "0.2.0"
+version = "0.3.0"
 license = "MIT"
 resolver = "2"
 

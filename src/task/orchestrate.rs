@@ -106,10 +106,14 @@ pub async fn orchestrator() {
                     if SOUND_START_SIGNAL.signaled() {
                         SOUND_STOP_SIGNAL.signal(Commands::SoundUpdate);
                     }
+                    TIME_UPDATER_SUSPEND_SIGNAL.signal(Commands::TimeUpdaterSuspend);
                 }
                 Events::WakeUp => {
                     info!("Wake up event");
                     SCHEDULER_START_SIGNAL.signal(Commands::SchedulerStart);
+                    VSYS_WAKE_SIGNAL.signal(Commands::VsysWakeUp);
+                    TIME_UPDATER_SUSPEND_SIGNAL.reset();
+                    TIME_UPDATER_RESUME_SIGNAL.signal(Commands::TimeUpdaterResume);
                 }
                 Events::Alarm => {
                     info!("Alarm event");
@@ -149,10 +153,8 @@ pub async fn scheduler() {
     'mainloop: loop {
         // see if we must halt the task, then wait for the start signal
         if SCHEDULER_STOP_SIGNAL.signaled() {
-            info!("scheduler task halted");
             SCHEDULER_STOP_SIGNAL.reset();
             SCHEDULER_START_SIGNAL.wait().await;
-            info!("scheduler task resumed");
         };
 
         // get the current time

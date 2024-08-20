@@ -27,33 +27,32 @@ include!(concat!(env!("OUT_DIR"), "/wifi_secrets.rs"));
 include!(concat!(env!("OUT_DIR"), "/time_api_config.rs"));
 
 use crate::task::resources::{Irqs, WifiResources};
-use crate::task::task_messages::{Events, EVENT_CHANNEL};
+use crate::task::task_messages::{
+    Events, EVENT_CHANNEL, TIME_UPDATER_RESUME_SIGNAL, TIME_UPDATER_SUSPEND_SIGNAL,
+};
 use crate::utility::string_utils::StringUtils;
 use crate::RtcResources;
 use core::str::from_utf8;
 use cyw43_pio::PioSpi;
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_net::DhcpConfig;
+use embassy_futures::select::select;
 use embassy_net::{
     dns,
     tcp::client::{TcpClient, TcpClientState},
-    Config, Stack, StackResources,
+    Config, DhcpConfig, Stack, StackResources,
 };
-use embassy_rp::gpio::Level;
-use embassy_rp::gpio::Output;
-use embassy_rp::peripherals;
-use embassy_rp::peripherals::{DMA_CH0, PIO0};
-use embassy_rp::pio::Pio;
-use embassy_rp::rtc::Rtc;
-use embassy_rp::{clocks::RoscRng, rtc::DateTime};
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::mutex::Mutex;
+use embassy_rp::{
+    clocks::RoscRng,
+    gpio::{Level, Output},
+    peripherals::{self, DMA_CH0, PIO0},
+    pio::Pio,
+    rtc::{DateTime, Rtc},
+};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use embassy_time::{with_timeout, Duration, Timer};
 use rand::RngCore;
-use reqwless::client::HttpClient;
-use reqwless::client::TlsConfig;
-use reqwless::client::TlsVerify;
+use reqwless::client::{HttpClient, TlsConfig, TlsVerify};
 use reqwless::request::Method;
 use serde::Deserialize;
 use serde_json_core;
@@ -186,15 +185,17 @@ pub async fn time_updater(spawner: Spawner, r: WifiResources, t: RtcResources) {
 
     unwrap!(spawner.spawn(net_task(stack)));
 
+    // get the wifi credentials
+    let (ssid, password) = time_updater.credentials();
+
     info!("starting loop");
     '_mainloop: loop {
-        // get the wifi credentials
-        let (ssid, password) = time_updater.credentials();
-        info!(
-            "Joining WPA2 network with SSID: {:?} and password: {:?}",
-            &ssid, &password
-        );
+        if TIME_UPDATER_SUSPEND_SIGNAL.signaled() {
+            TIME_UPDATER_SUSPEND_SIGNAL.reset();
+            TIME_UPDATER_RESUME_SIGNAL.wait().await;
+        };
 
+        // set the power management mode to best performance for the the duration of the connection
         control
             .set_power_management(cyw43::PowerManagementMode::Performance)
             .await;
@@ -402,6 +403,9 @@ pub async fn time_updater(spawner: Spawner, r: WifiResources, t: RtcResources) {
             "Waiting for {:?} seconds before reconnecting",
             time_updater.refresh_after_secs
         );
-        Timer::after(Duration::from_secs(time_updater.refresh_after_secs)).await;
+
+        // wait for the refresh time or the resume signal
+        let downtime_timer = Timer::after(Duration::from_secs(time_updater.refresh_after_secs));
+        select(downtime_timer, TIME_UPDATER_RESUME_SIGNAL.wait()).await;
     }
 }
