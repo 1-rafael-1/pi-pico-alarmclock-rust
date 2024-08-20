@@ -153,7 +153,7 @@ pub async fn display_handler(_spawner: Spawner, r: DisplayResources) {
         }
     }
 
-    display.set_brightness(Brightness::DIM).await.unwrap();
+    display.set_brightness(Brightness::DIMMEST).await.unwrap();
 
     let settings = Settings::new();
 
