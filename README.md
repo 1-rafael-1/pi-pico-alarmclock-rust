@@ -4,34 +4,63 @@
 
 Building a (hopefully working) alarmclock based on a Raspberry Pi Pico W written in Rust and using the Embassy framework.
 
-## The Device
-
-This is an alarmclock built around a Raspberry Pi Pico W. The functionality is as follows:
-
-+ DateTime is obtained through a web request to `worldtimeapi.org`, on device startup and after that with a refresh every 6 hours.
-+ A Display shows (in normal mode):
-    + the time in hours and minutes, using a custom-made set of number images, that I modeled after some StarWars font.
-    + the date and day of the week as text.
-    + an image of a lightsaber to indicate, whether the alarm is active or not.
-    + a battery indicator, showing either that the device is powered by USB or by battery, and if by battery also indicates the charge level
-    + When in Setting mode the display shows the currently saved alarm time in hours and minutes and an indicator as to that we are in setup mode.
-    + When in Menu Mode the display shows a menu, offering to put the device into standby or see some system information (mostly measured power supply voltage) and voltage bounds.
-+ A 16-Leds Neopixel Ring is used for visual effects. In normal mode with the alarm not active a analog clock is simulated, the hour indicated red, the minutes green and the seconds blue. Whenever the hands meet, their colors mix.
-+ A MP2 module and a 3W speaker is used to play the Imperial March as the alarm tone.
-+ Power is supplied from a 18650 Li-Ion battery or via USB, when on USB the Li-Ion is charged. When attaching/dis-attaching USB Power the device immediately changes the display, does a voltage measurement if on battery power.
-+ Three push buttons (green, blue, yellow) allow user interaction. Their actions depend on the system state:
-    + in normal mode green toggles alarm active, blue enters alarm time setup and yellow enters menu
-    + in alarm time setting mode green increases hours, yellow increases minutes adn blue saves the setting
-    + in menu mode green enters system info, blue enters device standby and yellow goes back to normal mode
-    + in system info any button enters normal mode
-    + in standby any button wakes the device
-+ When the alarm is triggered 
-    + the Neopixel plays a sunrise effect, starting with morning-red light and adding more and more leds slowly changing all led colors towards warm white light. When that is concluded a whirling rainbow effect is played until the alarm state is left.
-    + as soon as the sunrise effect on the Neopixel is done, the alarm sound plays the Imperial March exactly one time. It is a long song, and after testing my ass of I am thoroughly fed up with it.
-    + The device randomizes a sequence of buttons and on the display in the state area shows text to "Press Yellow!" or one of teh other two. The user must then proceed to press the requested color until all three buttons have been pressed. That being done the alarm is stopped.
-
 This is a picture of the prototype on a breadboard, in a box with bits of hardware dangling on their wires. Not pretty, but before i build a proper one in its enclosure it must do: 
 ![Working Prototype](images/prototype.png)
+
+## Features
+
++ **DateTime Retrieval**:
+    + DateTime is obtained through a web request to `worldtimeapi.org` on device startup and refreshed every 6 hours.
+
++ **Display Modes**:
+    + **Normal Mode**:
+        + Shows the time in hours and minutes using a custom-made set of number images modeled after a StarWars font.
+        + Displays the date and day of the week as text.
+        + Shows an image of a lightsaber to indicate whether the alarm is active.
+        + Includes a battery indicator showing whether the device is powered by USB or battery, and if by battery, also indicates the charge level.
+    + **Setting Mode**:
+        + Displays the currently saved alarm time in hours and minutes.
+        + Shows an indicator that the device is in setup mode.
+    + **Menu Mode**:
+        + Displays a menu offering options to put the device into standby or view system information (mostly measured power supply voltage) and voltage bounds.
+
++ **Neopixel Ring**:
+    + A 16-LED Neopixel Ring is used for visual effects. In normal mode with the alarm not active, an analog clock is simulated with the hour indicated in red, the minutes in green, and the seconds in blue. Whenever the hands meet, their colors mix. The analog clock is shown as long as the alarm is not active. When the alarm is active the leds remain off until an alarm is triggered. See below.
+
++ **MP3 Module and Speaker**:
+    + A MP3 module and a 3W speaker are used to play the Imperial March as the alarm tone.
+
++ **Power Supply**:
+    + Power is supplied from a 18650 Li-ion battery or via USB. When on USB, the Li-ion battery is charged. The device immediately changes the display and performs a voltage measurement when switching between USB and battery power.
+
++ **Push Buttons**:
+    + Three push buttons (green, blue, yellow) allow user interaction. Their actions depend on the system state:
+        + **Normal Mode**:
+            + Green toggles alarm active.
+            + Blue enters alarm time setup.
+            + Yellow enters menu.
+        + **Alarm Time Setting Mode**:
+            + Green increases hours, one per single press or continuously when holding the button down for more than a second.
+            + Yellow increases minutes, one per single press or continuously when holding the button down for more than a second.
+            + Blue saves the setting.
+        + **Menu Mode**:
+            + Green enters system info.
+            + Blue enters device standby.
+            + Yellow goes back to normal mode.
+        + **System Info**:
+            + Any button enters normal mode.
+        + **Standby**:
+            + Any button wakes the device.
+
++ **Alarm Trigger**:
+    + When the alarm is triggered:
+        + The Neopixel plays a sunrise effect, starting with morning-red light and gradually adding more LEDs, changing all LED colors towards warm white light. When that is concluded, a whirling rainbow effect is played until the alarm state is left.
+        + As soon as the sunrise effect on the Neopixel is done, the alarm sound plays the Imperial March exactly one time. It is a long song, and after extensive testing, I am thoroughly fed up with it.
+        + The device randomizes a sequence of buttons and displays text in the state area to "Press Yellow!" or one of the other two. The user must press the requested color until all three buttons have been pressed. If the user does not press the correct sequence, the alarm will continue.
+
++ **Device Standby**:
+    + When entering Standby mode the display and the neopixel ring are turned off. Internally the scheduler task, the time updater task and the voltage measuring task are suspended. That way no activity is performed and the device powers down as much as the Pi Pico W allows for, besides circuit loss.
+    + Pressing any button in Standby mode will wake the device. All tasks resume, and one initial call to the time service is made.
 
 ## Code
 
@@ -78,7 +107,7 @@ As an alternative find the latest release and use the `uf2` file from there.
 
 ## Circuit
 
-This is my best attempt at a circuit diagram. Not knowing much about electronics and long-buried memories from school slowly re-loading from cold storage this was trial and error and a lot of googling before it worked. In this configuration i am reasonably sure it is okay to start soldering a first model.
+This is my best attempt at a circuit diagram. Not knowing much about electronics and long-buried memories from school slowly re-loading from cold storage this was trial and error and a lot of googling before it worked. In this configuration I am reasonably sure it is okay to start soldering a first model.
 ![Circuit Diagram](circuit/circuit.png)
 
 ## Enclosure
@@ -97,7 +126,7 @@ This is still WIP, I have my first pair of burns to show for it, really not good
 |---------|---------|
 |Microcontroller|Raspberry Pi Pico W|
 |OLED Display|SSD1306 compatible I²C OLED Display 128*64 pixels with two color yellow/blue. Input Voltage 3.3V|
-|battery|A 18650 Lithium-Ion battery with 3350mAh. Anything else will work, as long as it fits with the charger module and outputs no more than 5V.|
+|battery|A 18650 Li-ion battery with 3350mAh. Anything else will work, as long as it fits with the charger module and outputs no more than 5V.|
 |battery holder|really anything will do|
 |power switch|Any simple switch to cut power between the battery and the charger module|
 |charger module|A TC4056A module here, but any similar module will work, as long as it can be powered by pads and fits the Li-Ion battery specs. A managed charger that protects the battery is preferred.|
