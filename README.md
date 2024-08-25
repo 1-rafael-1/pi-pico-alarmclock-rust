@@ -3,14 +3,13 @@
 [![ci](https://github.com/1-rafael-1/pi-pico-alarmclock-rust/actions/workflows/ci.yml/badge.svg)](https://github.com/1-rafael-1/pi-pico-alarmclock-rust/actions/workflows/ci.yml)
 
 Building a (hopefully working) alarmclock based on a Raspberry Pi Pico W written in Rust and using the Embassy framework.
+
 This is a picture of the prototype on a breadboard, in a box with bits of hardware dangling on their wires. Not pretty, but before i build a proper one in its enclosure it must do: 
 ![Working Prototype](images/prototype.png)
 
 ## Features
 
-This is an alarmclock built around a Raspberry Pi Pico W. The functionality is as follows
-
-**DateTime Retrieval**:
++ **DateTime Retrieval**:
     + DateTime is obtained through a web request to `worldtimeapi.org` on device startup and refreshed every 6 hours.
 
 + **Display Modes**:
