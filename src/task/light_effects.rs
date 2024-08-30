@@ -13,7 +13,7 @@ use embassy_rp::spi::{Config, Phase, Polarity, Spi};
 use embassy_time::Instant;
 use embassy_time::{Duration, Timer};
 use smart_leds::{brightness, RGB8};
-use ws2812_async::Ws2812;
+use ws2812_async::{ColorOrder, Ws2812};
 use {defmt_rtt as _, panic_probe as _};
 
 // Number of LEDs in the ring
@@ -42,12 +42,12 @@ impl NeopixelManager {
         self.clock_brightness
     }
 
-    /// Function to convert RGB to GRB, we need ths because the crate ws2812_async uses GRB. That in itself is a bug, but we can work around it.
-    pub fn rgb_to_grb(&self, color: (u8, u8, u8)) -> RGB8 {
+    /// Mixes two colors together
+    fn mix_colors(&self, color1: RGB8, color2: RGB8) -> RGB8 {
         RGB8 {
-            r: color.1,
-            g: color.0,
-            b: color.2,
+            r: (color1.r as u16 + color2.r as u16).min(255) as u8,
+            g: (color1.g as u16 + color2.g as u16).min(255) as u8,
+            b: (color1.b as u16 + color2.b as u16).min(255) as u8,
         }
     }
 
@@ -77,11 +77,13 @@ pub async fn light_effects_handler(_spawner: Spawner, r: NeopixelResources) {
     spi_config.polarity = Polarity::IdleLow;
     let spi = Spi::new_txonly(r.inner_spi, r.clk_pin, r.mosi_pin, r.tx_dma_ch, spi_config);
     let neopixel_mgr = NeopixelManager::new();
-    let mut np: Ws2812<_, { 12 * NUM_LEDS }> = Ws2812::new(spi);
 
-    let red = neopixel_mgr.rgb_to_grb((255, 0, 0));
-    let green = neopixel_mgr.rgb_to_grb((0, 255, 0));
-    let blue = neopixel_mgr.rgb_to_grb((0, 0, 255));
+    let mut np: Ws2812<_, { 12 * NUM_LEDS }> = Ws2812::new(spi);
+    np.set_color_order(ColorOrder::GRB);
+
+    let red = RGB8 { r: 255, g: 0, b: 0 };
+    let green = RGB8 { r: 0, g: 255, b: 0 };
+    let blue = RGB8 { r: 0, g: 0, b: 255 };
 
     // all off
     let mut data = [RGB8::default(); NUM_LEDS];
@@ -152,18 +154,20 @@ pub async fn light_effects_handler(_spawner: Spawner, r: NeopixelResources) {
                     data[second_index as usize] = blue;
 
                     // but when any hands are on the same index, their colors must be mixed
-                    if hour_index == minute_index {
-                        data[hour_index as usize] = neopixel_mgr.rgb_to_grb((255, 255, 0));
-                    };
-                    if hour_index == second_index {
-                        data[hour_index as usize] = neopixel_mgr.rgb_to_grb((255, 0, 255));
-                    };
-                    if minute_index == second_index {
-                        data[minute_index as usize] = neopixel_mgr.rgb_to_grb((0, 255, 255));
-                    };
-                    if minute_index == second_index && hour_index == minute_index {
-                        data[hour_index as usize] = neopixel_mgr.rgb_to_grb((255, 255, 255));
-                    };
+                    if hour_index == minute_index && hour_index == second_index {
+                        data[hour_index as usize] =
+                            neopixel_mgr.mix_colors(neopixel_mgr.mix_colors(red, green), blue);
+                    } else {
+                        if hour_index == minute_index {
+                            data[hour_index as usize] = neopixel_mgr.mix_colors(red, green);
+                        }
+                        if hour_index == second_index {
+                            data[hour_index as usize] = neopixel_mgr.mix_colors(red, blue);
+                        }
+                        if minute_index == second_index {
+                            data[minute_index as usize] = neopixel_mgr.mix_colors(green, blue);
+                        }
+                    }
 
                     // write the data to the neopixel
                     let _ = np
@@ -220,7 +224,7 @@ pub async fn light_effects_handler(_spawner: Spawner, r: NeopixelResources) {
                                     * end_brightness) as u8;
 
                             // calculate the current color based on the elapsed time
-                            let mut current_color = RGB8::new(
+                            let current_color = RGB8::new(
                                 start_color.r
                                     + ((end_color.r as i16 - start_color.r as i16) as f32
                                         / effect_duration as f32
@@ -237,11 +241,6 @@ pub async fn light_effects_handler(_spawner: Spawner, r: NeopixelResources) {
                                         * elapsed_time.as_secs() as f32)
                                         as u8,
                             );
-                            current_color = neopixel_mgr.rgb_to_grb((
-                                current_color.r,
-                                current_color.g,
-                                current_color.b,
-                            ));
 
                             // calculate the number of leds to light up based on the elapsed time fraction, min 1, max NUM_LEDS
                             let current_leds = (((fraction_elapsed * NUM_LEDS as f32) as usize)
