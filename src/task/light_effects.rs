@@ -2,18 +2,18 @@
 //! This module contains the tasks that control the neopixel LED ring.
 //!
 //! The tasks are responsible for initializing the neopixel, setting the colors of the LEDs, and updating the LEDs.
-use crate::task::resources::NeopixelResources;
-use crate::task::state::{AlarmState, OperationMode, StateManager, STATE_MANAGER_MUTEX};
+use crate::task::state::{AlarmState, OperationMode, STATE_MANAGER_MUTEX, StateManager};
 use crate::task::task_messages::{
-    Commands, Events, EVENT_CHANNEL, LIGHTFX_SIGNAL, LIGHTFX_STOP_SIGNAL,
+    Commands, EVENT_CHANNEL, Events, LIGHTFX_SIGNAL, LIGHTFX_STOP_SIGNAL,
 };
 use defmt::*;
-use embassy_executor::Spawner;
-use embassy_rp::spi::{Config, Phase, Polarity, Spi};
+
+use embassy_rp::peripherals::SPI0;
+use embassy_rp::spi::Spi;
 use embassy_time::Instant;
 use embassy_time::{Duration, Timer};
 use smart_leds::SmartLedsWriteAsync;
-use smart_leds::{brightness, RGB8};
+use smart_leds::{RGB8, brightness};
 use ws2812_async::{Grb, Ws2812};
 use {defmt_rtt as _, panic_probe as _};
 
@@ -68,21 +68,9 @@ impl NeopixelManager {
 }
 
 #[embassy_executor::task]
-pub async fn light_effects_handler(_spawner: Spawner, mut r: NeopixelResources) {
+pub async fn light_effects_handler(spi: Spi<'static, SPI0, embassy_rp::spi::Async>) {
     info!("Analog clock task start");
 
-    // Spi configuration for the neopixel
-    let mut spi_config = Config::default();
-    spi_config.frequency = 3_800_000;
-    spi_config.phase = Phase::CaptureOnFirstTransition;
-    spi_config.polarity = Polarity::IdleLow;
-    let spi = Spi::new_txonly(
-        r.inner_spi.reborrow(),
-        r.clk_pin.reborrow(),
-        r.mosi_pin.reborrow(),
-        r.tx_dma_ch.reborrow(),
-        spi_config,
-    );
     let neopixel_mgr = NeopixelManager::new();
 
     let mut np: Ws2812<_, Grb, { 12 * NUM_LEDS }> = Ws2812::new(spi);

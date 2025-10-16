@@ -1,0 +1,30 @@
+# Rust Analyzer configuration for pi-pico-alarmclock-rust
+# This file configures rust-analyzer behavior for all editors (Zed, VSCode, etc.)
+
+# Target the embedded ARM platform
+[rust-analyzer]
+cargo.target = "thumbv6m-none-eabi"
+
+# Disable checking all targets (avoids test target issues in no_std)
+check.allTargets = false
+
+# Disable on-save checking to avoid conflicts with no_std
+checkOnSave = false
+
+# Enable all features when checking
+check.features = "all"
+
+# Enable build scripts (needed for embedded projects)
+cargo.buildScripts.enable = true
+
+# Enable procedural macros (required for Embassy)
+procMacro.enable = true
+
+# Prefer no_std imports
+imports.preferNoStd = true
+
+# Use crate prefix for imports
+imports.prefix = "crate"
+
+# Disable diagnostics that don't apply to embedded no_std projects
+diagnostics.disabled = ["missing-tests"]

@@ -72,7 +72,6 @@ pio-proc = "0.2"
 rand = { version = "0.8.5", default-features = false }
 reqwless = { version = "0.13.0", features = ["defmt"] }
 tinybmp = "0.6.0"
-assign-resources = { git = "https://github.com/adamgreig/assign-resources", rev = "d54ac35742e029caa6c2ca2302b48be7d076bcfd" }
 dfplayer-async = { version = "0.5.0", features = ["defmt"] }
 
 [build-dependencies]
@@ -116,3 +115,25 @@ debug-assertions = false
 incremental = false
 lto = 'fat'
 opt-level = 's'
+
+[lints.clippy]
+# Enable all main clippy lints (with lower priority so individual lints can override)
+all = { level = "warn", priority = 1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+
+# Deny specific lints (treat as errors) - these have priority 0 and will override the groups above
+unwrap_used = "warn"
+expect_used = "warn"
+
+# Warn on specific lints
+panic = "warn"
+missing_docs_in_private_items = "warn"
+cargo_common_metadata = "warn"
+
+# Allow specific lints
+future_not_send = "allow" # embassy tasks are not Send
+multiple_crate_versions = "allow" # not worth the effort, we get a minimal binary size increase that does not matter here
+
+[patch.crates-io]

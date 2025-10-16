@@ -26,25 +26,23 @@
 include!(concat!(env!("OUT_DIR"), "/wifi_secrets.rs"));
 include!(concat!(env!("OUT_DIR"), "/time_api_config.rs"));
 
-use crate::task::resources::{Irqs, WifiResources};
+use crate::Irqs;
 use crate::task::task_messages::{
-    Events, EVENT_CHANNEL, TIME_UPDATER_RESUME_SIGNAL, TIME_UPDATER_SUSPEND_SIGNAL,
+    EVENT_CHANNEL, Events, TIME_UPDATER_RESUME_SIGNAL, TIME_UPDATER_SUSPEND_SIGNAL,
 };
 use crate::utility::string_utils::StringUtils;
-use crate::RtcResources;
 use core::str::from_utf8;
 use cyw43::JoinOptions;
-use cyw43_pio::PioSpi;
-use cyw43_pio::DEFAULT_CLOCK_DIVIDER;
+use cyw43_pio::{DEFAULT_CLOCK_DIVIDER, PioSpi};
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_futures::select::select;
 use embassy_net::{
-    dns,
+    Config, DhcpConfig, StackResources, dns,
     tcp::client::{TcpClient, TcpClientState},
-    Config, DhcpConfig, StackResources,
 };
 use embassy_rp::{
+    Peri,
     clocks::RoscRng,
     gpio::{Level, Output},
     peripherals::{self, DMA_CH0, PIO0},
@@ -52,7 +50,7 @@ use embassy_rp::{
     rtc::{DateTime, Rtc},
 };
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
-use embassy_time::{with_timeout, Duration, Timer};
+use embassy_time::{Duration, Timer, with_timeout};
 
 use reqwless::client::{HttpClient, TlsConfig, TlsVerify};
 use reqwless::request::Method;
@@ -60,6 +58,16 @@ use serde::Deserialize;
 use serde_json_core;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
+
+/// WiFi peripheral resources needed for the time updater task
+pub struct WifiPeripherals {
+    pub pwr_pin: Peri<'static, peripherals::PIN_23>,
+    pub cs_pin: Peri<'static, peripherals::PIN_25>,
+    pub pio: Peri<'static, peripherals::PIO0>,
+    pub dio_pin: Peri<'static, peripherals::PIN_24>,
+    pub clk_pin: Peri<'static, peripherals::PIN_29>,
+    pub dma_ch: Peri<'static, peripherals::DMA_CH0>,
+}
 
 /// Type alias for the RTC mutex.
 type RtcType = Mutex<CriticalSectionRawMutex, Option<Rtc<'static, peripherals::RTC>>>;
@@ -134,39 +142,36 @@ async fn rtc_task(rtc: embassy_rp::rtc::Rtc<'static, embassy_rp::peripherals::RT
 }
 
 #[embassy_executor::task]
-pub async fn time_updater(spawner: Spawner, r: WifiResources, t: RtcResources) {
+pub async fn time_updater(
+    spawner: Spawner,
+    rtc: Rtc<'static, peripherals::RTC>,
+    wifi_peripherals: WifiPeripherals,
+) {
     info!("time updater task started");
 
     info!("init rtc");
     // spawn RTC task with static resources
-    let rtc = Rtc::new(t.rtc, Irqs);
     spawner.spawn(unwrap!(rtc_task(rtc)));
 
     info!("init wifi");
-    let pwr = Output::new(r.pwr_pin, Level::Low);
-    let cs = Output::new(r.cs_pin, Level::High);
-    let mut pio = Pio::new(r.pio_sm, Irqs);
+    let pwr = Output::new(wifi_peripherals.pwr_pin, Level::Low);
+    let cs = Output::new(wifi_peripherals.cs_pin, Level::High);
+    let mut pio = Pio::new(wifi_peripherals.pio, Irqs);
     let spi = PioSpi::new(
         &mut pio.common,
         pio.sm0,
         DEFAULT_CLOCK_DIVIDER,
         pio.irq0,
         cs,
-        r.dio_pin,
-        r.clk_pin,
-        r.dma_ch,
+        wifi_peripherals.dio_pin,
+        wifi_peripherals.clk_pin,
+        wifi_peripherals.dma_ch,
     );
 
     let time_updater = TimeUpdater::new();
 
     let fw = include_bytes!("../wifi-firmware/cyw43-firmware/43439A0.bin");
     let clm = include_bytes!("../wifi-firmware/cyw43-firmware/43439A0_clm.bin");
-    // To make flashing faster for development, you may want to flash the firmwares independently
-    // at hardcoded addresses, instead of baking them into the program with `include_bytes!`:
-    //     probe-rs download 43439A0.bin --binary-format bin --chip RP2040 --base-address 0x10100000
-    //     probe-rs download 43439A0_clm.bin --binary-format bin --chip RP2040 --base-address 0x10140000
-    // let fw = unsafe { core::slice::from_raw_parts(0x10100000 as *const u8, 230321) };
-    // let clm = unsafe { core::slice::from_raw_parts(0x10140000 as *const u8, 4752) };
 
     static STATE: StaticCell<cyw43::State> = StaticCell::new();
     let state = STATE.init(cyw43::State::new());
