@@ -33,14 +33,16 @@ use crate::task::task_messages::{
 use crate::utility::string_utils::StringUtils;
 use crate::RtcResources;
 use core::str::from_utf8;
+use cyw43::JoinOptions;
 use cyw43_pio::PioSpi;
+use cyw43_pio::DEFAULT_CLOCK_DIVIDER;
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_futures::select::select;
 use embassy_net::{
     dns,
     tcp::client::{TcpClient, TcpClientState},
-    Config, DhcpConfig, Stack, StackResources,
+    Config, DhcpConfig, StackResources,
 };
 use embassy_rp::{
     clocks::RoscRng,
@@ -51,7 +53,7 @@ use embassy_rp::{
 };
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use embassy_time::{with_timeout, Duration, Timer};
-use rand::RngCore;
+
 use reqwless::client::{HttpClient, TlsConfig, TlsVerify};
 use reqwless::request::Method;
 use serde::Deserialize;
@@ -114,8 +116,21 @@ async fn wifi_task(
 }
 
 #[embassy_executor::task]
-async fn net_task(stack: &'static Stack<cyw43::NetDriver<'static>>) -> ! {
-    stack.run().await
+async fn net_task(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'static>>) -> ! {
+    runner.run().await
+}
+
+#[embassy_executor::task]
+async fn rtc_task(rtc: embassy_rp::rtc::Rtc<'static, embassy_rp::peripherals::RTC>) {
+    // RTC management task - store RTC in static context here
+    {
+        *(RTC_MUTEX.lock().await) = Some(rtc);
+    }
+
+    // Keep the task alive
+    loop {
+        embassy_time::Timer::after(embassy_time::Duration::from_secs(60)).await;
+    }
 }
 
 #[embassy_executor::task]
@@ -123,10 +138,9 @@ pub async fn time_updater(spawner: Spawner, r: WifiResources, t: RtcResources) {
     info!("time updater task started");
 
     info!("init rtc");
-    // initialize the rtc and put it into a mutex
-    {
-        *(RTC_MUTEX.lock().await) = Some(Rtc::new(t.rtc));
-    }
+    // spawn RTC task with static resources
+    let rtc = Rtc::new(t.rtc, Irqs);
+    spawner.spawn(unwrap!(rtc_task(rtc)));
 
     info!("init wifi");
     let pwr = Output::new(r.pwr_pin, Level::Low);
@@ -135,6 +149,7 @@ pub async fn time_updater(spawner: Spawner, r: WifiResources, t: RtcResources) {
     let spi = PioSpi::new(
         &mut pio.common,
         pio.sm0,
+        DEFAULT_CLOCK_DIVIDER,
         pio.irq0,
         cs,
         r.dio_pin,
@@ -157,7 +172,7 @@ pub async fn time_updater(spawner: Spawner, r: WifiResources, t: RtcResources) {
     let state = STATE.init(cyw43::State::new());
 
     let (net_device, mut control, runner) = cyw43::new(state, pwr, spi, fw).await;
-    unwrap!(spawner.spawn(wifi_task(runner)));
+    spawner.spawn(unwrap!(wifi_task(runner)));
 
     info!("init control");
     control.init(clm).await;
@@ -174,16 +189,30 @@ pub async fn time_updater(spawner: Spawner, r: WifiResources, t: RtcResources) {
     let seed = rng.next_u64();
 
     // Initialize the network stack
-    static STACK: StaticCell<Stack<cyw43::NetDriver<'static>>> = StaticCell::new();
+    static STACK: StaticCell<embassy_net::Stack<'_>> = StaticCell::new();
     static RESOURCES: StaticCell<StackResources<5>> = StaticCell::new();
-    let stack = &*STACK.init(Stack::new(
+    let (stack, runner) = embassy_net::new(
         net_device,
         config,
         RESOURCES.init(StackResources::<5>::new()),
         seed,
-    ));
+    );
+    let stack = &*STACK.init(stack);
 
-    unwrap!(spawner.spawn(net_task(stack)));
+    spawner.spawn(unwrap!(net_task(runner)));
+
+    // Wait for link up
+    info!("waiting for DHCP...");
+    while !stack.is_link_up() {
+        Timer::after(Duration::from_millis(500)).await;
+    }
+
+    // Wait for DHCP, not necessary when using static IP
+    info!("waiting for DHCP...");
+    while !stack.is_config_up() {
+        Timer::after(Duration::from_millis(500)).await;
+    }
+    info!("DHCP is now up!");
 
     // get the wifi credentials
     let (ssid, password) = time_updater.credentials();
@@ -203,7 +232,7 @@ pub async fn time_updater(spawner: Spawner, r: WifiResources, t: RtcResources) {
         // Join the network
         let join_result = with_timeout(
             time_updater.timeout_duration,
-            control.join_wpa2(&ssid, &password),
+            control.join(&ssid, JoinOptions::new(password.as_bytes())),
         )
         .await;
         match join_result {
@@ -274,9 +303,9 @@ pub async fn time_updater(spawner: Spawner, r: WifiResources, t: RtcResources) {
         let mut tls_write_buffer = [0; 16640];
 
         let client_state = TcpClientState::<1, 1024, 1024>::new();
-        let tcp_client = TcpClient::new(stack, &client_state);
-        let dns_client = dns::DnsSocket::new(stack);
-        let tls_config = TlsConfig::new(
+        let tcp_client = TcpClient::new(*stack, &client_state);
+        let dns_client = dns::DnsSocket::new(*stack);
+        let _tls_config = TlsConfig::new(
             seed,
             &mut tls_read_buffer,
             &mut tls_write_buffer,
@@ -287,7 +316,7 @@ pub async fn time_updater(spawner: Spawner, r: WifiResources, t: RtcResources) {
             // create a new scope to limit the lifetime of the HttpClient and the request
             // scope for request, response, and body. This is to ensure that the request is dropped before the next iteration of the loop.
 
-            let mut http_client = HttpClient::new_with_tls(&tcp_client, &dns_client, tls_config);
+            let mut http_client = HttpClient::new(&tcp_client, &dns_client);
 
             let url = time_updater.time_api_url();
 

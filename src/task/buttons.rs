@@ -144,8 +144,8 @@ impl<'a> ButtonManager<'a> {
 }
 
 #[embassy_executor::task]
-pub async fn green_button_handler(_spawner: Spawner, r: GreenButtonResources) {
-    let input = gpio::Input::new(r.button_pin, gpio::Pull::Up);
+pub async fn green_button_handler(_spawner: Spawner, mut r: GreenButtonResources) {
+    let input = gpio::Input::new(r.button_pin.reborrow(), gpio::Pull::Up);
     let sender = EVENT_CHANNEL.sender();
     let mut btn = ButtonManager::new(input, Events::GreenBtn, Button::Green, sender);
     info!("{} task started", btn.button);
@@ -153,8 +153,8 @@ pub async fn green_button_handler(_spawner: Spawner, r: GreenButtonResources) {
 }
 
 #[embassy_executor::task]
-pub async fn blue_button_handler(_spawner: Spawner, r: BlueButtonResources) {
-    let input = gpio::Input::new(r.button_pin, gpio::Pull::Up);
+pub async fn blue_button_handler(_spawner: Spawner, mut r: BlueButtonResources) {
+    let input = gpio::Input::new(r.button_pin.reborrow(), gpio::Pull::Up);
     let sender = EVENT_CHANNEL.sender();
     let mut btn = ButtonManager::new(input, Events::BlueBtn, Button::Blue, sender);
     info!("{} task started", btn.button);
@@ -162,8 +162,8 @@ pub async fn blue_button_handler(_spawner: Spawner, r: BlueButtonResources) {
 }
 
 #[embassy_executor::task]
-pub async fn yellow_button_handler(_spawner: Spawner, r: YellowButtonResources) {
-    let input = gpio::Input::new(r.button_pin, gpio::Pull::Up);
+pub async fn yellow_button_handler(_spawner: Spawner, mut r: YellowButtonResources) {
+    let input = gpio::Input::new(r.button_pin.reborrow(), gpio::Pull::Up);
     let sender = EVENT_CHANNEL.sender();
     let mut btn = ButtonManager::new(input, Events::YellowBtn, Button::Yellow, sender);
     info!("{} task started", btn.button);

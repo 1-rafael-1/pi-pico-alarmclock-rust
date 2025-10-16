@@ -13,10 +13,10 @@ use crate::task::resources::*;
 use crate::task::sound::sound_handler;
 use crate::task::time_updater::time_updater;
 use defmt::*;
-use embassy_executor::{main, Executor, InterruptExecutor, Spawner};
+use embassy_executor::{Executor, InterruptExecutor, Spawner, main};
 use embassy_rp::interrupt;
 use embassy_rp::interrupt::{InterruptExt, Priority};
-use embassy_rp::multicore::{spawn_core1, Stack};
+use embassy_rp::multicore::{Stack, spawn_core1};
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
@@ -34,7 +34,7 @@ static EXECUTOR_LOW: StaticCell<Executor> = StaticCell::new();
 
 #[interrupt]
 unsafe fn SWI_IRQ_1() {
-    EXECUTOR_HIGH.on_interrupt()
+    unsafe { EXECUTOR_HIGH.on_interrupt() }
 }
 
 /// The main entry point of the program. This is where the tasks are spawned and run. Nothing else happens here.
@@ -60,9 +60,9 @@ async fn main(_spawner: Spawner) {
     // there is no main loop, the tasks are spawned and run in parallel
     // orchestrating the tasks is done here:
     if task_config.orchestrator {
-        spawner.spawn(orchestrator()).unwrap();
-        spawner.spawn(scheduler()).unwrap();
-        spawner.spawn(alarm_expirer()).unwrap();
+        spawner.spawn(unwrap!(orchestrator()));
+        spawner.spawn(unwrap!(scheduler()));
+        spawner.spawn(unwrap!(alarm_expirer()));
     }
 
     // Low priority executor: runs in thread mode, using WFE/SEV
@@ -70,56 +70,42 @@ async fn main(_spawner: Spawner) {
     executor.run(|spawner| {
         // update the RTC
         if task_config.time_updater {
-            spawner
-                .spawn(time_updater(spawner, r.wifi, r.real_time_clock))
-                .unwrap();
+            spawner.spawn(unwrap!(time_updater(spawner, r.wifi, r.real_time_clock)));
         }
 
         // Alarm settings
         if task_config.alarm_settings_handler {
-            spawner
-                .spawn(alarm_settings_handler(spawner, r.flash))
-                .unwrap();
+            spawner.spawn(unwrap!(alarm_settings_handler(spawner, r.flash)));
         };
 
         // Power
         if task_config.usb_power {
-            spawner
-                .spawn(usb_power_detector(spawner, r.vbus_power))
-                .unwrap();
+            spawner.spawn(unwrap!(usb_power_detector(spawner, r.vbus_power)));
         };
 
         if task_config.vsys_voltage_reader {
-            spawner
-                .spawn(vsys_voltage_reader(spawner, r.vsys_resources))
-                .unwrap();
+            spawner.spawn(unwrap!(vsys_voltage_reader(spawner, r.vsys_resources)));
         };
 
         // Buttons
         if task_config.btn_green_handler {
-            spawner
-                .spawn(green_button_handler(spawner, r.btn_green))
-                .unwrap();
+            spawner.spawn(unwrap!(green_button_handler(spawner, r.btn_green)));
         };
         if task_config.btn_blue_handler {
-            spawner
-                .spawn(blue_button_handler(spawner, r.btn_blue))
-                .unwrap();
+            spawner.spawn(unwrap!(blue_button_handler(spawner, r.btn_blue)));
         };
         if task_config.btn_yellow_handler {
-            spawner
-                .spawn(yellow_button_handler(spawner, r.btn_yellow))
-                .unwrap();
+            spawner.spawn(unwrap!(yellow_button_handler(spawner, r.btn_yellow)));
         };
 
         // Display
         if task_config.display_handler {
-            spawner.spawn(display_handler(spawner, r.display)).unwrap();
+            spawner.spawn(unwrap!(display_handler(spawner, r.display)));
         }
 
         // DFPlayer
         if task_config.sound_handler {
-            spawner.spawn(sound_handler(spawner, r.dfplayer)).unwrap();
+            spawner.spawn(unwrap!(sound_handler(spawner, r.dfplayer)));
         }
 
         // Neopixel
@@ -135,11 +121,9 @@ async fn main(_spawner: Spawner) {
                 let executor1 = EXECUTOR1.init(Executor::new());
                 executor1.run(|spawner| {
                     if task_config.light_effects_handler {
-                        spawner
-                            .spawn(task::light_effects::light_effects_handler(
-                                spawner, r.neopixel,
-                            ))
-                            .unwrap();
+                        spawner.spawn(unwrap!(task::light_effects::light_effects_handler(
+                            spawner, r.neopixel,
+                        )));
                     }
                 });
             },

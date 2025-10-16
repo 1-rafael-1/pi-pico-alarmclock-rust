@@ -8,8 +8,9 @@ use embassy_rp::i2c::InterruptHandler as I2cInterruptHandler;
 use embassy_rp::peripherals::UART1;
 use embassy_rp::peripherals::{I2C0, PIO0};
 use embassy_rp::pio::InterruptHandler;
+use embassy_rp::rtc::InterruptHandler as RtcInterruptHandler;
 use embassy_rp::uart::BufferedInterruptHandler;
-use embassy_rp::{bind_interrupts, peripherals};
+use embassy_rp::{bind_interrupts, peripherals, Peri};
 
 // group the peripherlas into resources, to be used in the tasks
 // the resources are assigned to the tasks in main.rs
@@ -76,4 +77,5 @@ bind_interrupts!(pub struct Irqs {
     I2C0_IRQ => I2cInterruptHandler<I2C0>;
     UART1_IRQ => BufferedInterruptHandler<UART1>;
     ADC_IRQ_FIFO => AdcInterruptHandler;
+    RTC_IRQ => RtcInterruptHandler;
 });

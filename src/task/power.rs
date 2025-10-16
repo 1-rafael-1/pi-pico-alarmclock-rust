@@ -18,9 +18,9 @@ use embassy_time::{Duration, Timer};
 /// the VBUS pin is not available for direct use (it is run through the wifi module, and there is no safe way to use wifi and the
 /// vbus concurrently).
 #[embassy_executor::task]
-pub async fn usb_power_detector(_spawner: Spawner, r: UsbPowerResources) {
+pub async fn usb_power_detector(_spawner: Spawner, mut r: UsbPowerResources) {
     info!("usb_power task started");
-    let mut vbus_in = Input::new(r.vbus_pin, Pull::None);
+    let mut vbus_in = Input::new(r.vbus_pin.reborrow(), Pull::None);
     let sender = EVENT_CHANNEL.sender();
 
     // wait for the system to settle, before starting the loop -> the vbus_in pin is not stable immediately
@@ -38,13 +38,13 @@ pub async fn usb_power_detector(_spawner: Spawner, r: UsbPowerResources) {
 /// the VSYS pin is not available for direct use (it is run through the wifi module, and there is no safe way to use wifi and the
 /// vsys concurrently).
 #[embassy_executor::task]
-pub async fn vsys_voltage_reader(_spawner: Spawner, r: VsysResources) {
+pub async fn vsys_voltage_reader(_spawner: Spawner, mut r: VsysResources) {
     info!("vsys_voltage task started");
 
     // Initialize the ADC and the Vsys input pin.
-    let mut adc = Adc::new(r.adc, Irqs, Config::default());
-    let vsys_in = r.pin_27;
-    let mut channel = Channel::new_pin(vsys_in, Pull::None);
+    let mut adc = Adc::new(r.adc.reborrow(), Irqs, Config::default());
+    let mut vsys_in = r.pin_27;
+    let mut channel = Channel::new_pin(vsys_in.reborrow(), Pull::None);
 
     let sender = EVENT_CHANNEL.sender();
     let downtime = Duration::from_secs(600); // 10 minutes
