@@ -12,8 +12,9 @@ use embassy_executor::Spawner;
 use embassy_rp::spi::{Config, Phase, Polarity, Spi};
 use embassy_time::Instant;
 use embassy_time::{Duration, Timer};
+use smart_leds::SmartLedsWriteAsync;
 use smart_leds::{brightness, RGB8};
-use ws2812_async::{ColorOrder, Ws2812};
+use ws2812_async::{Grb, Ws2812};
 use {defmt_rtt as _, panic_probe as _};
 
 // Number of LEDs in the ring
@@ -67,7 +68,7 @@ impl NeopixelManager {
 }
 
 #[embassy_executor::task]
-pub async fn light_effects_handler(_spawner: Spawner, r: NeopixelResources) {
+pub async fn light_effects_handler(_spawner: Spawner, mut r: NeopixelResources) {
     info!("Analog clock task start");
 
     // Spi configuration for the neopixel
@@ -75,11 +76,16 @@ pub async fn light_effects_handler(_spawner: Spawner, r: NeopixelResources) {
     spi_config.frequency = 3_800_000;
     spi_config.phase = Phase::CaptureOnFirstTransition;
     spi_config.polarity = Polarity::IdleLow;
-    let spi = Spi::new_txonly(r.inner_spi, r.clk_pin, r.mosi_pin, r.tx_dma_ch, spi_config);
+    let spi = Spi::new_txonly(
+        r.inner_spi.reborrow(),
+        r.clk_pin.reborrow(),
+        r.mosi_pin.reborrow(),
+        r.tx_dma_ch.reborrow(),
+        spi_config,
+    );
     let neopixel_mgr = NeopixelManager::new();
 
-    let mut np: Ws2812<_, { 12 * NUM_LEDS }> = Ws2812::new(spi);
-    np.set_color_order(ColorOrder::GRB);
+    let mut np: Ws2812<_, Grb, { 12 * NUM_LEDS }> = Ws2812::new(spi);
 
     let red = RGB8 { r: 255, g: 0, b: 0 };
     let green = RGB8 { r: 0, g: 255, b: 0 };

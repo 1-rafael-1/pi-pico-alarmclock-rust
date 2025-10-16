@@ -1,37 +1,35 @@
 [package]
-edition = "2021"
+edition = "2024"
 name = "pi-pico-alarmclock"
-version = "0.4.0"
+version = "0.5.0"
 license = "MIT"
 resolver = "2"
 
 [dependencies]
-embassy-embedded-hal = { git = "https://github.com/embassy-rs/embassy", rev = "cd4e199065bef50637d61622318c6dd1b5443f9f", features = [
+embassy-embedded-hal = { git = "https://github.com/embassy-rs/embassy", rev = "2a79c55d4d38e95f90a8efcf93a3e28f4d6ad35f", features = [
     "defmt",
 ] }
-embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "cd4e199065bef50637d61622318c6dd1b5443f9f", features = [
+embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "2a79c55d4d38e95f90a8efcf93a3e28f4d6ad35f", features = [
     "defmt",
 ] }
-embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "cd4e199065bef50637d61622318c6dd1b5443f9f", features = [
-    "task-arena-size-98304",
+embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "2a79c55d4d38e95f90a8efcf93a3e28f4d6ad35f", features = [
     "arch-cortex-m",
     "executor-thread",
     "executor-interrupt",
     "defmt",
-    "integrated-timers",
 ] }
-embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "cd4e199065bef50637d61622318c6dd1b5443f9f", features = [
+embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "2a79c55d4d38e95f90a8efcf93a3e28f4d6ad35f", features = [
     "defmt",
     "defmt-timestamp-uptime",
 ] }
-embassy-rp = { git = "https://github.com/embassy-rs/embassy", rev = "cd4e199065bef50637d61622318c6dd1b5443f9f", features = [
+embassy-rp = { git = "https://github.com/embassy-rs/embassy", rev = "2a79c55d4d38e95f90a8efcf93a3e28f4d6ad35f", features = [
     "defmt",
     "unstable-pac",
     "time-driver",
     "critical-section-impl",
     "rp2040",
 ] }
-embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "cd4e199065bef50637d61622318c6dd1b5443f9f", features = [
+embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "2a79c55d4d38e95f90a8efcf93a3e28f4d6ad35f", features = [
     "defmt",
     "tcp",
     "udp",
@@ -41,45 +39,41 @@ embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "cd4e199065
     "dns",
     "dhcpv4-hostname",
 ] }
-embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "cd4e199065bef50637d61622318c6dd1b5443f9f" }
-cyw43 = { git = "https://github.com/embassy-rs/embassy", rev = "cd4e199065bef50637d61622318c6dd1b5443f9f", features = [
+embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "2a79c55d4d38e95f90a8efcf93a3e28f4d6ad35f" }
+cyw43 = { git = "https://github.com/embassy-rs/embassy", rev = "2a79c55d4d38e95f90a8efcf93a3e28f4d6ad35f", features = [
     "defmt",
     "firmware-logs",
 ] }
-cyw43-pio = { git = "https://github.com/embassy-rs/embassy", rev = "cd4e199065bef50637d61622318c6dd1b5443f9f", features = [
+cyw43-pio = { git = "https://github.com/embassy-rs/embassy", rev = "2a79c55d4d38e95f90a8efcf93a3e28f4d6ad35f", features = [
     "defmt",
-    "overclock",
 ] }
 
 sequential-storage = "3.0.0"
-defmt = "0.3"
-defmt-rtt = "0.4"
-fixed = "1.23.1"
-cortex-m = { version = "0.7.6", features = ["inline-asm"] }
+defmt = "1.0.1"
+defmt-rtt = "1.1.0"
+
+
 cortex-m-rt = "0.7.0"
-critical-section = "1.1.3"
-panic-probe = { version = "0.3", features = ["print-defmt"] }
+
+panic-probe = { version = "1.0.0", features = ["print-defmt"] }
 embedded-graphics = "0.8.1"
-byte-slice-cast = { version = "1.2.0", default-features = false }
+
 smart-leds = "0.4.0"
-ssd1306-async = { git = "https://github.com/kalkyl/ssd1306-async" }
-ws2812-async = { git = "https://github.com/kalkyl/ws2812-async" }
-heapless = "0.8"
+ssd1306-async = { git = "https://github.com/kalkyl/ssd1306-async", rev = "21b611be2f0dc85cf7ff6dca01f53a71dbe1c622" }
+ws2812-async = "0.3.0"
+heapless = "0.9.1"
 serde = { version = "1.0.203", default-features = false, features = ["derive"] }
 serde-json-core = "0.6.0"
-embedded-hal = "1.0"
-embedded-hal-async = "1.0"
-embedded-io-async = { version = "0.6.0", features = ["defmt-03"] }
-embedded-storage = { version = "0.3" }
+
 static_cell = "2"
 portable-atomic = { version = "1.5", features = ["critical-section"] }
 pio-proc = "0.2"
-pio = "0.2.1"
+
 rand = { version = "0.8.5", default-features = false }
-reqwless = { version = "0.12.0", features = ["defmt"] }
+reqwless = { version = "0.13.0", features = ["defmt"] }
 tinybmp = "0.6.0"
-assign-resources = { git = "https://github.com/adamgreig/assign-resources", rev = "94ad10e2729afdf0fd5a77cd12e68409a982f58a" }
-dfplayer-serial = { git = "https://github.com/1-rafael-1/dfplayer-serial", rev = "8ca839af25a1ab3d5bc390954272f657cfdca445" }
+assign-resources = { git = "https://github.com/adamgreig/assign-resources", rev = "d54ac35742e029caa6c2ca2302b48be7d076bcfd" }
+dfplayer-async = { version = "0.5.0", features = ["defmt"] }
 
 [build-dependencies]
 serde = "1.0"

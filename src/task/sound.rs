@@ -5,14 +5,29 @@
 use crate::task::resources::{DfPlayerResources, Irqs};
 use crate::task::task_messages::{SOUND_START_SIGNAL, SOUND_STOP_SIGNAL};
 use defmt::{info, Debug2Format};
-use dfplayer_serial::{DfPlayer, Equalizer, PlayBackSource};
+use dfplayer_async::{DfPlayer, Equalizer, PlayBackSource, TimeSource};
 use embassy_executor::Spawner;
 use embassy_rp::gpio::{Level, Output};
 use embassy_rp::uart::{BufferedUart, Config};
-use embassy_time::{Duration, Timer};
+use embassy_time::{Delay, Duration, Instant, Timer};
+
+// Time source implementation for DFPlayer
+struct MyTimeSource;
+
+impl TimeSource for MyTimeSource {
+    type Instant = Instant;
+
+    fn now(&self) -> Self::Instant {
+        Instant::now()
+    }
+
+    fn is_elapsed(&self, since: Self::Instant, timeout_ms: u64) -> bool {
+        Instant::now().duration_since(since) >= Duration::from_millis(timeout_ms)
+    }
+}
 
 #[embassy_executor::task]
-pub async fn sound_handler(_spawner: Spawner, r: DfPlayerResources) {
+pub async fn sound_handler(_spawner: Spawner, mut r: DfPlayerResources) {
     info!("Sound task started");
 
     let mut config = Config::default();
@@ -22,10 +37,10 @@ pub async fn sound_handler(_spawner: Spawner, r: DfPlayerResources) {
     let mut rx_buffer = [0; 256];
 
     let mut uart = BufferedUart::new(
-        r.uart,
+        r.uart.reborrow(),
+        r.tx_pin.reborrow(),
+        r.rx_pin.reborrow(),
         Irqs,
-        r.tx_pin,
-        r.rx_pin,
         &mut tx_buffer,
         &mut rx_buffer,
         config,
@@ -36,7 +51,7 @@ pub async fn sound_handler(_spawner: Spawner, r: DfPlayerResources) {
     let reset_duration_override = Some(Duration::from_millis(1000));
 
     // power pin, not a part of the dfplayer, using a mosfet to control power to the dfplayer because it draws too much current when idle
-    let mut pwr = Output::new(r.power_pin, Level::Low);
+    let mut pwr = Output::new(r.power_pin.reborrow(), Level::Low);
 
     loop {
         // wait for the signal to start playing sound
@@ -48,8 +63,17 @@ pub async fn sound_handler(_spawner: Spawner, r: DfPlayerResources) {
         Timer::after(Duration::from_secs(1)).await;
         info!("Powered on the dfplayer");
 
-        let mut dfp_result =
-            DfPlayer::try_new(&mut uart, feedback_enable, timeout, reset_duration_override).await;
+        let time_source = MyTimeSource;
+        let delay = Delay;
+        let mut dfp_result = DfPlayer::new(
+            &mut uart,
+            feedback_enable,
+            timeout.as_millis() as u64,
+            time_source,
+            delay,
+            reset_duration_override.map(|d| d.as_millis() as u64),
+        )
+        .await;
 
         match dfp_result {
             Ok(_) => info!("DfPlayer initialized successfully"),
@@ -61,11 +85,11 @@ pub async fn sound_handler(_spawner: Spawner, r: DfPlayerResources) {
 
         info!("Playing sound");
         if let Ok(ref mut dfp) = dfp_result {
-            let _ = dfp.volume(13).await;
+            let _ = dfp.set_volume(13).await;
             Timer::after(Duration::from_millis(100)).await;
-            let _ = dfp.equalizer(Equalizer::Classic).await;
+            let _ = dfp.set_equalizer(Equalizer::Classic).await;
             Timer::after(Duration::from_millis(100)).await;
-            let _ = dfp.playback_source(PlayBackSource::SDCard).await;
+            let _ = dfp.set_playback_source(PlayBackSource::SDCard).await;
             Timer::after(Duration::from_millis(100)).await;
             let _ = dfp.play(1).await;
             Timer::after(Duration::from_millis(200)).await;

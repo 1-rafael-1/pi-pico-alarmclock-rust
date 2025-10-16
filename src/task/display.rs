@@ -133,14 +133,20 @@ impl<'a> Settings<'a> {
 }
 
 #[embassy_executor::task]
-pub async fn display_handler(_spawner: Spawner, r: DisplayResources) {
+pub async fn display_handler(_spawner: Spawner, mut r: DisplayResources) {
     info!("Display task started");
 
-    let scl = r.scl;
-    let sda = r.sda;
+    let mut scl = r.scl;
+    let mut sda = r.sda;
     let mut config = Config::default();
     config.frequency = 400_000;
-    let i2c = I2c::new_async(r.i2c0, scl, sda, Irqs, config);
+    let i2c = I2c::new_async(
+        r.i2c0.reborrow(),
+        scl.reborrow(),
+        sda.reborrow(),
+        Irqs,
+        config,
+    );
 
     let interface = I2CDisplayInterface::new(i2c);
     let mut display = Ssd1306::new(interface, DisplaySize128x64, DisplayRotation::Rotate0)
