@@ -1,14 +1,12 @@
 //! # Button Tasks
 //! This module contains the tasks for the buttons. Each button has its own task.
 
-use crate::task::resources::{BlueButtonResources, GreenButtonResources, YellowButtonResources};
-use crate::task::task_messages::{Events, EVENT_CHANNEL};
-use defmt::{info, Format};
-use embassy_executor::Spawner;
-use embassy_rp::gpio::{self, Input, Level};
+use crate::task::task_messages::{EVENT_CHANNEL, Events};
+use defmt::{Format, info};
+use embassy_rp::gpio::{Input, Level};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Sender;
-use embassy_time::{with_deadline, Duration, Instant, Timer};
+use embassy_time::{Duration, Instant, Timer, with_deadline};
 use {defmt_rtt as _, panic_probe as _};
 
 /// Button Manager
@@ -144,8 +142,7 @@ impl<'a> ButtonManager<'a> {
 }
 
 #[embassy_executor::task]
-pub async fn green_button_handler(_spawner: Spawner, mut r: GreenButtonResources) {
-    let input = gpio::Input::new(r.button_pin.reborrow(), gpio::Pull::Up);
+pub async fn green_button_handler(input: Input<'static>) {
     let sender = EVENT_CHANNEL.sender();
     let mut btn = ButtonManager::new(input, Events::GreenBtn, Button::Green, sender);
     info!("{} task started", btn.button);
@@ -153,8 +150,7 @@ pub async fn green_button_handler(_spawner: Spawner, mut r: GreenButtonResources
 }
 
 #[embassy_executor::task]
-pub async fn blue_button_handler(_spawner: Spawner, mut r: BlueButtonResources) {
-    let input = gpio::Input::new(r.button_pin.reborrow(), gpio::Pull::Up);
+pub async fn blue_button_handler(input: Input<'static>) {
     let sender = EVENT_CHANNEL.sender();
     let mut btn = ButtonManager::new(input, Events::BlueBtn, Button::Blue, sender);
     info!("{} task started", btn.button);
@@ -162,8 +158,7 @@ pub async fn blue_button_handler(_spawner: Spawner, mut r: BlueButtonResources) 
 }
 
 #[embassy_executor::task]
-pub async fn yellow_button_handler(_spawner: Spawner, mut r: YellowButtonResources) {
-    let input = gpio::Input::new(r.button_pin.reborrow(), gpio::Pull::Up);
+pub async fn yellow_button_handler(input: Input<'static>) {
     let sender = EVENT_CHANNEL.sender();
     let mut btn = ButtonManager::new(input, Events::YellowBtn, Button::Yellow, sender);
     info!("{} task started", btn.button);

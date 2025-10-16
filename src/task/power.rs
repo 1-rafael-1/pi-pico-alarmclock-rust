@@ -2,14 +2,11 @@
 //! Determine the power state of the system: battery or power supply.
 //! Detremine the supply voltage of the system.
 
-use crate::task::resources::{Irqs, UsbPowerResources};
-use crate::task::task_messages::{Events, EVENT_CHANNEL, VSYS_WAKE_SIGNAL};
-use crate::VsysResources;
+use crate::task::task_messages::{EVENT_CHANNEL, Events, VSYS_WAKE_SIGNAL};
 use defmt::*;
-use embassy_executor::Spawner;
 use embassy_futures::select::select;
-use embassy_rp::adc::{Adc, Channel, Config};
-use embassy_rp::gpio::{Input, Pull};
+use embassy_rp::adc::{Adc, Channel};
+use embassy_rp::gpio::Input;
 use embassy_time::{Duration, Timer};
 
 /// determine the power source of the system, specifically if the USB power supply is connected
@@ -18,9 +15,8 @@ use embassy_time::{Duration, Timer};
 /// the VBUS pin is not available for direct use (it is run through the wifi module, and there is no safe way to use wifi and the
 /// vbus concurrently).
 #[embassy_executor::task]
-pub async fn usb_power_detector(_spawner: Spawner, mut r: UsbPowerResources) {
+pub async fn usb_power_detector(mut vbus_in: Input<'static>) {
     info!("usb_power task started");
-    let mut vbus_in = Input::new(r.vbus_pin.reborrow(), Pull::None);
     let sender = EVENT_CHANNEL.sender();
 
     // wait for the system to settle, before starting the loop -> the vbus_in pin is not stable immediately
@@ -38,13 +34,11 @@ pub async fn usb_power_detector(_spawner: Spawner, mut r: UsbPowerResources) {
 /// the VSYS pin is not available for direct use (it is run through the wifi module, and there is no safe way to use wifi and the
 /// vsys concurrently).
 #[embassy_executor::task]
-pub async fn vsys_voltage_reader(_spawner: Spawner, mut r: VsysResources) {
+pub async fn vsys_voltage_reader(
+    mut adc: Adc<'static, embassy_rp::adc::Async>,
+    mut channel: Channel<'static>,
+) {
     info!("vsys_voltage task started");
-
-    // Initialize the ADC and the Vsys input pin.
-    let mut adc = Adc::new(r.adc.reborrow(), Irqs, Config::default());
-    let mut vsys_in = r.pin_27;
-    let mut channel = Channel::new_pin(vsys_in.reborrow(), Pull::None);
 
     let sender = EVENT_CHANNEL.sender();
     let downtime = Duration::from_secs(600); // 10 minutes

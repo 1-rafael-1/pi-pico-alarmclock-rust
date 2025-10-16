@@ -3,32 +3,29 @@
 //!
 //! The task is responsible for initializing the display, displaying images and text, and updating the display.
 use crate::task::state::StateManager;
+use crate::task::state::{BatteryLevel, OperationMode, STATE_MANAGER_MUTEX};
 use crate::task::task_messages::DISPLAY_SIGNAL;
 use crate::task::time_updater::RTC_MUTEX;
-use crate::task::{
-    resources::{DisplayResources, Irqs},
-    state::{BatteryLevel, OperationMode, STATE_MANAGER_MUTEX},
-};
 use crate::utility::string_utils::StringUtils;
 use core::fmt::Write;
-use defmt::{error, info, Debug2Format};
-use embassy_executor::Spawner;
-use embassy_rp::i2c::{Config, I2c};
+use defmt::{Debug2Format, error, info};
+use embassy_rp::i2c::{Async, I2c};
+use embassy_rp::peripherals::I2C0;
 use embassy_rp::rtc::{DateTime, DayOfWeek};
 use embassy_time::{Duration, Timer};
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::{
     image::Image,
     mono_font::{
-        ascii::{FONT_6X13, FONT_8X13_BOLD},
         MonoTextStyleBuilder,
+        ascii::{FONT_6X13, FONT_8X13_BOLD},
     },
     pixelcolor::{BinaryColor, Gray8},
     prelude::*,
     text::{Baseline, Text},
 };
 use heapless::String;
-use ssd1306_async::{prelude::*, I2CDisplayInterface, Ssd1306};
+use ssd1306_async::{I2CDisplayInterface, Ssd1306, prelude::*};
 use tinybmp::Bmp;
 
 /// Loads and holds BMP images and Points for the display
@@ -133,20 +130,8 @@ impl<'a> Settings<'a> {
 }
 
 #[embassy_executor::task]
-pub async fn display_handler(_spawner: Spawner, mut r: DisplayResources) {
+pub async fn display_handler(i2c: I2c<'static, I2C0, Async>) {
     info!("Display task started");
-
-    let mut scl = r.scl;
-    let mut sda = r.sda;
-    let mut config = Config::default();
-    config.frequency = 400_000;
-    let i2c = I2c::new_async(
-        r.i2c0.reborrow(),
-        scl.reborrow(),
-        sda.reborrow(),
-        Irqs,
-        config,
-    );
 
     let interface = I2CDisplayInterface::new(i2c);
     let mut display = Ssd1306::new(interface, DisplaySize128x64, DisplayRotation::Rotate0)

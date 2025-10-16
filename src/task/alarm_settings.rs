@@ -2,14 +2,12 @@
 //! This module contains the functionality to persist the alarm settings in the flash memory.
 //!
 //! The alarm settings are stored in the flash memory as three separate key/value pairs.
-use crate::task::resources::FlashResources;
 use crate::task::state::AlarmSettings;
-use crate::task::task_messages::{Commands, Events, EVENT_CHANNEL, FLASH_CHANNEL};
+use crate::task::task_messages::{Commands, EVENT_CHANNEL, Events, FLASH_CHANNEL};
 use core::ops::Range;
 use defmt::*;
-use embassy_executor::Spawner;
-use embassy_rp::flash::Async;
-use embassy_rp::flash::Flash;
+
+use embassy_rp::flash::{Async, Flash};
 use embassy_rp::peripherals::FLASH;
 use sequential_storage;
 use sequential_storage::cache::NoCache;
@@ -29,9 +27,8 @@ pub struct PersistedAlarmSettings<'a> {
 
 impl<'a> PersistedAlarmSettings<'a> {
     /// This function creates a new instance of the PersistedAlarmTime struct.
-    /// It takes a FlashResources struct as an argument and returns a PersistedAlarmTime struct.
-    pub fn new(r: FlashResources) -> Self {
-        let flash = Flash::<_, Async, { FLASH_SIZE }>::new(r.flash, r.dma_ch);
+    /// It takes a Flash peripheral as an argument and returns a PersistedAlarmTime struct.
+    pub fn new(flash: Flash<'a, FLASH, Async, { FLASH_SIZE }>) -> Self {
         Self {
             flash_range: 0x1F9000..0x1FC000,
             data_buffer: [0; 128],
@@ -122,8 +119,8 @@ impl<'a> PersistedAlarmSettings<'a> {
 /// This task reads the alarm settings from the flash memory on startup and sends it to the event channel.
 /// After that, it waits for commands to update the alarm settings.
 #[embassy_executor::task]
-pub async fn alarm_settings_handler(_spawner: Spawner, r: FlashResources) {
-    let mut persisted_alarm_settings = PersistedAlarmSettings::new(r);
+pub async fn alarm_settings_handler(flash: Flash<'static, FLASH, Async, { FLASH_SIZE }>) {
+    let mut persisted_alarm_settings = PersistedAlarmSettings::new(flash);
     let receiver = FLASH_CHANNEL.receiver();
 
     '_read_alarm_settings: {
