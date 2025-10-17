@@ -317,5 +317,5 @@ const fn next_day_of_week(day: DayOfWeek) -> DayOfWeek {
 /// Check if a year is a leap year
 /// A year is a leap year if it is divisible by 4, but not by 100, unless it is also divisible by 400.
 const fn is_leap_year(year: u16) -> bool {
-    year.is_multiple_of(4) && !year.is_multiple_of(100) || year.is_multiple_of(400)
+    (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400)
 }
