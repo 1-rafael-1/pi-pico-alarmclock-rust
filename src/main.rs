@@ -3,12 +3,12 @@
 //! we are in an environment with constrained resources, so we do not use the standard library and we define a different entry point.
 #![no_std]
 #![no_main]
-#![allow(clippy::unwrap_used)]
 
 use crate::task::alarm_settings::alarm_settings_handler;
 use crate::task::alarm_trigger::alarm_trigger_task;
 use crate::task::buttons::{blue_button_handler, green_button_handler, yellow_button_handler};
 use crate::task::display::display_handler;
+use crate::task::light_effects::light_effects_handler;
 use crate::task::orchestrate::{alarm_expirer, orchestrator, scheduler};
 use crate::task::power::{usb_power_detector, vsys_voltage_reader};
 use crate::task::sound::sound_handler;
@@ -17,6 +17,8 @@ use defmt::info;
 use embassy_executor::{Spawner, main};
 use embassy_rp::adc::{Adc, Channel, Config as AdcConfig, InterruptHandler as AdcInterruptHandler};
 use embassy_rp::bind_interrupts;
+use embassy_rp::clocks::{ClockConfig, CoreVoltage};
+use embassy_rp::config::Config;
 use embassy_rp::flash::{Async, Flash};
 use embassy_rp::gpio::{Input, Level, Output, Pull};
 use embassy_rp::i2c::{Config as I2cConfig, I2c, InterruptHandler as I2cInterruptHandler};
@@ -43,46 +45,60 @@ bind_interrupts!(pub struct Irqs {
     RTC_IRQ => RtcInterruptHandler;
 });
 
+/// Helper function to spawn tasks and unwrap, panicking if spawn fails.
+/// This is acceptable during initialization as we want to fail fast if we can't spawn a task.
+#[allow(clippy::unwrap_used)]
+fn spawn_unwrap<S>(
+    spawner: Spawner,
+    token: Result<embassy_executor::SpawnToken<S>, embassy_executor::SpawnError>,
+) {
+    spawner.spawn(token.unwrap());
+}
+
 /// The main entry point of the program. This is where the tasks are spawned and run.
 #[main]
 async fn main(spawner: Spawner) {
     info!("Program start");
 
-    // Initialize the peripherals for the RP2040
-    let p = embassy_rp::init(Default::default());
+    // Initialize the peripherals for the RP2040, use reduced clock settings for lower power consumption
+    #[allow(clippy::unwrap_used)]
+    let mut clock_config = ClockConfig::system_freq(18_000_000).unwrap();
+    clock_config.core_voltage = CoreVoltage::V0_90;
+    let config = Config::new(clock_config);
+    let p = embassy_rp::init(config);
 
     // Orchestrator tasks
-    spawner.spawn(orchestrator().unwrap());
-    spawner.spawn(scheduler().unwrap());
-    spawner.spawn(alarm_expirer().unwrap());
-    spawner.spawn(alarm_trigger_task().unwrap());
+    spawn_unwrap(spawner, orchestrator());
+    spawn_unwrap(spawner, scheduler());
+    spawn_unwrap(spawner, alarm_expirer());
+    spawn_unwrap(spawner, alarm_trigger_task());
 
     // Green button
     let btn_green = Input::new(p.PIN_20, Pull::Up);
-    spawner.spawn(green_button_handler(btn_green).unwrap());
+    spawn_unwrap(spawner, green_button_handler(btn_green));
 
     // Blue button
     let btn_blue = Input::new(p.PIN_21, Pull::Up);
-    spawner.spawn(blue_button_handler(btn_blue).unwrap());
+    spawn_unwrap(spawner, blue_button_handler(btn_blue));
 
     // Yellow button
     let btn_yellow = Input::new(p.PIN_22, Pull::Up);
-    spawner.spawn(yellow_button_handler(btn_yellow).unwrap());
+    spawn_unwrap(spawner, yellow_button_handler(btn_yellow));
 
     // USB power detector
     let vbus_in = Input::new(p.PIN_28, Pull::None);
-    spawner.spawn(usb_power_detector(vbus_in).unwrap());
+    spawn_unwrap(spawner, usb_power_detector(vbus_in));
 
     // Vsys voltage reader
     let adc = Adc::new(p.ADC, Irqs, AdcConfig::default());
     let vsys_channel = Channel::new_pin(p.PIN_27, Pull::None);
-    spawner.spawn(vsys_voltage_reader(adc, vsys_channel).unwrap());
+    spawn_unwrap(spawner, vsys_voltage_reader(adc, vsys_channel));
 
     // Display
     let mut i2c_config = I2cConfig::default();
     i2c_config.frequency = 400_000;
     let i2c = I2c::new_async(p.I2C0, p.PIN_13, p.PIN_12, Irqs, i2c_config);
-    spawner.spawn(display_handler(i2c).unwrap());
+    spawn_unwrap(spawner, display_handler(i2c));
 
     // DFPlayer sound handler
     let mut uart_config = UartConfig::default();
@@ -93,12 +109,12 @@ async fn main(spawner: Spawner) {
     let rx_buf = RX_BUFFER.init([0u8; 256]);
     let uart = BufferedUart::new(p.UART1, p.PIN_4, p.PIN_5, Irqs, tx_buf, rx_buf, uart_config);
     let dfplayer_pwr = Output::new(p.PIN_8, Level::Low);
-    spawner.spawn(sound_handler(uart, dfplayer_pwr).unwrap());
+    spawn_unwrap(spawner, sound_handler(uart, dfplayer_pwr));
 
     // Alarm settings persistence
     const FLASH_SIZE: usize = 2 * 1024 * 1024;
     let flash = Flash::<_, Async, FLASH_SIZE>::new(p.FLASH, p.DMA_CH4);
-    spawner.spawn(alarm_settings_handler(flash).unwrap());
+    spawn_unwrap(spawner, alarm_settings_handler(flash));
 
     // Time updater with WiFi and RTC
     let rtc = Rtc::new(p.RTC, Irqs);
@@ -110,7 +126,7 @@ async fn main(spawner: Spawner) {
         clk_pin: p.PIN_29,
         dma_ch: p.DMA_CH0,
     };
-    spawner.spawn(time_updater(spawner, rtc, wifi_peripherals).unwrap());
+    spawn_unwrap(spawner, time_updater(spawner, rtc, wifi_peripherals));
 
     // Neopixel light effects
     let mut spi_config = SpiConfig::default();
@@ -118,5 +134,5 @@ async fn main(spawner: Spawner) {
     spi_config.phase = Phase::CaptureOnFirstTransition;
     spi_config.polarity = Polarity::IdleLow;
     let spi = Spi::new_txonly(p.SPI0, p.PIN_18, p.PIN_19, p.DMA_CH1, spi_config);
-    spawner.spawn(task::light_effects::light_effects_handler(spi).unwrap());
+    spawn_unwrap(spawner, light_effects_handler(spi));
 }
