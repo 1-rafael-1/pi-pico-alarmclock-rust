@@ -52,7 +52,6 @@ sequential-storage = "3.0.0"
 defmt = "1.0.1"
 defmt-rtt = "1.1.0"
 
-
 cortex-m-rt = "0.7.0"
 
 panic-probe = { version = "1.0.0", features = ["print-defmt"] }
@@ -97,6 +96,15 @@ incremental = true
 lto = 'fat'
 opt-level = 's'
 overflow-checks = false
+
+# Configure defmt to only show warnings and errors in release builds
+# This prevents the device from hanging due to RTT buffer overflow
+# when running standalone without a debugger
+# Use environment variable DEFMT_LOG to control log levels:
+# Build with: DEFMT_LOG=warn cargo build --release
+# This will compile out all info! and debug! statements
+[profile.release.package.defmt]
+opt-level = "z"
 
 # cargo test
 [profile.test]

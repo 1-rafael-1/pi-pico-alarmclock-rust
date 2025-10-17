@@ -84,26 +84,61 @@ To get the docs clone this repo and run this:
 cargo doc --open
 ```
 
-## Testing
+## Building the Project
 
-To compile and run via debug probe:
+This project uses `defmt` for logging, which can be configured to include different log levels depending on whether you're building for development or production use. Log levels are controlled using the `DEFMT_LOG` environment variable at compile time.
+
+### Debug Build
+
+For development with all logging enabled (trace, debug, info, warn):
 
 ```Shell
-cargo build --release
-cargo run --release
+cargo build
+cargo run
 ```
 
-To flash manually:
+This will include all `info!`, `debug!`, and `trace!` log statements, which are useful during development when connected to a debug probe. The logs are output via RTT (Real-Time Transfer) to your debugger.
+
+### Release Build
+
+For production use, you should build with reduced logging to prevent the RTT buffer from filling up and causing the device to hang when running standalone (without a debugger connected):
+
+**Recommended: Warnings only**
 
 ```Shell
-cargo build --release
+DEFMT_LOG=warn cargo build --release
+DEFMT_LOG=warn cargo run --release
+```
+
+This will compile out all `info!` and `debug!` statements, keeping only `warn!` logs. This is the recommended configuration for flashing to a device that will run standalone.
+
+**Info and above (moderate logging)**
+
+```Shell
+DEFMT_LOG=info cargo build --release
+```
+
+This keeps `info!` and `warn!` logs but removes `debug!` and `trace!`.
+
+### Flashing Manually
+
+To flash the device manually without a debug probe:
+
+```Shell
+DEFMT_LOG=warn cargo build --release
 cargo install elf2uf2-rs
 elf2uf2-rs .\target\thumbv6m-none-eabi\release\pi-pico-alarmclock
 ```
 
-And then find the `uf2` file in the above folder and flash that manually to the Pi Pico.
+Then find the `uf2` file in the above folder and flash it manually to the Pi Pico by:
+1. Hold the BOOTSEL button on the Pico while connecting it via USB
+2. Copy the `uf2` file to the RPI-RP2 drive that appears
 
-As an alternative find the latest release and use the `uf2` file from there. 
+As an alternative, find the latest release and use the `uf2` file from there.
+
+## Testing
+
+For testing during development, use the debug build with a debug probe connected to see all logs in real-time.
 
 ## Circuit
 
