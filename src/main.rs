@@ -6,6 +6,7 @@
 #![allow(clippy::unwrap_used)]
 
 use crate::task::alarm_settings::alarm_settings_handler;
+use crate::task::alarm_trigger::alarm_trigger_task;
 use crate::task::buttons::{blue_button_handler, green_button_handler, yellow_button_handler};
 use crate::task::display::display_handler;
 use crate::task::orchestrate::{alarm_expirer, orchestrator, scheduler};
@@ -71,6 +72,7 @@ async fn main(_spawner: Spawner) {
     spawner_high.spawn(orchestrator().unwrap());
     spawner_high.spawn(scheduler().unwrap());
     spawner_high.spawn(alarm_expirer().unwrap());
+    spawner_high.spawn(alarm_trigger_task().unwrap());
 
     // Low priority executor: runs in thread mode, using WFE/SEV
     let executor = EXECUTOR_LOW.init(Executor::new());

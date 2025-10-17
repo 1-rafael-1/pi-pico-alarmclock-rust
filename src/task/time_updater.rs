@@ -246,14 +246,14 @@ pub async fn time_updater(
                 info!("Connected to wifi");
             }
             Ok(Err(e)) => {
-                error!("Error connecting to wifi: {}", Debug2Format(&e));
+                warn!("Error connecting to wifi: {}", Debug2Format(&e));
                 control.leave().await;
                 control.gpio_set(0, false).await; // Turn off the onboard LED
                 Timer::after(Duration::from_secs(time_updater.retry_after_secs)).await;
                 continue;
             }
             Err(_) => {
-                error!("Timeout while trying to connect to wifi");
+                warn!("Timeout while trying to connect to wifi");
                 control.leave().await;
                 control.gpio_set(0, false).await; // Turn off the onboard LED
                 Timer::after(Duration::from_secs(time_updater.retry_after_secs)).await;
@@ -273,7 +273,7 @@ pub async fn time_updater(
         if !stack.is_config_up() {
             control.leave().await;
             control.gpio_set(0, false).await; // Turn off the onboard LED
-            error!(
+            warn!(
                 "Disconnected from wifi after waiting for DHCP timed out. Retrying in {:?} seconds",
                 time_updater.retry_after_secs
             );
@@ -293,7 +293,7 @@ pub async fn time_updater(
         if !stack.is_link_up() {
             control.leave().await;
             control.gpio_set(0, false).await; // Turn off the onboard LED
-            error!(
+            warn!(
                 "Disconnected from wifi after establishing link timed out. Retrying in {:?} seconds",
                 time_updater.retry_after_secs
             );
@@ -331,7 +331,7 @@ pub async fn time_updater(
                 Err(e) => {
                     control.leave().await;
                     control.gpio_set(0, false).await; // Turn off the onboard LED
-                    error!(
+                    warn!(
                         "Failed to make HTTP request, retrying in {:?} seconds: {:?}",
                         time_updater.retry_after_secs,
                         Debug2Format(&e)
@@ -346,7 +346,7 @@ pub async fn time_updater(
                 Err(e) => {
                     control.leave().await;
                     control.gpio_set(0, false).await; // Turn off the onboard LED
-                    error!(
+                    warn!(
                         "Disconnected from wifi after error. Retrying in {:?} seconds: {:?}",
                         time_updater.retry_after_secs,
                         Debug2Format(&e)
@@ -361,7 +361,7 @@ pub async fn time_updater(
                 Err(e) => {
                     control.leave().await;
                     control.gpio_set(0, false).await; // Turn off the onboard LED
-                    error!(
+                    warn!(
                         "Disconnected from wifi after error. Retrying in {:?} seconds: {:?}",
                         time_updater.retry_after_secs,
                         Debug2Format(&e)
@@ -388,7 +388,7 @@ pub async fn time_updater(
                     output
                 }
                 Err(e) => {
-                    error!(
+                    warn!(
                         "Failed to parse response body. Retrying in {:?} seconds: {:?}",
                         time_updater.retry_after_secs,
                         Debug2Format(&e)
@@ -412,7 +412,7 @@ pub async fn time_updater(
                         EVENT_CHANNEL.sender().send(Events::RtcUpdated).await;
                     }
                     Err(e) => {
-                        error!(
+                        warn!(
                             "Failed to set datetime. Retrying in {:?} seconds: {:?}",
                             time_updater.retry_after_secs,
                             Debug2Format(&e)

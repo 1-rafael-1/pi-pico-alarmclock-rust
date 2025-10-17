@@ -99,7 +99,7 @@ pub async fn light_effects_handler(spi: Spi<'static, SPI0, embassy_rp::spi::Asyn
             state_manager = match state_manager_guard.clone() {
                 Some(state_manager) => state_manager,
                 None => {
-                    error!("State manager not initialized");
+                    warn!("State manager not initialized");
                     drop(state_manager_guard);
                     Timer::after(Duration::from_secs(1)).await;
                     continue 'mainloop;
@@ -291,8 +291,8 @@ pub async fn light_effects_handler(spi: Spi<'static, SPI0, embassy_rp::spi::Asyn
                         }
                     }
                     AlarmState::None => {
-                        // we do nothing, and even getting here is an error
-                        error!("Alarm state is None, this should not happen");
+                        // we do nothing, and even getting here is a warning
+                        warn!("Alarm state is None, this should not happen");
                     }
                 }
             }

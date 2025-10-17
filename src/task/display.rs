@@ -8,7 +8,7 @@ use crate::task::task_messages::DISPLAY_SIGNAL;
 use crate::task::time_updater::RTC_MUTEX;
 use crate::utility::string_utils::StringUtils;
 use core::fmt::Write;
-use defmt::{Debug2Format, error, info};
+use defmt::{Debug2Format, info, warn};
 use embassy_rp::i2c::{Async, I2c};
 use embassy_rp::peripherals::I2C0;
 use embassy_rp::rtc::{DateTime, DayOfWeek};
@@ -139,7 +139,7 @@ pub async fn display_handler(i2c: I2c<'static, I2C0, Async>) {
     match display.init().await {
         Ok(_) => {}
         Err(e) => {
-            error!("Failed to initialize display: {}", defmt::Debug2Format(&e));
+            warn!("Failed to initialize display: {}", defmt::Debug2Format(&e));
             return;
         }
     }
@@ -159,7 +159,7 @@ pub async fn display_handler(i2c: I2c<'static, I2C0, Async>) {
             let rtc = match rtc_guard.as_ref() {
                 Some(rtc) => rtc,
                 None => {
-                    error!("RTC not initialized");
+                    warn!("RTC not initialized");
                     drop(rtc_guard);
                     Timer::after(Duration::from_secs(1)).await;
                     continue 'mainloop;
@@ -190,7 +190,7 @@ pub async fn display_handler(i2c: I2c<'static, I2C0, Async>) {
             state_manager = match state_manager_guard.clone() {
                 Some(state_manager) => state_manager,
                 None => {
-                    error!("State manager not initialized");
+                    warn!("State manager not initialized");
                     drop(state_manager_guard);
                     Timer::after(Duration::from_secs(1)).await;
                     continue 'mainloop;

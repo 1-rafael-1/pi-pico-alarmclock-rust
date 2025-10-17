@@ -1,5 +1,6 @@
 //! # Orchestrate Tasks
 //! Task to orchestrate the state transitions of the system.
+use crate::task::alarm_trigger::{ALARM_SCHEDULE_DISABLE_SIGNAL, ALARM_SCHEDULE_UPDATE_SIGNAL};
 use crate::task::state::*;
 use crate::task::task_messages::*;
 use crate::task::time_updater::RTC_MUTEX;
@@ -91,10 +92,16 @@ pub async fn orchestrator() {
                         ))
                         .await;
                     if state_manager.alarm_settings.get_enabled() {
-                        // if the alarm is enabled, we must update the light effects once more
+                        // if the alarm is enabled, we must update the light effects and signal the alarm task to reschedule
                         LIGHTFX_SIGNAL.signal(Commands::LightFXUpdate((0, 0, 0)));
+                        ALARM_SCHEDULE_UPDATE_SIGNAL.signal(Commands::AlarmSettingsWriteToFlash(
+                            state_manager.alarm_settings.clone(),
+                        ));
                     } else {
-                        // if the alarm is disabled, we must wake up the scheduler early
+                        // if the alarm is disabled, we must signal the alarm task to disable and wake up the scheduler early
+                        ALARM_SCHEDULE_DISABLE_SIGNAL.signal(Commands::AlarmSettingsWriteToFlash(
+                            state_manager.alarm_settings.clone(),
+                        ));
                         SCHEDULER_WAKE_SIGNAL.signal(Commands::SchedulerWakeUp);
                     }
                 }
@@ -145,8 +152,8 @@ pub async fn orchestrator() {
     }
 }
 
-/// This is the task that will handle scheduling timed events by sending events to the Event Channel when a given
-/// time has passed. It will also handle the alarm event.
+/// This task handles scheduling periodic display and LED updates by sending events to the Event Channel.
+/// Alarm scheduling and triggering is now handled by the dedicated alarm_trigger_task.
 #[embassy_executor::task]
 pub async fn scheduler() {
     info!("scheduler task started");
@@ -164,7 +171,7 @@ pub async fn scheduler() {
             let rtc = match rtc_guard.as_ref() {
                 Some(rtc) => rtc,
                 None => {
-                    error!("RTC not initialized");
+                    warn!("RTC not initialized");
                     drop(rtc_guard);
                     Timer::after(Duration::from_secs(3)).await;
                     continue 'mainloop;
@@ -193,14 +200,14 @@ pub async fn scheduler() {
             .send(Events::Scheduler((dt.hour, dt.minute, dt.second)))
             .await;
 
-        // get the state of the system out of the mutex and quickly drop the mutex
-        let state_manager: StateManager;
+        // get the alarm enabled state to determine update frequency
+        let alarm_enabled: bool;
         '_state_manager_mutex: {
             let state_manager_guard = STATE_MANAGER_MUTEX.lock().await;
-            state_manager = match state_manager_guard.clone() {
-                Some(state_manager) => state_manager,
+            alarm_enabled = match state_manager_guard.as_ref() {
+                Some(state_manager) => state_manager.alarm_settings.get_enabled(),
                 None => {
-                    error!("State manager not initialized");
+                    warn!("State manager not initialized");
                     drop(state_manager_guard);
                     Timer::after(Duration::from_secs(1)).await;
                     continue 'mainloop;
@@ -209,39 +216,14 @@ pub async fn scheduler() {
         }
 
         // calculate the downtime we need to wait until the next iteration
-        let mut downtime: Duration;
-        if state_manager.alarm_settings.get_enabled() {
-            // wait for 1 minute, unless we are in proximity of the alarm time, in which case we wait for 10 seconds
-            let alarm_time_minutes = state_manager.alarm_settings.get_hour() as u32 * 60
-                + state_manager.alarm_settings.get_minute() as u32;
-            let current_time_minutes = (dt.hour as u32 * 60) + dt.minute as u32;
-            if alarm_time_minutes > current_time_minutes {
-                // if the alarm time is in the future, we wait for 60 seconds, unless we are in the proximity of the alarm time
-                if (alarm_time_minutes - current_time_minutes) <= 3 {
-                    downtime = Duration::from_secs(10);
-                } else {
-                    downtime = Duration::from_secs(60);
-                }
-            } else {
-                // if the alarm time is in the past, we wait for 60 seconds
-                downtime = Duration::from_secs(60);
-            }
+        let downtime: Duration = if alarm_enabled {
+            // When alarm is enabled, we can wait longer since the RTC will handle the alarm
+            Duration::from_secs(60)
         } else {
             // if the alarm is not enabled, we will be using the neopixel analog clock effect, which will need to be updated often
             // so we must wait for 3.75 seconds (60s / 16leds -> 3.75s until we must update the leds). To avoid visual glitches, we reduce that time by 10ms
-            downtime = Duration::from_millis(3740);
-        }
-
-        // raise the alarm event
-        if state_manager.operation_mode != OperationMode::Alarm
-            && state_manager.alarm_settings.get_enabled()
-            && state_manager.alarm_settings.get_hour() == dt.hour
-            && state_manager.alarm_settings.get_minute() == dt.minute
-        {
-            EVENT_CHANNEL.sender().send(Events::Alarm).await;
-            // wait for slightly more than a minute, to avoid the alarm being raised again when the user was really quick to stop it
-            downtime = Duration::from_secs(61);
-        }
+            Duration::from_millis(3740)
+        };
 
         // we either wait for the downtime or until we are woken up early. Whatever comes first, starts the next iteration.
         let downtime_timer = Timer::after(downtime);

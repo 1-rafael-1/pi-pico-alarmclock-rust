@@ -54,12 +54,12 @@ impl<'a> PersistedAlarmSettings<'a> {
             {
                 Ok(Some(value)) => value,
                 Ok(None) => {
-                    error!("No value found for key {:?}", &key);
+                    warn!("No value found for key {:?}", &key);
                     // Default to 0, we do not want to panic here, bacaue maybe no value has been stored yet
                     0
                 }
                 Err(e) => {
-                    error!(
+                    warn!(
                         "Failed to fetch value for key {:?}: {:?}",
                         &key,
                         Debug2Format(&e)
