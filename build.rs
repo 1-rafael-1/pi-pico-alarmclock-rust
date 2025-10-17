@@ -8,6 +8,10 @@
 //! updating `memory.x` ensures a rebuild of the application with the
 //! new memory settings.
 
+#![allow(clippy::expect_used)]
+#![allow(clippy::unwrap_used)]
+#![allow(clippy::print_stdout)]
+
 use std::env;
 use std::fs;
 use std::fs::File;
