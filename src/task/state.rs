@@ -1,7 +1,7 @@
 //! # State of the system
 //! This module desccribes the state of the system and the operations that can be performed on the state.
 use crate::task::buttons::Button;
-use crate::task::task_messages::{Events, EVENT_CHANNEL};
+use crate::task::task_messages::{EVENT_CHANNEL, Events};
 use defmt::*;
 use embassy_rp::clocks::RoscRng;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
