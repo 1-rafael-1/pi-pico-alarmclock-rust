@@ -3,14 +3,14 @@
 //! The task is responsible for connecting to a wifi network, making a request to a time API, parsing the response, and updating the RTC.
 //!
 //! # populate constants SSID and PASSWORD
-//! make sure to have a `wifi_manager.json` file in the config folder formatted as follows:
+//! make sure to have a `wifi_config.json` file in the config folder formatted as follows:
 //!```json
 //!  {
 //!     "ssid": "some_ssid_here",
 //!     "password": "some_password_here"
 //! }
 //! ```
-//! also make sure that `build.rs` loads the `wifi_manager.json` file and writes it to `wifi_secrets.rs`
+//! also make sure that `build.rs` loads the `wifi_config.json` file and writes it to `wifi_secrets.rs`
 //!
 //! # populate constant `TIME_SERVER_URL`
 //! make sure to have a `time_api_config.json` file in the config folder formatted as follows:
