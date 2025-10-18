@@ -9,29 +9,39 @@ use embassy_sync::channel::Sender;
 use embassy_time::{Duration, Instant, Timer, with_deadline};
 use {defmt_rtt as _, panic_probe as _};
 
-/// Button Manager
 /// Handles button press, hold, and long hold
 /// Debounces button press
 pub struct ButtonManager<'a> {
+    /// The input pin for the button
     input: Input<'a>,
+    /// The debounce duration
     debounce_duration: Duration,
+    /// The event to send when the button is pressed or held
     events: Events,
+    /// The button being managed
     button: Button,
+    /// The interval between hold events
     hold_event_interval: Duration,
+    /// The sender to send events to
     sender: Sender<'a, CriticalSectionRawMutex, Events, 10>,
 }
 
 /// The buttons of the system
-#[derive(Debug, Format, PartialEq, Clone)]
+#[derive(Debug, Format, Eq, PartialEq, Clone)]
 pub enum Button {
+    /// No button
     None,
+    /// Green button
     Green,
+    /// Blue button
     Blue,
+    /// Yellow button
     Yellow,
 }
 
 impl<'a> ButtonManager<'a> {
-    pub fn new(
+    /// Create a new `ButtonManager`
+    pub const fn new(
         input: Input<'a>,
         events: Events,
         button: Button,
@@ -58,37 +68,24 @@ impl<'a> ButtonManager<'a> {
             // if the button is not pressed, we continue with the main loop
             if init_level != Level::Low {
                 continue 'mainloop;
-            };
+            }
 
             // we wait for the button to be released, depending on how fast that happens, we have a one-time press event or a hold.
             let level_result =
                 with_deadline(Instant::now() + Duration::from_secs(1), self.debounce()).await;
-            match level_result {
-                // Button Released < 1s -> we have a one-time press event
-                Ok(level) => {
-                    // if the button is not released, we continue with the main loop
-                    if level != Level::High {
-                        continue 'mainloop;
-                    } else {
-                        // we send one press event down the channel
-                        let event = match self.events {
-                            Events::BlueBtn => Events::BlueBtn,
-                            Events::GreenBtn => Events::GreenBtn,
-                            Events::YellowBtn => Events::YellowBtn,
-                            _ => panic!("Invalid Event"),
-                        };
-                        self.sender.send(event).await;
-                        // and then we continue with the main loop
-                        continue 'mainloop;
-                    }
-                }
-                // button held for > 1s
-                // not a one-time press event, but a hold event
-                Err(_) => {
-                    // here we do nothing and leave this pattern matching block
-                }
-            };
 
+            // Button Released < 1s -> we have a one-time press event
+            if let Ok(level) = level_result {
+                // if the button is released, we send one press event down the channel
+                if level == Level::High {
+                    self.sender.send(self.events.clone()).await;
+                }
+                // and then we continue with the main loop
+                continue 'mainloop;
+            }
+
+            // button held for > 1s
+            // not a one-time press event, but a hold event
             // we have a button being held, we need to handle the hold event.
             'holding: loop {
                 // we wait for either the button to change its level or the hold event interval to expire
@@ -97,28 +94,20 @@ impl<'a> ButtonManager<'a> {
                     self.input.wait_for_any_edge(),
                 )
                 .await;
-                match level_result {
-                    Ok(_) => {
-                        // if the button level changed, we break the loop and continue with the main loop and send no event
-                        break 'holding;
-                    }
-                    Err(_) => {
-                        if self.input.get_level() == Level::High {
-                            // if the button is released, we continue with the main loop and send no event
-                            continue 'mainloop;
-                        } else {
-                            // if the button is still held, we send an event down the channel, and then return to the beginning of the loop
-                            let event = match self.events {
-                                Events::BlueBtn => Events::BlueBtn,
-                                Events::GreenBtn => Events::GreenBtn,
-                                Events::YellowBtn => Events::YellowBtn,
-                                _ => panic!("Invalid Event"),
-                            };
-                            self.sender.send(event).await;
-                            continue 'holding;
-                        }
-                    }
+
+                if level_result.is_ok() {
+                    // if the button level changed, we break the loop and continue with the main loop and send no event
+                    break 'holding;
                 }
+
+                // Timeout occurred - check if button is still held
+                if self.input.get_level() == Level::High {
+                    // if the button is released, we continue with the main loop and send no event
+                    continue 'mainloop;
+                }
+
+                // if the button is still held, we send an event down the channel, and then return to the beginning of the loop
+                self.sender.send(self.events.clone()).await;
             }
         }
     }
@@ -141,26 +130,10 @@ impl<'a> ButtonManager<'a> {
     }
 }
 
-#[embassy_executor::task]
-pub async fn green_button_handler(input: Input<'static>) {
+#[embassy_executor::task(pool_size = 3)]
+pub async fn button_handler(input: Input<'static>, events: Events, button: Button) {
     let sender = EVENT_CHANNEL.sender();
-    let mut btn = ButtonManager::new(input, Events::GreenBtn, Button::Green, sender);
-    info!("{} task started", btn.button);
-    btn.handle_button_press().await;
-}
-
-#[embassy_executor::task]
-pub async fn blue_button_handler(input: Input<'static>) {
-    let sender = EVENT_CHANNEL.sender();
-    let mut btn = ButtonManager::new(input, Events::BlueBtn, Button::Blue, sender);
-    info!("{} task started", btn.button);
-    btn.handle_button_press().await;
-}
-
-#[embassy_executor::task]
-pub async fn yellow_button_handler(input: Input<'static>) {
-    let sender = EVENT_CHANNEL.sender();
-    let mut btn = ButtonManager::new(input, Events::YellowBtn, Button::Yellow, sender);
+    let mut btn = ButtonManager::new(input, events, button, sender);
     info!("{} task started", btn.button);
     btn.handle_button_press().await;
 }
