@@ -2,7 +2,7 @@
 //! This module desccribes the state of the system and the operations that can be performed on the state.
 use crate::task::buttons::Button;
 use crate::task::task_messages::{EVENT_CHANNEL, Events};
-use defmt::*;
+use defmt::Format;
 use embassy_rp::clocks::RoscRng;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
@@ -40,10 +40,10 @@ pub struct StateManager {
 
 /// State transitions
 impl StateManager {
-    /// Create a new StateManager.             
+    /// Create a new `StateManager`.
     /// We will get the actual data pretty early in the system startup, so we can set all this to inits here
     pub fn new() -> Self {
-        let manager = StateManager {
+        Self {
             operation_mode: OperationMode::Normal,
             alarm_settings: AlarmSettings::new_empty(),
             alarm_state: AlarmState::None,
@@ -54,67 +54,79 @@ impl StateManager {
                 battery_voltage_empty: 2.6,
                 battery_level: BatteryLevel::Bat000,
             },
-        };
-        manager
+        }
     }
 
+    /// Toggle the alarm enabled state
     pub async fn toggle_alarm_enabled(&mut self) {
         self.alarm_settings
             .set_enabled(!self.alarm_settings.get_enabled());
         self.save_alarm_settings().await;
     }
 
-    pub fn set_menu_mode(&mut self) {
+    /// Set the system to menu mode
+    pub const fn set_menu_mode(&mut self) {
         self.operation_mode = OperationMode::Menu;
     }
 
-    pub fn set_normal_mode(&mut self) {
+    /// Set the system to normal mode
+    pub const fn set_normal_mode(&mut self) {
         self.operation_mode = OperationMode::Normal;
         self.set_alarm_state(AlarmState::None);
     }
 
-    pub fn set_set_alarm_time_mode(&mut self) {
+    /// Set the system to set alarm time mode
+    pub const fn set_set_alarm_time_mode(&mut self) {
         self.operation_mode = OperationMode::SetAlarmTime;
     }
 
-    pub fn set_alarm_mode(&mut self) {
+    /// Set the system to alarm mode
+    pub const fn set_alarm_mode(&mut self) {
         self.operation_mode = OperationMode::Alarm;
         self.set_alarm_state(AlarmState::Sunrise);
     }
 
-    pub fn set_alarm_state(&mut self, state: AlarmState) {
+    /// Set the alarm state
+    pub const fn set_alarm_state(&mut self, state: AlarmState) {
         self.alarm_state = state;
     }
 
-    pub fn set_system_info_mode(&mut self) {
+    /// Set the system to system info mode
+    pub const fn set_system_info_mode(&mut self) {
         self.operation_mode = OperationMode::SystemInfo;
     }
 
+    /// Increment the alarm hour
     pub fn increment_alarm_hour(&mut self) {
         self.alarm_settings.increment_alarm_hour();
     }
 
+    /// Increment the alarm minute
     pub fn increment_alarm_minute(&mut self) {
         self.alarm_settings.increment_alarm_minute();
     }
 
-    pub async fn save_alarm_settings(&mut self) {
+    /// Save the alarm settings
+    pub async fn save_alarm_settings(&self) {
         let sender = EVENT_CHANNEL.sender();
         sender.send(Events::AlarmSettingsNeedUpdate).await;
     }
 
+    /// Set the system to standby mode
     pub async fn set_standby_mode(&mut self) {
         let sender = EVENT_CHANNEL.sender();
         self.operation_mode = OperationMode::Standby;
         sender.send(Events::Standby).await;
     }
 
+    /// Wake up the system from standby mode
     pub async fn wake_up(&mut self) {
         let sender = EVENT_CHANNEL.sender();
         self.set_normal_mode();
         sender.send(Events::WakeUp).await;
     }
 
+    /// Randomize the alarm stop button sequence
     pub fn randomize_alarm_stop_buttom_sequence(&mut self) {
         self.alarm_settings.randomize_stop_alarm_button_sequence();
     }
@@ -187,14 +199,11 @@ impl StateManager {
             OperationMode::Normal => {
                 self.set_menu_mode();
             }
-            OperationMode::Menu => {
+            OperationMode::Menu | OperationMode::SystemInfo => {
                 self.set_normal_mode();
             }
             OperationMode::SetAlarmTime => {
                 self.increment_alarm_minute();
-            }
-            OperationMode::SystemInfo => {
-                self.set_normal_mode();
             }
             OperationMode::Alarm => {
                 if self.alarm_settings.get_first_valid_stop_alarm_button() == Button::Yellow {
@@ -212,7 +221,7 @@ impl StateManager {
 }
 
 /// The operation mode of the system
-#[derive(PartialEq, Debug, Format, Clone)]
+#[derive(Eq, PartialEq, Debug, Format, Clone)]
 pub enum OperationMode {
     /// The regular operation mode.
     ///
@@ -235,7 +244,7 @@ pub enum OperationMode {
 }
 
 /// The settings for the alarm
-#[derive(PartialEq, Debug, Format, Clone)]
+#[derive(Eq, PartialEq, Debug, Format, Clone)]
 pub struct AlarmSettings {
     /// The alarm time is set to the specified time
     time: (u8, u8),
@@ -246,51 +255,61 @@ pub struct AlarmSettings {
 }
 
 impl AlarmSettings {
-    pub fn new_empty() -> Self {
-        AlarmSettings {
+    /// Create a new `AlarmSettings` with default values.
+    pub const fn new_empty() -> Self {
+        Self {
             time: (0, 0),
             enabled: false,
             stop_alarm_button_sequence: [Button::Green, Button::Blue, Button::Yellow],
         }
     }
 
-    pub fn set_time(&mut self, time: (u8, u8)) {
+    /// Set the alarm time
+    pub const fn set_time(&mut self, time: (u8, u8)) {
         self.time = time;
     }
 
-    pub fn set_enabled(&mut self, enabled: bool) {
+    /// Set the enabled state
+    pub const fn set_enabled(&mut self, enabled: bool) {
         self.enabled = enabled;
     }
 
-    pub fn get_hour(&self) -> u8 {
+    /// Get the alarm time hour
+    pub const fn get_hour(&self) -> u8 {
         self.time.0
     }
 
-    pub fn get_minute(&self) -> u8 {
+    /// Get the alarm time minute
+    pub const fn get_minute(&self) -> u8 {
         self.time.1
     }
 
-    pub fn get_enabled(&self) -> bool {
+    /// Get the enabled state
+    pub const fn get_enabled(&self) -> bool {
         self.enabled
     }
 
-    pub fn increment_alarm_hour(&mut self) {
+    /// Increment the alarm hour
+    pub const fn increment_alarm_hour(&mut self) {
         let mut hour = self.get_hour();
         hour = (hour + 1) % 24;
         self.set_time((hour, self.get_minute()));
     }
 
-    pub fn increment_alarm_minute(&mut self) {
+    /// Increment the alarm minute
+    pub const fn increment_alarm_minute(&mut self) {
         let mut minute = self.get_minute();
         minute = (minute + 1) % 60;
         self.set_time((self.get_hour(), minute));
     }
 
+    /// Get the stop alarm button sequence
     pub fn get_stop_alarm_button_sequence(&self) -> [Button; 3] {
         self.stop_alarm_button_sequence.clone()
     }
 
-    fn set_stop_alarm_button_sequence(&mut self, sequence: [Button; 3]) {
+    /// Set the stop alarm button sequence
+    const fn set_stop_alarm_button_sequence(&mut self, sequence: [Button; 3]) {
         self.stop_alarm_button_sequence = sequence;
     }
 
@@ -332,19 +351,16 @@ impl AlarmSettings {
         }
     }
 
+    /// Check if the alarm stop button sequence is complete
     pub fn is_alarm_stop_button_sequence_complete(&self) -> bool {
         let sequence = self.get_stop_alarm_button_sequence();
-        for i in 0..sequence.len() {
-            if sequence[i] != Button::None {
-                return false;
-            }
-        }
-        true
+        // Check if all buttons in the sequence are None
+        sequence.iter().all(|button| *button == Button::None)
     }
 }
 
 /// The state of the alarm
-#[derive(PartialEq, Debug, Format, Clone)]
+#[derive(Eq, PartialEq, Debug, Format, Clone)]
 pub enum AlarmState {
     /// The alarm is not active
     None,
@@ -357,20 +373,28 @@ pub enum AlarmState {
 }
 
 impl AlarmState {
+    /// Check if the alarm is active
     pub fn is_active(&self) -> bool {
-        self != &AlarmState::None
+        self != &Self::None
     }
 }
 
 /// The battery level of the system in steps of 20% from 0 to 100. One additional state is provided for charging.
-#[derive(PartialEq, Debug, Format, Clone)]
+#[derive(Eq, PartialEq, Debug, Format, Clone)]
 pub enum BatteryLevel {
+    /// The battery is charging
     Charging,
+    /// The battery level is 0%
     Bat000,
+    /// The battery level is 20%
     Bat020,
+    /// The battery level is 40%
     Bat040,
+    /// The battery level is 60%
     Bat060,
+    /// The battery level is 80%
     Bat080,
+    /// The battery level is 100%
     Bat100,
 }
 
@@ -391,6 +415,7 @@ pub struct PowerState {
 }
 
 impl PowerState {
+    /// Set the battery level based on the current vsys voltage and usb power state
     pub fn set_battery_level(&mut self) {
         if self.usb_power {
             self.battery_level = BatteryLevel::Charging;
@@ -400,45 +425,52 @@ impl PowerState {
             let lower_bound_voltage = self.battery_voltage_empty;
 
             // Calculate battery level based on voltage
-            let battery_percent = ((self.vsys - lower_bound_voltage)
+            let battery_percent = (self.vsys - lower_bound_voltage)
                 / (upper_bound_voltage - lower_bound_voltage)
-                * 100.0) as u8;
+                * 100.0;
             // set the battery level
             self.battery_level = match battery_percent {
-                0..=5 => BatteryLevel::Bat000,
-                6..=29 => BatteryLevel::Bat020,
-                30..=49 => BatteryLevel::Bat040,
-                50..=69 => BatteryLevel::Bat060,
-                70..=89 => BatteryLevel::Bat080,
+                0f32..=5f32 => BatteryLevel::Bat000,
+                6f32..=29f32 => BatteryLevel::Bat020,
+                30f32..=49f32 => BatteryLevel::Bat040,
+                50f32..=69f32 => BatteryLevel::Bat060,
+                70f32..=89f32 => BatteryLevel::Bat080,
                 _ => BatteryLevel::Bat100,
             };
         }
     }
 
+    /// Get the battery level
     pub fn get_battery_level(&self) -> BatteryLevel {
         self.battery_level.clone()
     }
 
-    pub fn get_vsys(&self) -> f32 {
+    /// Get the vsys voltage
+    pub const fn get_vsys(&self) -> f32 {
         self.vsys
     }
 
-    pub fn get_usb_power(&self) -> bool {
+    /// Get the usb power state
+    pub const fn get_usb_power(&self) -> bool {
         self.usb_power
     }
 
-    pub fn get_battery_voltage_fully_charged(&self) -> f32 {
+    /// Get the battery voltage when fully charged
+    pub const fn get_battery_voltage_fully_charged(&self) -> f32 {
         self.battery_voltage_fully_charged
     }
 
-    pub fn get_battery_voltage_empty(&self) -> f32 {
+    /// Get the battery voltage when empty
+    pub const fn get_battery_voltage_empty(&self) -> f32 {
         self.battery_voltage_empty
     }
 
-    pub fn set_vsys(&mut self, vsys: f32) {
+    /// Set the vsys voltage
+    pub const fn set_vsys(&mut self, vsys: f32) {
         self.vsys = vsys;
     }
 
+    /// Set the usb power state
     pub fn set_usb_power(&mut self, usb_power: bool) {
         self.usb_power = usb_power;
         self.set_battery_level();
