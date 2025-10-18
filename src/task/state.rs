@@ -42,7 +42,7 @@ pub struct StateManager {
 impl StateManager {
     /// Create a new `StateManager`.
     /// We will get the actual data pretty early in the system startup, so we can set all this to inits here
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             operation_mode: OperationMode::Normal,
             alarm_settings: AlarmSettings::new_empty(),
@@ -97,12 +97,12 @@ impl StateManager {
     }
 
     /// Increment the alarm hour
-    pub fn increment_alarm_hour(&mut self) {
+    pub const fn increment_alarm_hour(&mut self) {
         self.alarm_settings.increment_alarm_hour();
     }
 
     /// Increment the alarm minute
-    pub fn increment_alarm_minute(&mut self) {
+    pub const fn increment_alarm_minute(&mut self) {
         self.alarm_settings.increment_alarm_minute();
     }
 
@@ -143,16 +143,12 @@ impl StateManager {
             OperationMode::SetAlarmTime => {
                 self.increment_alarm_hour();
             }
-            OperationMode::Menu => {
-                self.set_system_info_mode();
-            }
-            OperationMode::SystemInfo => {
-                self.set_normal_mode();
-            }
+            OperationMode::Menu => self.set_system_info_mode(),
+            OperationMode::SystemInfo => self.set_normal_mode(),
             OperationMode::Alarm => {
                 if self.alarm_settings.get_first_valid_stop_alarm_button() == Button::Green {
                     self.alarm_settings.erase_first_valid_stop_alarm_button();
-                };
+                }
                 if self.alarm_settings.is_alarm_stop_button_sequence_complete() {
                     EVENT_CHANNEL.sender().send(Events::AlarmStop).await;
                 }
@@ -176,13 +172,11 @@ impl StateManager {
             OperationMode::Menu => {
                 self.set_standby_mode().await;
             }
-            OperationMode::SystemInfo => {
-                self.set_normal_mode();
-            }
+            OperationMode::SystemInfo => self.set_normal_mode(),
             OperationMode::Alarm => {
                 if self.alarm_settings.get_first_valid_stop_alarm_button() == Button::Blue {
                     self.alarm_settings.erase_first_valid_stop_alarm_button();
-                };
+                }
                 if self.alarm_settings.is_alarm_stop_button_sequence_complete() {
                     EVENT_CHANNEL.sender().send(Events::AlarmStop).await;
                 }
@@ -202,13 +196,11 @@ impl StateManager {
             OperationMode::Menu | OperationMode::SystemInfo => {
                 self.set_normal_mode();
             }
-            OperationMode::SetAlarmTime => {
-                self.increment_alarm_minute();
-            }
+            OperationMode::SetAlarmTime => self.increment_alarm_minute(),
             OperationMode::Alarm => {
                 if self.alarm_settings.get_first_valid_stop_alarm_button() == Button::Yellow {
                     self.alarm_settings.erase_first_valid_stop_alarm_button();
-                };
+                }
                 if self.alarm_settings.is_alarm_stop_button_sequence_complete() {
                     EVENT_CHANNEL.sender().send(Events::AlarmStop).await;
                 }
