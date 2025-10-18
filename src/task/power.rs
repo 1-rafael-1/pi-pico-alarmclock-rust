@@ -2,12 +2,27 @@
 //! Determine the power state of the system: battery or power supply.
 //! Detremine the supply voltage of the system.
 
-use crate::task::task_messages::{EVENT_CHANNEL, Events, VSYS_WAKE_SIGNAL};
+use crate::event::{Event, send_event};
 use defmt::info;
 use embassy_futures::select::select;
 use embassy_rp::adc::{Adc, Channel};
 use embassy_rp::gpio::Input;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Timer};
+
+/// Signal for waking the vsys voltage reader early
+static VSYS_WAKE_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+
+/// Signals the vsys voltage reader to wake up early
+pub fn signal_vsys_wake() {
+    VSYS_WAKE_SIGNAL.signal(());
+}
+
+/// Waits for the vsys wake signal
+async fn wait_for_vsys_wake() {
+    VSYS_WAKE_SIGNAL.wait().await;
+}
 
 /// determine the power source of the system, specifically if the USB power supply is connected
 /// the USB power supply is connected, if the pin is high
@@ -17,13 +32,12 @@ use embassy_time::{Duration, Timer};
 #[embassy_executor::task]
 pub async fn usb_power_detector(mut vbus_in: Input<'static>) {
     info!("usb_power task started");
-    let sender = EVENT_CHANNEL.sender();
 
     // wait for the system to settle, before starting the loop -> the vbus_in pin is not stable immediately
     Timer::after(Duration::from_secs(1)).await;
 
     loop {
-        sender.send(Events::Vbus(vbus_in.is_high())).await;
+        send_event(Event::Vbus(vbus_in.is_high())).await;
         vbus_in.wait_for_any_edge().await;
     }
 }
@@ -40,7 +54,6 @@ pub async fn vsys_voltage_reader(
 ) {
     info!("vsys_voltage task started");
 
-    let sender = EVENT_CHANNEL.sender();
     let downtime = Duration::from_secs(600); // 10 minutes
 
     loop {
@@ -50,11 +63,11 @@ pub async fn vsys_voltage_reader(
         if let Ok(adc_value) = adc.read(&mut channel).await {
             // reference voltage is 3.3V, and the voltage divider ratio is 2.65. The ADC is 12-bit, so 2^12 = 4096
             let voltage = (f32::from(adc_value)) * 3.3 * 2.65 / 4096.0;
-            sender.send(Events::Vsys(voltage)).await;
+            send_event(Event::Vsys(voltage)).await;
 
             // we either wait for the downtime or until we are woken up early. Whatever comes first, starts the next iteration.
             let downtime_timer = Timer::after(downtime);
-            select(downtime_timer, VSYS_WAKE_SIGNAL.wait()).await;
+            select(downtime_timer, wait_for_vsys_wake()).await;
         }
     }
 }

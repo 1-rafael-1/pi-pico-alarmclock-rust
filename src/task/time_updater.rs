@@ -27,9 +27,7 @@ include!(concat!(env!("OUT_DIR"), "/wifi_secrets.rs"));
 include!(concat!(env!("OUT_DIR"), "/time_api_config.rs"));
 
 use crate::Irqs;
-use crate::task::task_messages::{
-    EVENT_CHANNEL, Events, TIME_UPDATER_RESUME_SIGNAL, TIME_UPDATER_SUSPEND_SIGNAL,
-};
+use crate::event::{Event, send_event};
 use crate::utility::string_utils::StringUtils;
 use core::str::from_utf8;
 use cyw43::JoinOptions;
@@ -49,9 +47,10 @@ use embassy_rp::{
     pio::Pio,
     rtc::Rtc,
 };
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::mutex::Mutex;
+use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Timer, with_timeout};
-
 use heapless;
 use reqwless::client::{HttpClient, TlsConfig, TlsVerify};
 use reqwless::request::Method;
@@ -59,6 +58,37 @@ use serde::Deserialize;
 use serde_json_core;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
+
+/// Signal for suspending the time updater task
+static TIME_UPDATER_SUSPEND_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+
+/// Signal for resuming the time updater task
+static TIME_UPDATER_RESUME_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+
+/// Signals the time updater to suspend
+pub fn signal_time_updater_suspend() {
+    TIME_UPDATER_SUSPEND_SIGNAL.signal(());
+}
+
+/// Signals the time updater to resume
+pub fn signal_time_updater_resume() {
+    TIME_UPDATER_RESUME_SIGNAL.signal(());
+}
+
+/// Checks if the time updater suspend signal has been signaled
+fn is_time_updater_suspend_signaled() -> bool {
+    TIME_UPDATER_SUSPEND_SIGNAL.signaled()
+}
+
+/// Resets the time updater suspend signal
+fn reset_time_updater_suspend_signal() {
+    TIME_UPDATER_SUSPEND_SIGNAL.reset();
+}
+
+/// Waits for the time updater resume signal
+async fn wait_for_time_updater_resume() {
+    TIME_UPDATER_RESUME_SIGNAL.wait().await;
+}
 
 /// `WiFi` peripheral resources needed for the time updater task
 pub struct WifiPeripherals {
@@ -384,7 +414,7 @@ async fn update_rtc_with_time(datetime_str: &str, day_of_week: u8) -> Result<(),
     }
 
     // Send event to state manager
-    EVENT_CHANNEL.sender().send(Events::RtcUpdated).await;
+    send_event(Event::RtcUpdated).await;
     Ok(())
 }
 
@@ -434,9 +464,9 @@ pub async fn time_updater(
     info!("starting loop");
     loop {
         // Handle suspend/resume signals
-        if TIME_UPDATER_SUSPEND_SIGNAL.signaled() {
-            TIME_UPDATER_SUSPEND_SIGNAL.reset();
-            TIME_UPDATER_RESUME_SIGNAL.wait().await;
+        if is_time_updater_suspend_signaled() {
+            reset_time_updater_suspend_signal();
+            wait_for_time_updater_resume().await;
         }
 
         // Attempt to update time
@@ -453,7 +483,7 @@ pub async fn time_updater(
             time_updater.refresh_after_secs
         );
         let downtime_timer = Timer::after(Duration::from_secs(time_updater.refresh_after_secs));
-        select(downtime_timer, TIME_UPDATER_RESUME_SIGNAL.wait()).await;
+        select(downtime_timer, wait_for_time_updater_resume()).await;
     }
 }
 

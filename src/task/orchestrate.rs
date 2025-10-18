@@ -1,23 +1,54 @@
 //! # Orchestrate Tasks
 //! Task to orchestrate the state transitions of the system.
-use crate::task::alarm_trigger::{ALARM_SCHEDULE_DISABLE_SIGNAL, ALARM_SCHEDULE_UPDATE_SIGNAL};
+use crate::event::{Event, receive_event, send_event};
+use crate::task::alarm_settings::send_flash_write_command;
+use crate::task::alarm_trigger::{signal_alarm_schedule_disable, signal_alarm_schedule_update};
+use crate::task::display::signal_display_update;
+use crate::task::light_effects::{signal_lightfx_start, signal_lightfx_stop};
+use crate::task::power::signal_vsys_wake;
+use crate::task::sound::{signal_sound_start, signal_sound_stop};
 use crate::task::state::{AlarmState, STATE_MANAGER_MUTEX, StateManager};
-use crate::task::task_messages::{
-    ALARM_EXPIRER_SIGNAL, Commands, DISPLAY_SIGNAL, EVENT_CHANNEL, Events, FLASH_CHANNEL,
-    LIGHTFX_SIGNAL, LIGHTFX_STOP_SIGNAL, SCHEDULER_START_SIGNAL, SCHEDULER_STOP_SIGNAL,
-    SCHEDULER_WAKE_SIGNAL, SOUND_START_SIGNAL, SOUND_STOP_SIGNAL, TIME_UPDATER_RESUME_SIGNAL,
-    TIME_UPDATER_SUSPEND_SIGNAL, VSYS_WAKE_SIGNAL,
+use crate::task::time_updater::{
+    RTC_MUTEX, signal_time_updater_resume, signal_time_updater_suspend,
 };
-use crate::task::time_updater::RTC_MUTEX;
 use defmt::{Debug2Format, info, warn};
 use embassy_futures::select::select;
 use embassy_rp::rtc::{DateTime, DayOfWeek};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::channel::Sender;
+use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Ticker, Timer};
 
-/// Type alias for the flash channel sender used to communicate with the flash task.
-type FlashSender = Sender<'static, CriticalSectionRawMutex, Commands, 1>;
+/// Signal for stopping the scheduler
+static SCHEDULER_STOP_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+
+/// Signal for starting the scheduler
+static SCHEDULER_START_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+
+/// Signal for waking the scheduler early
+static SCHEDULER_WAKE_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+
+/// Signal for the alarm expiry command
+static ALARM_EXPIRER_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+
+/// Signals the scheduler to stop
+pub fn signal_scheduler_stop() {
+    SCHEDULER_STOP_SIGNAL.signal(());
+}
+
+/// Signals the scheduler to start
+pub fn signal_scheduler_start() {
+    SCHEDULER_START_SIGNAL.signal(());
+}
+
+/// Signals the scheduler to wake up early
+pub fn signal_scheduler_wake() {
+    SCHEDULER_WAKE_SIGNAL.signal(());
+}
+
+/// Signals the alarm expirer to start
+fn signal_alarm_expirer() {
+    ALARM_EXPIRER_SIGNAL.signal(());
+}
 
 /// This task is responsible for the state transitions of the system. It acts as the main task of the system.
 /// It receives events from the other tasks and reacts to them by changing the state of the system.
@@ -30,15 +61,9 @@ pub async fn orchestrator() {
         *(STATE_MANAGER_MUTEX.lock().await) = Some(state_manager);
     }
 
-    // init the receiver for the event channel, this is the line we are listening on
-    let event_receiver = EVENT_CHANNEL.receiver();
-
-    // init the sender for the flash channel
-    let flash_sender = FLASH_CHANNEL.sender();
-
     loop {
         // receive the events, halting the task until an event is received
-        let event = event_receiver.receive().await;
+        let event = receive_event().await;
 
         // Lock the mutex to get a mutable reference to the state manager
         let mut state_manager_guard = STATE_MANAGER_MUTEX.lock().await;
@@ -48,70 +73,70 @@ pub async fn orchestrator() {
         };
 
         // react to the events
-        handle_event(event, state_manager, &flash_sender).await;
+        handle_event(event, state_manager).await;
 
         drop(state_manager_guard);
     }
 }
 
 /// Handles a single event by updating the state manager and signaling appropriate tasks.
-async fn handle_event(event: Events, state_manager: &mut StateManager, flash_sender: &FlashSender) {
+async fn handle_event(event: Event, state_manager: &mut StateManager) {
     match event {
-        Events::BlueBtn => {
+        Event::BlueBtn => {
             state_manager.handle_blue_button_press().await;
-            DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
+            signal_display_update();
         }
-        Events::GreenBtn => {
+        Event::GreenBtn => {
             state_manager.handle_green_button_press().await;
-            DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
+            signal_display_update();
         }
-        Events::YellowBtn => {
+        Event::YellowBtn => {
             state_manager.handle_yellow_button_press().await;
-            DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
+            signal_display_update();
         }
-        Events::Vbus(usb) => {
+        Event::Vbus(usb) => {
             info!("Vbus event, usb: {}", usb);
             state_manager.power_state.set_usb_power(usb);
             if !state_manager.power_state.get_usb_power() {
-                VSYS_WAKE_SIGNAL.signal(Commands::VsysWakeUp);
+                signal_vsys_wake();
             }
-            DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
+            signal_display_update();
         }
-        Events::Vsys(voltage) => {
+        Event::Vsys(voltage) => {
             info!("Vsys event, voltage: {}", voltage);
             state_manager.power_state.set_vsys(voltage);
             state_manager.power_state.set_battery_level();
-            DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
+            signal_display_update();
         }
-        Events::AlarmSettingsReadFromFlash(alarm_settings) => {
+        Event::AlarmSettingsReadFromFlash(alarm_settings) => {
             info!("Alarm time read from flash: {:?}", alarm_settings);
             state_manager.alarm_settings = alarm_settings;
         }
-        Events::Scheduler((hour, minute, second)) => {
+        Event::Scheduler((hour, minute, second)) => {
             info!("Scheduler event");
             handle_scheduler_event(state_manager, hour, minute, second);
         }
-        Events::RtcUpdated => {
+        Event::RtcUpdated => {
             info!("RTC updated event");
-            DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
+            signal_display_update();
         }
-        Events::AlarmSettingsNeedUpdate => {
+        Event::AlarmSettingsNeedUpdate => {
             info!("Alarm settings must be updated event");
-            handle_alarm_settings_update(state_manager, flash_sender).await;
+            handle_alarm_settings_update(state_manager).await;
         }
-        Events::Standby => {
+        Event::Standby => {
             handle_standby_event();
         }
-        Events::WakeUp => {
+        Event::WakeUp => {
             handle_wakeup_event();
         }
-        Events::Alarm => {
+        Event::Alarm => {
             handle_alarm_event(state_manager);
         }
-        Events::AlarmStop => {
+        Event::AlarmStop => {
             handle_alarm_stop_event(state_manager);
         }
-        Events::SunriseEffectFinished => {
+        Event::SunriseEffectFinished => {
             handle_sunrise_effect_finished_event(state_manager);
         }
     }
@@ -122,54 +147,43 @@ fn handle_scheduler_event(state_manager: &StateManager, hour: u8, minute: u8, se
     // update the light effects if the alarm is not enabled and the alarm state is None
     if state_manager.alarm_state == AlarmState::None && !state_manager.alarm_settings.get_enabled()
     {
-        LIGHTFX_SIGNAL.signal(Commands::LightFXUpdate((hour, minute, second)));
+        signal_lightfx_start(hour, minute, second);
     }
     // update the display
-    DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
+    signal_display_update();
 }
 
 /// Handles alarm settings update by writing to flash and coordinating with alarm task.
-async fn handle_alarm_settings_update(state_manager: &StateManager, flash_sender: &FlashSender) {
-    flash_sender
-        .send(Commands::AlarmSettingsWriteToFlash(
-            state_manager.alarm_settings.clone(),
-        ))
-        .await;
+async fn handle_alarm_settings_update(state_manager: &StateManager) {
+    send_flash_write_command(state_manager.alarm_settings.clone()).await;
 
     if state_manager.alarm_settings.get_enabled() {
         // if the alarm is enabled, we must update the light effects and signal the alarm task to reschedule
-        LIGHTFX_SIGNAL.signal(Commands::LightFXUpdate((0, 0, 0)));
-        ALARM_SCHEDULE_UPDATE_SIGNAL.signal(Commands::AlarmSettingsWriteToFlash(
-            state_manager.alarm_settings.clone(),
-        ));
+        signal_lightfx_start(0, 0, 0);
+        signal_alarm_schedule_update();
     } else {
         // if the alarm is disabled, we must signal the alarm task to disable and wake up the scheduler early
-        ALARM_SCHEDULE_DISABLE_SIGNAL.signal(Commands::AlarmSettingsWriteToFlash(
-            state_manager.alarm_settings.clone(),
-        ));
-        SCHEDULER_WAKE_SIGNAL.signal(Commands::SchedulerWakeUp);
+        signal_alarm_schedule_disable();
+        signal_scheduler_wake();
     }
 }
 
 /// Handles the standby event by stopping scheduler and suspending time updater.
 fn handle_standby_event() {
     info!("Standby event");
-    SCHEDULER_STOP_SIGNAL.signal(Commands::SchedulerStop);
-    DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
-    LIGHTFX_SIGNAL.signal(Commands::LightFXUpdate((0, 0, 0)));
-    if SOUND_START_SIGNAL.signaled() {
-        SOUND_STOP_SIGNAL.signal(Commands::SoundUpdate);
-    }
-    TIME_UPDATER_SUSPEND_SIGNAL.signal(Commands::TimeUpdaterSuspend);
+    signal_scheduler_stop();
+    signal_display_update();
+    signal_lightfx_start(0, 0, 0);
+    signal_sound_stop();
+    signal_time_updater_suspend();
 }
 
 /// Handles the wake up event by starting scheduler and resuming time updater.
 fn handle_wakeup_event() {
     info!("Wake up event");
-    SCHEDULER_START_SIGNAL.signal(Commands::SchedulerStart);
-    VSYS_WAKE_SIGNAL.signal(Commands::VsysWakeUp);
-    TIME_UPDATER_SUSPEND_SIGNAL.reset();
-    TIME_UPDATER_RESUME_SIGNAL.signal(Commands::TimeUpdaterResume);
+    signal_scheduler_start();
+    signal_vsys_wake();
+    signal_time_updater_resume();
 }
 
 /// Handles the alarm event by initializing alarm mode and starting effects.
@@ -177,9 +191,9 @@ fn handle_alarm_event(state_manager: &mut StateManager) {
     info!("Alarm event");
     state_manager.randomize_alarm_stop_buttom_sequence();
     state_manager.set_alarm_mode();
-    DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
-    LIGHTFX_SIGNAL.signal(Commands::LightFXUpdate((0, 0, 0)));
-    ALARM_EXPIRER_SIGNAL.signal(Commands::AlarmExpiry);
+    signal_display_update();
+    signal_lightfx_start(0, 0, 0);
+    signal_alarm_expirer();
 }
 
 /// Handles the alarm stop event by transitioning back to normal mode.
@@ -187,10 +201,10 @@ fn handle_alarm_stop_event(state_manager: &mut StateManager) {
     info!("Alarm stop event");
     if state_manager.alarm_state.is_active() {
         state_manager.set_normal_mode();
-        DISPLAY_SIGNAL.signal(Commands::DisplayUpdate);
-        LIGHTFX_STOP_SIGNAL.signal(Commands::LightFXUpdate((0, 0, 0)));
-        LIGHTFX_SIGNAL.signal(Commands::LightFXUpdate((0, 0, 0)));
-        SOUND_STOP_SIGNAL.signal(Commands::SoundUpdate);
+        signal_display_update();
+        signal_lightfx_stop();
+        signal_lightfx_start(0, 0, 0);
+        signal_sound_stop();
     }
 }
 
@@ -198,8 +212,8 @@ fn handle_alarm_stop_event(state_manager: &mut StateManager) {
 fn handle_sunrise_effect_finished_event(state_manager: &mut StateManager) {
     info!("Sunrise effect finished event");
     state_manager.set_alarm_state(AlarmState::Noise);
-    SOUND_START_SIGNAL.signal(Commands::SoundUpdate);
-    LIGHTFX_SIGNAL.signal(Commands::LightFXUpdate((0, 0, 0)));
+    signal_sound_start();
+    signal_lightfx_start(0, 0, 0);
 }
 
 /// This task handles scheduling periodic display and LED updates by sending events to the Event Channel.
@@ -246,10 +260,7 @@ pub async fn scheduler() {
             };
         };
 
-        EVENT_CHANNEL
-            .sender()
-            .send(Events::Scheduler((dt.hour, dt.minute, dt.second)))
-            .await;
+        send_event(Event::Scheduler((dt.hour, dt.minute, dt.second))).await;
 
         // get the alarm enabled state to determine update frequency
         let alarm_enabled: bool;
@@ -293,6 +304,6 @@ pub async fn alarm_expirer() {
         // wait for 5 minutes
         Timer::after(Duration::from_secs(300)).await;
         // send the alarm stop event
-        EVENT_CHANNEL.sender().send(Events::AlarmStop).await;
+        send_event(Event::AlarmStop).await;
     }
 }

@@ -2,20 +2,51 @@
 //! This module contains the tasks that control the neopixel LED ring.
 //!
 //! The tasks are responsible for initializing the neopixel, setting the colors of the LEDs, and updating the LEDs.
+use crate::event::{Event, send_event};
 use crate::task::state::{AlarmState, OperationMode, STATE_MANAGER_MUTEX, StateManager};
-use crate::task::task_messages::{
-    Commands, EVENT_CHANNEL, Events, LIGHTFX_SIGNAL, LIGHTFX_STOP_SIGNAL,
-};
 use defmt::{info, warn};
 
 use embassy_rp::peripherals::SPI0;
 use embassy_rp::spi::Spi;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::signal::Signal;
 use embassy_time::Instant;
 use embassy_time::{Duration, Timer};
 use smart_leds::SmartLedsWriteAsync;
 use smart_leds::{RGB8, brightness};
 use ws2812_async::{Grb, Ws2812};
 use {defmt_rtt as _, panic_probe as _};
+
+/// Signal for starting/updating the light effects with time data
+static LIGHTFX_START_SIGNAL: Signal<CriticalSectionRawMutex, (u8, u8, u8)> = Signal::new();
+
+/// Signal for stopping the light effects
+static LIGHTFX_STOP_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+
+/// Signals the light effects to start/update with the given time
+pub fn signal_lightfx_start(hour: u8, minute: u8, second: u8) {
+    LIGHTFX_START_SIGNAL.signal((hour, minute, second));
+}
+
+/// Signals the light effects to stop
+pub fn signal_lightfx_stop() {
+    LIGHTFX_STOP_SIGNAL.signal(());
+}
+
+/// Waits for the next light effects start signal
+async fn wait_for_lightfx_start() -> (u8, u8, u8) {
+    LIGHTFX_START_SIGNAL.wait().await
+}
+
+/// Checks if the light effects stop signal has been signaled
+fn is_lightfx_stop_signaled() -> bool {
+    LIGHTFX_STOP_SIGNAL.signaled()
+}
+
+/// Resets the light effects stop signal
+fn reset_lightfx_stop_signal() {
+    LIGHTFX_STOP_SIGNAL.reset();
+}
 
 /// Number of LEDs in the ring (as usize for compile-time array sizing)
 const NUM_LEDS_USIZE: usize = 16;
@@ -239,9 +270,9 @@ async fn sunrise_effect(np: &mut NeopixelType) {
         < Duration::from_millis(u64::from(params.duration_ms))
     {
         // Check if the effect should be stopped
-        if LIGHTFX_STOP_SIGNAL.signaled() {
+        if is_lightfx_stop_signaled() {
             info!("Sunrise effect aborting");
-            LIGHTFX_STOP_SIGNAL.reset();
+            reset_lightfx_stop_signal();
             break 'sunrise;
         }
 
@@ -301,10 +332,7 @@ async fn sunrise_effect(np: &mut NeopixelType) {
             .await;
     }
 
-    EVENT_CHANNEL
-        .sender()
-        .send(Events::SunriseEffectFinished)
-        .await;
+    send_event(Event::SunriseEffectFinished).await;
 
     // Wait a bit, so that the last of the effect is visible
     Timer::after(Duration::from_millis(300)).await;
@@ -318,9 +346,9 @@ async fn noise_effect(np: &mut NeopixelType, neopixel_mgr: &NeopixelManager) {
 
     'noise: loop {
         for j in 0u16..(256 * 5) {
-            if LIGHTFX_STOP_SIGNAL.signaled() {
+            if is_lightfx_stop_signaled() {
                 info!("Noise effect aborting");
-                LIGHTFX_STOP_SIGNAL.reset();
+                reset_lightfx_stop_signal();
                 break 'noise;
             }
 
@@ -395,14 +423,11 @@ pub async fn light_effects_handler(spi: Spi<'static, SPI0, embassy_rp::spi::Asyn
 
     'mainloop: loop {
         // Wait for the signal to update the neopixel
-        let command = LIGHTFX_SIGNAL.wait().await;
-        info!("LightFX signal received: {:?}", command);
-        let (hour, minute, second) =
-            if let Commands::LightFXUpdate((hour, minute, second)) = command {
-                (hour, minute, second)
-            } else {
-                (0, 0, 0)
-            };
+        let (hour, minute, second) = wait_for_lightfx_start().await;
+        info!(
+            "LightFX signal received: ({}, {}, {})",
+            hour, minute, second
+        );
 
         // Get the state of the system out of the mutex and quickly drop the mutex
         let state_manager: StateManager;

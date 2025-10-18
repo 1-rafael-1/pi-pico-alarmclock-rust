@@ -1,11 +1,9 @@
 //! # Button Tasks
 //! This module contains the tasks for the buttons. Each button has its own task.
 
-use crate::task::task_messages::{EVENT_CHANNEL, Events};
+use crate::event::{Event, send_event};
 use defmt::{Format, info};
 use embassy_rp::gpio::{Input, Level};
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::channel::Sender;
 use embassy_time::{Duration, Instant, Timer, with_deadline};
 use {defmt_rtt as _, panic_probe as _};
 
@@ -17,13 +15,11 @@ pub struct ButtonManager<'a> {
     /// The debounce duration
     debounce_duration: Duration,
     /// The event to send when the button is pressed or held
-    events: Events,
+    event: Event,
     /// The button being managed
     button: Button,
     /// The interval between hold events
     hold_event_interval: Duration,
-    /// The sender to send events to
-    sender: Sender<'a, CriticalSectionRawMutex, Events, 10>,
 }
 
 /// The buttons of the system
@@ -41,18 +37,12 @@ pub enum Button {
 
 impl<'a> ButtonManager<'a> {
     /// Create a new `ButtonManager`
-    pub const fn new(
-        input: Input<'a>,
-        events: Events,
-        button: Button,
-        sender: Sender<'a, CriticalSectionRawMutex, Events, 10>,
-    ) -> Self {
+    pub const fn new(input: Input<'a>, event: Event, button: Button) -> Self {
         Self {
             input,
             debounce_duration: Duration::from_millis(80), // hardcoding, all buttons have the same debounce duration
-            events,
+            event,
             button,
-            sender,
             hold_event_interval: Duration::from_millis(150), // hardcoding, all buttons have the same hold event interval
         }
     }
@@ -78,7 +68,7 @@ impl<'a> ButtonManager<'a> {
             if let Ok(level) = level_result {
                 // if the button is released, we send one press event down the channel
                 if level == Level::High {
-                    self.sender.send(self.events.clone()).await;
+                    send_event(self.event.clone()).await;
                 }
                 // and then we continue with the main loop
                 continue 'mainloop;
@@ -107,7 +97,7 @@ impl<'a> ButtonManager<'a> {
                 }
 
                 // if the button is still held, we send an event down the channel, and then return to the beginning of the loop
-                self.sender.send(self.events.clone()).await;
+                send_event(self.event.clone()).await;
             }
         }
     }
@@ -131,9 +121,8 @@ impl<'a> ButtonManager<'a> {
 }
 
 #[embassy_executor::task(pool_size = 3)]
-pub async fn button_handler(input: Input<'static>, events: Events, button: Button) {
-    let sender = EVENT_CHANNEL.sender();
-    let mut btn = ButtonManager::new(input, events, button, sender);
+pub async fn button_handler(input: Input<'static>, event: Event, button: Button) {
+    let mut btn = ButtonManager::new(input, event, button);
     info!("{} task started", btn.button);
     btn.handle_button_press().await;
 }

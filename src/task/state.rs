@@ -1,7 +1,7 @@
 //! # State of the system
 //! This module desccribes the state of the system and the operations that can be performed on the state.
+use crate::event::{Event, send_event};
 use crate::task::buttons::Button;
-use crate::task::task_messages::{EVENT_CHANNEL, Events};
 use defmt::Format;
 use embassy_rp::clocks::RoscRng;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -108,22 +108,19 @@ impl StateManager {
 
     /// Save the alarm settings
     pub async fn save_alarm_settings(&self) {
-        let sender = EVENT_CHANNEL.sender();
-        sender.send(Events::AlarmSettingsNeedUpdate).await;
+        send_event(Event::AlarmSettingsNeedUpdate).await;
     }
 
     /// Set the system to standby mode
     pub async fn set_standby_mode(&mut self) {
-        let sender = EVENT_CHANNEL.sender();
         self.operation_mode = OperationMode::Standby;
-        sender.send(Events::Standby).await;
+        send_event(Event::Standby).await;
     }
 
     /// Wake up the system from standby mode
     pub async fn wake_up(&mut self) {
-        let sender = EVENT_CHANNEL.sender();
         self.set_normal_mode();
-        sender.send(Events::WakeUp).await;
+        send_event(Event::WakeUp).await;
     }
 
     /// Randomize the alarm stop button sequence
@@ -150,7 +147,7 @@ impl StateManager {
                     self.alarm_settings.erase_first_valid_stop_alarm_button();
                 }
                 if self.alarm_settings.is_alarm_stop_button_sequence_complete() {
-                    EVENT_CHANNEL.sender().send(Events::AlarmStop).await;
+                    send_event(Event::AlarmStop).await;
                 }
             }
             OperationMode::Standby => {
@@ -178,7 +175,7 @@ impl StateManager {
                     self.alarm_settings.erase_first_valid_stop_alarm_button();
                 }
                 if self.alarm_settings.is_alarm_stop_button_sequence_complete() {
-                    EVENT_CHANNEL.sender().send(Events::AlarmStop).await;
+                    send_event(Event::AlarmStop).await;
                 }
             }
             OperationMode::Standby => {
@@ -202,7 +199,7 @@ impl StateManager {
                     self.alarm_settings.erase_first_valid_stop_alarm_button();
                 }
                 if self.alarm_settings.is_alarm_stop_button_sequence_complete() {
-                    EVENT_CHANNEL.sender().send(Events::AlarmStop).await;
+                    send_event(Event::AlarmStop).await;
                 }
             }
             OperationMode::Standby => {

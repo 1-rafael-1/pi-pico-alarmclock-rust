@@ -3,8 +3,9 @@
 //! It uses the embassy-rp RTC alarm API to schedule alarms and await their triggering,
 //! replacing the previous busy-polling approach.
 
+use crate::event::Event;
+use crate::event::send_event;
 use crate::task::state::STATE_MANAGER_MUTEX;
-use crate::task::task_messages::{Commands, EVENT_CHANNEL, Events};
 use crate::task::time_updater::RTC_MUTEX;
 use defmt::{Debug2Format, info, warn};
 use embassy_rp::peripherals;
@@ -14,10 +15,20 @@ use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Timer};
 
 /// Signal to update the alarm schedule when alarm settings change
-pub static ALARM_SCHEDULE_UPDATE_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
+static ALARM_SCHEDULE_UPDATE_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
 /// Signal to disable the alarm schedule
-pub static ALARM_SCHEDULE_DISABLE_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
+static ALARM_SCHEDULE_DISABLE_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+
+/// Signals that the alarm schedule should be updated
+pub fn signal_alarm_schedule_update() {
+    ALARM_SCHEDULE_UPDATE_SIGNAL.signal(());
+}
+
+/// Signals that the alarm schedule should be disabled
+pub fn signal_alarm_schedule_disable() {
+    ALARM_SCHEDULE_DISABLE_SIGNAL.signal(());
+}
 
 /// Delay after alarm triggers to prevent immediate re-triggering
 const POST_ALARM_COOLDOWN: Duration = Duration::from_secs(65);
@@ -221,11 +232,11 @@ async fn wait_for_alarm_event() -> AlarmWaitResult {
     // Determine which event occurred based on select result
     match result {
         embassy_futures::select::Either3::First(()) => AlarmWaitResult::Triggered,
-        embassy_futures::select::Either3::Second(_) => {
+        embassy_futures::select::Either3::Second(()) => {
             ALARM_SCHEDULE_UPDATE_SIGNAL.reset();
             AlarmWaitResult::SettingsChanged
         }
-        embassy_futures::select::Either3::Third(_) => {
+        embassy_futures::select::Either3::Third(()) => {
             ALARM_SCHEDULE_DISABLE_SIGNAL.reset();
             AlarmWaitResult::Disabled
         }
@@ -252,7 +263,7 @@ async fn cleanup_rtc_alarm() {
 /// Handles the alarm trigger event by sending notification and cooling down
 async fn handle_alarm_triggered() {
     // Send alarm event to orchestrator
-    EVENT_CHANNEL.sender().send(Events::Alarm).await;
+    send_event(Event::Alarm).await;
 
     // Cool down period to prevent immediate re-trigger if user stops alarm quickly
     // The alarm will be rescheduled in the next loop iteration if still enabled

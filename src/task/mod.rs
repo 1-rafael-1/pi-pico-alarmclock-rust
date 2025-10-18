@@ -8,5 +8,4 @@ pub mod orchestrate;
 pub mod power;
 pub mod sound;
 pub mod state;
-pub mod task_messages;
 pub mod time_updater;
