@@ -3,17 +3,17 @@
 //! The task is responsible for connecting to a wifi network, making a request to a time API, parsing the response, and updating the RTC.
 //!
 //! # populate constants SSID and PASSWORD
-//! make sure to have a wifi_manager.json file in the config folder formatted as follows:
+//! make sure to have a `wifi_manager.json` file in the config folder formatted as follows:
 //!```json
 //!  {
 //!     "ssid": "some_ssid_here",
 //!     "password": "some_password_here"
 //! }
 //! ```
-//! also make sure that build.rs loads the wifi_manager.json file and writes it to wifi_secrets.rs
+//! also make sure that `build.rs` loads the `wifi_manager.json` file and writes it to `wifi_secrets.rs`
 //!
-//! # populate constant TIME_SERVER_URL
-//! make sure to have a time_api_config.json file in the config folder formatted as follows:
+//! # populate constant `TIME_SERVER_URL`
+//! make sure to have a `time_api_config.json` file in the config folder formatted as follows:
 //! ```json
 //! {
 //!     "time api by zone": {
@@ -34,7 +34,7 @@ use crate::utility::string_utils::StringUtils;
 use core::str::from_utf8;
 use cyw43::JoinOptions;
 use cyw43_pio::{DEFAULT_CLOCK_DIVIDER, PioSpi};
-use defmt::*;
+use defmt::{Debug2Format, info, unwrap, warn};
 use embassy_executor::Spawner;
 use embassy_futures::select::select;
 use embassy_net::{
@@ -47,7 +47,7 @@ use embassy_rp::{
     gpio::{Level, Output},
     peripherals::{self, DMA_CH0, PIO0},
     pio::Pio,
-    rtc::{DateTime, Rtc},
+    rtc::Rtc,
 };
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use embassy_time::{Duration, Timer, with_timeout};
@@ -59,13 +59,19 @@ use serde_json_core;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
-/// WiFi peripheral resources needed for the time updater task
+/// `WiFi` peripheral resources needed for the time updater task
 pub struct WifiPeripherals {
+    /// Power pin for `WiFi` module
     pub pwr_pin: Peri<'static, peripherals::PIN_23>,
+    /// Chip select pin for `WiFi` module
     pub cs_pin: Peri<'static, peripherals::PIN_25>,
+    /// `PIO` peripheral for `WiFi` communication
     pub pio: Peri<'static, peripherals::PIO0>,
+    /// Data I/O pin for `WiFi` module
     pub dio_pin: Peri<'static, peripherals::PIN_24>,
+    /// Clock pin for `WiFi` module
     pub clk_pin: Peri<'static, peripherals::PIN_29>,
+    /// `DMA` channel for `WiFi` communication
     pub dma_ch: Peri<'static, peripherals::DMA_CH0>,
 }
 
@@ -74,48 +80,47 @@ type RtcType = Mutex<CriticalSectionRawMutex, Option<Rtc<'static, peripherals::R
 /// The RTC mutex, which is used to access the RTC from multiple tasks. There was no apparent place to put this anywhere else, so it is here.
 pub static RTC_MUTEX: RtcType = Mutex::new(None);
 
+/// Configuration for the time updater task.
 pub struct TimeUpdater {
+    /// `WiFi` SSID
     ssid: &'static str,
+    /// `WiFi` password
     password: &'static str,
+    /// Time API URL
     time_api_url: &'static str,
+    /// Seconds to wait before refreshing time
     refresh_after_secs: u64,
+    /// Seconds to wait before retrying on error
     retry_after_secs: u64,
+    /// Timeout duration for network operations
     timeout_duration: Duration,
 }
 
 impl TimeUpdater {
-    pub fn new() -> Self {
-        let mut manager = TimeUpdater {
-            ssid: "",
-            password: "",
-            time_api_url: "",
+    /// Creates a new `TimeUpdater` instance with default configuration.
+    pub const fn new() -> Self {
+        Self {
+            ssid: SSID,
+            password: PASSWORD,
+            time_api_url: TIME_SERVER_URL,
             refresh_after_secs: 21_600, // 6 hours
             retry_after_secs: 30,
             timeout_duration: Duration::from_secs(10),
-        };
-        manager.set_credentials();
-        manager.set_time_api_url();
-        manager
+        }
     }
 
-    fn set_credentials(&mut self) {
-        self.ssid = SSID;
-        self.password = PASSWORD;
-    }
-
-    fn credentials(&self) -> (&str, &str) {
+    /// Returns the `WiFi` credentials as a tuple of (ssid, password).
+    const fn credentials(&self) -> (&str, &str) {
         (self.ssid, self.password)
     }
 
-    fn set_time_api_url(&mut self) {
-        self.time_api_url = TIME_SERVER_URL;
-    }
-
-    fn time_api_url(&self) -> &str {
+    /// Returns the time API URL.
+    const fn time_api_url(&self) -> &str {
         self.time_api_url
     }
 }
 
+/// `WiFi` driver task that runs the `CYW43` firmware.
 #[embassy_executor::task]
 async fn wifi_task(
     runner: cyw43::Runner<'static, Output<'static>, PioSpi<'static, PIO0, 0, DMA_CH0>>,
@@ -123,11 +128,13 @@ async fn wifi_task(
     runner.run().await
 }
 
+/// Network stack task that handles TCP/IP networking.
 #[embassy_executor::task]
 async fn net_task(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'static>>) -> ! {
     runner.run().await
 }
 
+/// RTC management task that stores the RTC in a static mutex for access by other tasks.
 #[embassy_executor::task]
 async fn rtc_task(rtc: embassy_rp::rtc::Rtc<'static, embassy_rp::peripherals::RTC>) {
     // RTC management task - store RTC in static context here
@@ -141,6 +148,12 @@ async fn rtc_task(rtc: embassy_rp::rtc::Rtc<'static, embassy_rp::peripherals::RT
     }
 }
 
+/// Main time updater task that periodically connects to `WiFi`, fetches time from an API,
+/// and updates the `RTC`.
+///
+/// This task manages the entire lifecycle of `WiFi` connectivity, `HTTP` requests,
+/// and `RTC` synchronization.
+#[allow(clippy::items_after_statements)]
 #[embassy_executor::task]
 pub async fn time_updater(
     spawner: Spawner,
@@ -185,8 +198,8 @@ pub async fn time_updater(
         .set_power_management(cyw43::PowerManagementMode::Aggressive)
         .await;
 
-    let mut default_config: DhcpConfig = Default::default();
-    default_config.hostname = Some("alarmclck".try_into().unwrap());
+    let mut default_config = DhcpConfig::default();
+    default_config.hostname = Some("alarmclck".try_into().expect("Hostname should be valid"));
     let config = Config::dhcpv4(default_config);
 
     // random seed
@@ -227,7 +240,7 @@ pub async fn time_updater(
         if TIME_UPDATER_SUSPEND_SIGNAL.signaled() {
             TIME_UPDATER_SUSPEND_SIGNAL.reset();
             TIME_UPDATER_RESUME_SIGNAL.wait().await;
-        };
+        }
 
         // set the power management mode to best performance for the the duration of the connection
         control
@@ -237,11 +250,11 @@ pub async fn time_updater(
         // Join the network
         let join_result = with_timeout(
             time_updater.timeout_duration,
-            control.join(&ssid, JoinOptions::new(password.as_bytes())),
+            control.join(ssid, JoinOptions::new(password.as_bytes())),
         )
         .await;
         match join_result {
-            Ok(Ok(_)) => {
+            Ok(Ok(())) => {
                 control.gpio_set(0, true).await; // Turn on the onboard LED
                 info!("Connected to wifi");
             }
@@ -304,7 +317,9 @@ pub async fn time_updater(
 
         // create buffers for the request and response
         let mut rx_buffer = [0; 8192];
+        #[allow(clippy::large_stack_arrays)]
         let mut tls_read_buffer = [0; 16640];
+        #[allow(clippy::large_stack_arrays)]
         let mut tls_write_buffer = [0; 16640];
 
         let client_state = TcpClientState::<1, 1024, 1024>::new();
@@ -356,7 +371,13 @@ pub async fn time_updater(
                 }
             };
 
-            let body = match from_utf8(response.body().read_to_end().await.unwrap()) {
+            let body = match from_utf8(
+                response
+                    .body()
+                    .read_to_end()
+                    .await
+                    .expect("Failed to read response body"),
+            ) {
                 Ok(b) => b,
                 Err(e) => {
                     control.leave().await;
@@ -400,14 +421,14 @@ pub async fn time_updater(
 
             // set the RTC
             '_rtc_mutex: {
-                let dt: DateTime;
-                dt = StringUtils::convert_str_to_datetime(response.datetime, response.day_of_week);
+                let dt =
+                    StringUtils::convert_str_to_datetime(response.datetime, response.day_of_week);
 
                 let mut rtc_guard = RTC_MUTEX.lock().await;
-                let rtc = rtc_guard.as_mut().unwrap();
+                let rtc = rtc_guard.as_mut().expect("RTC should be initialized");
 
                 match rtc.set_datetime(dt) {
-                    Ok(_) => {
+                    Ok(()) => {
                         // send an event to the state manager
                         EVENT_CHANNEL.sender().send(Events::RtcUpdated).await;
                     }
