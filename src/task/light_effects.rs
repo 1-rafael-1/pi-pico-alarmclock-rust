@@ -325,8 +325,14 @@ async fn noise_effect(np: &mut NeopixelType, neopixel_mgr: &NeopixelManager) {
             }
 
             for (i, data_led) in data.iter_mut().enumerate() {
+                // Calculate the color wheel index with wraparound behavior.
+                // The base offset for each LED progresses through the color wheel,
+                // and j cycles through the spectrum. We use wrapping arithmetic to
+                // ensure the rainbow continuously cycles.
                 #[allow(clippy::cast_possible_truncation)]
-                let wheel_index = ((i as u16 * 256) / u16::from(NUM_LEDS) + j).clamp(0, 255) as u8;
+                let base_offset = ((i as u16 * 256) / u16::from(NUM_LEDS)) as u8;
+                let j_clamped = (j & 255) as u8;
+                let wheel_index = base_offset.wrapping_add(j_clamped);
                 *data_led = NeopixelManager::wheel(wheel_index);
             }
             np.write(brightness(
