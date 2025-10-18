@@ -14,7 +14,7 @@ use embassy_futures::select::select;
 use embassy_rp::rtc::{DateTime, DayOfWeek};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Sender;
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Ticker, Timer};
 
 /// Type alias for the flash channel sender used to communicate with the flash task.
 type FlashSender = Sender<'static, CriticalSectionRawMutex, Commands, 1>;
@@ -207,6 +207,10 @@ fn handle_sunrise_effect_finished_event(state_manager: &mut StateManager) {
 #[embassy_executor::task]
 pub async fn scheduler() {
     info!("scheduler task started");
+    // Start with a ticker for the default update rate when alarm is disabled
+    let mut ticker = Ticker::every(Duration::from_millis(3740));
+    let mut last_alarm_enabled_state: Option<bool> = None;
+
     'mainloop: loop {
         // see if we must halt the task, then wait for the start signal
         if SCHEDULER_STOP_SIGNAL.signaled() {
@@ -260,19 +264,22 @@ pub async fn scheduler() {
             alarm_enabled = state_manager.alarm_settings.get_enabled();
         }
 
-        // calculate the downtime we need to wait until the next iteration
-        let downtime: Duration = if alarm_enabled {
-            // When alarm is enabled, we can wait longer since the RTC will handle the alarm
-            Duration::from_secs(60)
-        } else {
-            // if the alarm is not enabled, we will be using the neopixel analog clock effect, which will need to be updated often
-            // so we must wait for 3.75 seconds (60s / 16leds -> 3.75s until we must update the leds). To avoid visual glitches, we reduce that time by 10ms
-            Duration::from_millis(3740)
-        };
+        // Check if the alarm enabled state changed and recreate ticker if needed
+        if last_alarm_enabled_state != Some(alarm_enabled) {
+            let update_period = if alarm_enabled {
+                // When alarm is enabled, we can wait longer since the RTC will handle the alarm
+                Duration::from_secs(60)
+            } else {
+                // if the alarm is not enabled, we will be using the neopixel analog clock effect, which will need to be updated often
+                // so we must wait for 3.75 seconds (60s / 16leds -> 3.75s until we must update the leds). To avoid visual glitches, we reduce that time by 10ms
+                Duration::from_millis(3740)
+            };
+            ticker = Ticker::every(update_period);
+            last_alarm_enabled_state = Some(alarm_enabled);
+        }
 
-        // we either wait for the downtime or until we are woken up early. Whatever comes first, starts the next iteration.
-        let downtime_timer = Timer::after(downtime);
-        select(downtime_timer, SCHEDULER_WAKE_SIGNAL.wait()).await;
+        // Wait for either the next tick or an early wake-up signal, whichever comes first
+        select(ticker.next(), SCHEDULER_WAKE_SIGNAL.wait()).await;
     }
 }
 
