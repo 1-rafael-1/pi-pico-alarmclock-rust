@@ -4,6 +4,7 @@
 #![no_std]
 #![no_main]
 
+use crate::event::Event;
 use crate::task::alarm_settings::alarm_settings_handler;
 use crate::task::alarm_trigger::alarm_trigger_task;
 use crate::task::buttons::{Button, button_handler};
@@ -12,7 +13,6 @@ use crate::task::light_effects::light_effects_handler;
 use crate::task::orchestrate::{alarm_expirer, orchestrator, scheduler};
 use crate::task::power::{usb_power_detector, vsys_voltage_reader};
 use crate::task::sound::sound_handler;
-use crate::task::task_messages::Events;
 use crate::task::time_updater::time_updater;
 use defmt::info;
 use embassy_executor::{Spawner, main};
@@ -30,6 +30,9 @@ use embassy_rp::spi::{Config as SpiConfig, Phase, Polarity, Spi};
 use embassy_rp::uart::{BufferedInterruptHandler, BufferedUart, Config as UartConfig};
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
+
+// import the event module (submodule of src)
+mod event;
 
 // import the task module (submodule of src)
 mod task;
@@ -78,21 +81,21 @@ async fn main(spawner: Spawner) {
     let btn_green = Input::new(p.PIN_20, Pull::Up);
     spawn_unwrap(
         spawner,
-        button_handler(btn_green, Events::GreenBtn, Button::Green),
+        button_handler(btn_green, Event::GreenBtn, Button::Green),
     );
 
     // Blue button
     let btn_blue = Input::new(p.PIN_21, Pull::Up);
     spawn_unwrap(
         spawner,
-        button_handler(btn_blue, Events::BlueBtn, Button::Blue),
+        button_handler(btn_blue, Event::BlueBtn, Button::Blue),
     );
 
     // Yellow button
     let btn_yellow = Input::new(p.PIN_22, Pull::Up);
     spawn_unwrap(
         spawner,
-        button_handler(btn_yellow, Events::YellowBtn, Button::Yellow),
+        button_handler(btn_yellow, Event::YellowBtn, Button::Yellow),
     );
 
     // USB power detector

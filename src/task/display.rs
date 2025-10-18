@@ -4,7 +4,6 @@
 //! The task is responsible for initializing the display, displaying images and text, and updating the display.
 use crate::task::buttons::Button;
 use crate::task::state::{BatteryLevel, OperationMode, STATE_MANAGER_MUTEX};
-use crate::task::task_messages::DISPLAY_SIGNAL;
 use crate::task::time_updater::RTC_MUTEX;
 use crate::utility::string_utils::StringUtils;
 use core::fmt::Write;
@@ -12,6 +11,8 @@ use defmt::{Debug2Format, info, warn};
 use embassy_rp::i2c::{Async, I2c};
 use embassy_rp::peripherals::I2C0;
 use embassy_rp::rtc::{DateTime, DayOfWeek};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Timer};
 use embedded_graphics::{
     image::Image,
@@ -26,6 +27,19 @@ use embedded_graphics::{
 use heapless::String;
 use ssd1306_async::{I2CDisplayInterface, Ssd1306, prelude::*};
 use tinybmp::Bmp;
+
+/// Signal for triggering display updates
+static DISPLAY_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+
+/// Triggers a display update
+pub fn signal_display_update() {
+    DISPLAY_SIGNAL.signal(());
+}
+
+/// Waits for the next display update signal
+async fn wait_for_display_update() {
+    DISPLAY_SIGNAL.wait().await;
+}
 
 /// Loads and holds BMP images and Points for the display
 /// Holds some settings for composing the display
@@ -416,7 +430,7 @@ pub async fn display_handler(i2c: I2c<'static, I2C0, Async>) {
 
     'mainloop: loop {
         // Wait for a signal to update the display
-        DISPLAY_SIGNAL.wait().await;
+        wait_for_display_update().await;
 
         // get the current time out of the mutex and quickly drop the mutex
         let dt: DateTime = {

@@ -2,12 +2,39 @@
 //!  This module contains the task that plays sound using the `DFPlayer` Mini module.
 //!
 //! The task is responsible for initializing the `DFPlayer` Mini module, powering it on, playing a sound, and powering it off.
-use crate::task::task_messages::{SOUND_START_SIGNAL, SOUND_STOP_SIGNAL};
 use defmt::{Debug2Format, info};
 use dfplayer_async::{DfPlayer, Equalizer, PlayBackSource, TimeSource};
 use embassy_rp::gpio::Output;
 use embassy_rp::uart::BufferedUart;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::signal::Signal;
 use embassy_time::{Delay, Duration, Instant, Timer};
+
+/// Signal for starting the sound
+static SOUND_START_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+
+/// Signal for stopping the sound
+static SOUND_STOP_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+
+/// Signals the sound task to start playing
+pub fn signal_sound_start() {
+    SOUND_START_SIGNAL.signal(());
+}
+
+/// Signals the sound task to stop playing
+pub fn signal_sound_stop() {
+    SOUND_STOP_SIGNAL.signal(());
+}
+
+/// Waits for the next sound start signal
+async fn wait_for_sound_start() {
+    SOUND_START_SIGNAL.wait().await;
+}
+
+/// Waits for the next sound stop signal
+async fn wait_for_sound_stop() {
+    SOUND_STOP_SIGNAL.wait().await;
+}
 
 // Time source implementation for DFPlayer
 /// Time source implementation for the `DFPlayer` using Embassy's `Instant`.
@@ -35,7 +62,7 @@ pub async fn sound_handler(mut uart: BufferedUart, mut pwr: Output<'static>) {
 
     loop {
         // wait for the signal to start playing sound
-        SOUND_START_SIGNAL.wait().await;
+        wait_for_sound_start().await;
 
         // power on the dfplayer
         info!("Powering on the dfplayer");
@@ -78,7 +105,7 @@ pub async fn sound_handler(mut uart: BufferedUart, mut pwr: Output<'static>) {
         }
 
         // wait for the signal to stop playing sound
-        SOUND_STOP_SIGNAL.wait().await;
+        wait_for_sound_stop().await;
 
         // power off the dfplayer
         info!("Powering off the dfplayer");
