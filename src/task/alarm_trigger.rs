@@ -7,6 +7,7 @@ use crate::event::Event;
 use crate::event::send_event;
 use crate::task::state::STATE_MANAGER_MUTEX;
 use crate::task::time_updater::RTC_MUTEX;
+use crate::task::watchdog::{TaskId, report_task_success};
 use defmt::{Debug2Format, info, warn};
 use embassy_rp::peripherals;
 use embassy_rp::rtc::{DateTime, DateTimeFilter, DayOfWeek, Rtc};
@@ -96,6 +97,9 @@ pub async fn alarm_trigger_task() {
             config.hour, config.minute
         );
 
+        // Report successful alarm scheduling to watchdog
+        report_task_success(TaskId::AlarmTrigger).await;
+
         // Step 4: Wait for alarm trigger or configuration change
         let result = wait_for_alarm_event().await;
 
@@ -106,13 +110,16 @@ pub async fn alarm_trigger_task() {
         match result {
             AlarmWaitResult::SettingsChanged => {
                 info!("Alarm settings changed, rescheduling");
+                report_task_success(TaskId::AlarmTrigger).await;
             }
             AlarmWaitResult::Disabled => {
                 info!("Alarm disabled by user");
+                report_task_success(TaskId::AlarmTrigger).await;
             }
             AlarmWaitResult::Triggered => {
                 info!("Alarm triggered! Sending alarm event");
                 handle_alarm_triggered().await;
+                report_task_success(TaskId::AlarmTrigger).await;
             }
         }
     }
