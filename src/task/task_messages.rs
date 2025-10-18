@@ -12,7 +12,7 @@ use embassy_sync::signal::Signal;
 
 /// Events that we want to react to together with the data that we need to react to the event.
 /// Works in conjunction with the `EVENT_CHANNEL` channel in the orchestrator task.
-#[derive(PartialEq, Debug, Format)]
+#[derive(PartialEq, Debug, Format, Clone)]
 pub enum Events {
     /// The blue button was pressed, the data is the number of presses
     BlueBtn,
@@ -102,6 +102,7 @@ pub static LIGHTFX_STOP_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Sign
 
 /// Signal for the update commands that we want the orchestrator to send to the sound task.
 pub static SOUND_START_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
+/// Signal for the stop command that we want the orchestrator to send to the sound task.
 pub static SOUND_STOP_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
 
 /// Signal for the wake command that we want the orchestrator to send to the vsys_voltage_reader task.

@@ -448,7 +448,7 @@ pub async fn display_handler(i2c: I2c<'static, I2C0, Async>) {
         '_date_area: {
             match state_manager.operation_mode {
                 OperationMode::Normal | OperationMode::Alarm => {
-                    let date = StringUtils::convert_datetime_to_str(dt);
+                    let date = StringUtils::convert_datetime_to_str(&dt);
                     Text::with_baseline(
                         &date,
                         settings.date_position,
