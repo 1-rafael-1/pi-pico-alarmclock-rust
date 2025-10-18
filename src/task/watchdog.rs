@@ -72,7 +72,7 @@ impl TaskHealth {
 /// System health state with custom countdown timer
 struct SystemHealth {
     /// Health status of each task
-    /// Order: Orchestrator, Display, `AlarmTrigger`, `TimeUpdater`
+    /// Order: Orchestrator, Display, AlarmTrigger, TimeUpdater
     tasks: [TaskHealth; 4],
     /// When the system was initialized (for startup grace period)
     startup_time: Instant,
