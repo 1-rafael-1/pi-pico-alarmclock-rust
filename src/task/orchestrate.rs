@@ -11,6 +11,7 @@ use crate::task::state::{AlarmState, STATE_MANAGER_MUTEX, StateManager};
 use crate::task::time_updater::{
     RTC_MUTEX, signal_time_updater_resume, signal_time_updater_suspend,
 };
+use crate::task::watchdog::{TaskId, report_task_success};
 use defmt::{Debug2Format, info, warn};
 use embassy_futures::select::select;
 use embassy_rp::rtc::{DateTime, DayOfWeek};
@@ -74,6 +75,9 @@ pub async fn orchestrator() {
 
         // react to the events
         handle_event(event, state_manager).await;
+
+        // Report successful event handling to watchdog
+        report_task_success(TaskId::Orchestrator).await;
 
         drop(state_manager_guard);
     }
@@ -262,6 +266,9 @@ pub async fn scheduler() {
 
         send_event(Event::Scheduler((dt.hour, dt.minute, dt.second))).await;
 
+        // Report successful scheduler iteration to watchdog
+        report_task_success(TaskId::Orchestrator).await;
+
         // get the alarm enabled state to determine update frequency
         let alarm_enabled: bool;
         '_state_manager_mutex: {
@@ -305,5 +312,7 @@ pub async fn alarm_expirer() {
         Timer::after(Duration::from_secs(300)).await;
         // send the alarm stop event
         send_event(Event::AlarmStop).await;
+        // Report successful alarm expiry to watchdog
+        report_task_success(TaskId::Orchestrator).await;
     }
 }

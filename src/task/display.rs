@@ -5,6 +5,7 @@
 use crate::task::buttons::Button;
 use crate::task::state::{BatteryLevel, OperationMode, STATE_MANAGER_MUTEX};
 use crate::task::time_updater::RTC_MUTEX;
+use crate::task::watchdog::{TaskId, report_task_success};
 use crate::utility::string_utils::StringUtils;
 use core::fmt::Write;
 use defmt::{Debug2Format, info, warn};
@@ -546,5 +547,8 @@ pub async fn display_handler(i2c: I2c<'static, I2C0, Async>) {
 
         // finally: send the display buffer to the display and we are done for this cycle
         let _ = display.flush().await;
+
+        // Report successful display update to watchdog
+        report_task_success(TaskId::Display).await;
     }
 }

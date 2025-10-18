@@ -9,3 +9,4 @@ pub mod power;
 pub mod sound;
 pub mod state;
 pub mod time_updater;
+pub mod watchdog;

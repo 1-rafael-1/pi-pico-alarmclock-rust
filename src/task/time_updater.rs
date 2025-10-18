@@ -28,6 +28,7 @@ include!(concat!(env!("OUT_DIR"), "/time_api_config.rs"));
 
 use crate::Irqs;
 use crate::event::{Event, send_event};
+use crate::task::watchdog::{TaskId, report_task_failure, report_task_success};
 use crate::utility::string_utils::StringUtils;
 use core::str::from_utf8;
 use cyw43::JoinOptions;
@@ -473,11 +474,16 @@ pub async fn time_updater(
         if let Err(error_msg) =
             update_time_once(&mut control, stack, ssid, password, &time_updater, seed).await
         {
+            // Report failure to watchdog on error path
+            report_task_failure(TaskId::TimeUpdater).await;
             handle_retry_delay(time_updater.retry_after_secs, error_msg).await;
             continue;
         }
 
-        // Successfully updated - wait for next refresh
+        // Successfully updated - report to watchdog before sleeping
+        report_task_success(TaskId::TimeUpdater).await;
+
+        // Wait for next refresh
         info!(
             "Waiting for {:?} seconds before reconnecting",
             time_updater.refresh_after_secs

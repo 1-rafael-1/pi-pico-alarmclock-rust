@@ -14,6 +14,7 @@ use crate::task::orchestrate::{alarm_expirer, orchestrator, scheduler};
 use crate::task::power::{usb_power_detector, vsys_voltage_reader};
 use crate::task::sound::sound_handler;
 use crate::task::time_updater::time_updater;
+use crate::task::watchdog::watchdog_task;
 use defmt::info;
 use embassy_executor::{Spawner, main};
 use embassy_rp::adc::{Adc, Channel, Config as AdcConfig, InterruptHandler as AdcInterruptHandler};
@@ -70,6 +71,9 @@ async fn main(spawner: Spawner) {
     clock_config.core_voltage = CoreVoltage::V0_90;
     let config = Config::new(clock_config);
     let p = embassy_rp::init(config);
+
+    // Watchdog task - monitors system health and triggers reset if needed
+    spawn_unwrap(spawner, watchdog_task(p.WATCHDOG));
 
     // Orchestrator tasks
     spawn_unwrap(spawner, orchestrator());
