@@ -427,16 +427,6 @@ pub async fn time_updater(
 
     let stack = setup_network_stack(&spawner, net_device, seed);
 
-    // Wait for initial network setup
-    info!("waiting for DHCP...");
-    while !stack.is_link_up() {
-        Timer::after(Duration::from_millis(500)).await;
-    }
-    while !stack.is_config_up() {
-        Timer::after(Duration::from_millis(500)).await;
-    }
-    info!("DHCP is now up!");
-
     // Get configuration
     let time_updater = TimeUpdater::new();
     let (ssid, password) = time_updater.credentials();
