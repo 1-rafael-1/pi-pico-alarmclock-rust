@@ -6,7 +6,7 @@ use crate::task::state::{AlarmState, OperationMode, STATE_MANAGER_MUTEX, StateMa
 use crate::task::task_messages::{
     Commands, EVENT_CHANNEL, Events, LIGHTFX_SIGNAL, LIGHTFX_STOP_SIGNAL,
 };
-use defmt::*;
+use defmt::{info, warn};
 
 use embassy_rp::peripherals::SPI0;
 use embassy_rp::spi::Spi;
@@ -17,43 +17,75 @@ use smart_leds::{RGB8, brightness};
 use ws2812_async::{Grb, Ws2812};
 use {defmt_rtt as _, panic_probe as _};
 
-// Number of LEDs in the ring
-const NUM_LEDS: usize = 16;
+/// Number of LEDs in the ring (as usize for compile-time array sizing)
+const NUM_LEDS_USIZE: usize = 16;
+
+/// Number of LEDs in the ring (as u8 for calculations)
+const NUM_LEDS: u8 = 16;
+
+/// Type alias for the neopixel LED controller
+type NeopixelType =
+    Ws2812<Spi<'static, SPI0, embassy_rp::spi::Async>, Grb, { 12 * NUM_LEDS_USIZE }>;
+
+/// Helper struct to bundle clock hand colors
+struct ClockColors {
+    /// Red color for hour hand
+    hour: RGB8,
+    /// Green color for minute hand
+    minute: RGB8,
+    /// Blue color for second hand
+    second: RGB8,
+}
+
+impl ClockColors {
+    /// Creates new clock colors with standard RGB values
+    const fn new() -> Self {
+        Self {
+            hour: RGB8 { r: 255, g: 0, b: 0 },
+            minute: RGB8 { r: 0, g: 255, b: 0 },
+            second: RGB8 { r: 0, g: 0, b: 255 },
+        }
+    }
+}
 
 /// Manages the neopixel LED ring, including brightness settings for alarm and clock modes.
 pub struct NeopixelManager {
+    /// Brightness setting for alarm mode
     alarm_brightness: u8,
+    /// Brightness setting for clock mode
     clock_brightness: u8,
 }
 
 impl NeopixelManager {
     /// Creates a new `NeopixelManager` with default brightness settings.
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             alarm_brightness: 10,
             clock_brightness: 1,
         }
     }
 
-    pub fn alarm_brightness(&self) -> u8 {
+    /// Returns the alarm brightness setting.
+    pub const fn alarm_brightness(&self) -> u8 {
         self.alarm_brightness
     }
 
-    pub fn clock_brightness(&self) -> u8 {
+    /// Returns the clock brightness setting.
+    pub const fn clock_brightness(&self) -> u8 {
         self.clock_brightness
     }
 
     /// Mixes two colors together
-    fn mix_colors(&self, color1: RGB8, color2: RGB8) -> RGB8 {
+    fn mix_colors(color1: RGB8, color2: RGB8) -> RGB8 {
         RGB8 {
-            r: (color1.r as u16 + color2.r as u16).min(255) as u8,
-            g: (color1.g as u16 + color2.g as u16).min(255) as u8,
-            b: (color1.b as u16 + color2.b as u16).min(255) as u8,
+            r: (u16::from(color1.r) + u16::from(color2.r)).min(255) as u8,
+            g: (u16::from(color1.g) + u16::from(color2.g)).min(255) as u8,
+            b: (u16::from(color1.b) + u16::from(color2.b)).min(255) as u8,
         }
     }
 
     /// Function to convert a color wheel value to RGB
-    pub fn wheel(&self, mut wheel_pos: u8) -> RGB8 {
+    pub fn wheel(mut wheel_pos: u8) -> RGB8 {
         wheel_pos = 255 - wheel_pos;
         if wheel_pos < 85 {
             return (255 - wheel_pos * 3, 0, wheel_pos * 3).into();
@@ -67,43 +99,322 @@ impl NeopixelManager {
     }
 }
 
+/// Calculates the LED index for a given time value
+///
+/// Maps a time value (0-59 for minutes/seconds or 1-12 for hours) to an LED index on the ring.
+/// Uses integer arithmetic: `(value * NUM_LEDS / max_value + offset) % NUM_LEDS`
+#[allow(clippy::cast_possible_truncation)]
+fn calculate_hand_index(value: u8, max_value: u8) -> u8 {
+    let value_mod = u16::from(value % max_value);
+    let index = (value_mod * u16::from(NUM_LEDS) / u16::from(max_value)
+        + u16::from(NUM_LEDS / 2 + 1))
+        % u16::from(NUM_LEDS);
+    index as u8
+}
+
+/// Interpolates a color value between start and end based on elapsed time
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_lossless
+)]
+fn interpolate_color_value(start: u8, end: u8, elapsed_millis: u32, total_millis: u32) -> u8 {
+    if total_millis == 0 {
+        return end;
+    }
+    let delta = i16::from(end) - i16::from(start);
+    let progress = elapsed_millis as f32 / total_millis as f32;
+    let change = (delta as f32 * progress) as i16;
+    let result = i16::from(start) + change;
+    result.clamp(0, 255) as u8
+}
+
+/// Calculates the number of LEDs to light for the sunrise effect
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
+fn calculate_lit_leds(fraction_elapsed: f32) -> u8 {
+    (((fraction_elapsed * f32::from(NUM_LEDS)) as u8) + 1)
+        .clamp(1, u8::try_from(NUM_LEDS_USIZE).unwrap_or(16))
+}
+
+/// Displays the analog clock hands on the LED ring
+async fn display_analog_clock(
+    np: &mut NeopixelType,
+    neopixel_mgr: &NeopixelManager,
+    hour: u8,
+    minute: u8,
+    second: u8,
+    colors: &ClockColors,
+) {
+    let mut data = [RGB8::default(); NUM_LEDS_USIZE];
+
+    // Calculate LED indices for each hand
+    let hour_normalized = if hour.is_multiple_of(12) {
+        12
+    } else {
+        hour % 12
+    };
+    let hour_index = calculate_hand_index(hour_normalized, 12);
+    let minute_index = calculate_hand_index(minute, 60);
+    let second_index = calculate_hand_index(second, 60);
+
+    // Set the colors of the hands
+    data[hour_index as usize] = colors.hour;
+    data[minute_index as usize] = colors.minute;
+    data[second_index as usize] = colors.second;
+
+    // When any hands are on the same index, their colors must be mixed
+    if hour_index == minute_index && hour_index == second_index {
+        data[hour_index as usize] = NeopixelManager::mix_colors(
+            NeopixelManager::mix_colors(colors.hour, colors.minute),
+            colors.second,
+        );
+    } else {
+        if hour_index == minute_index {
+            data[hour_index as usize] = NeopixelManager::mix_colors(colors.hour, colors.minute);
+        }
+        if hour_index == second_index {
+            data[hour_index as usize] = NeopixelManager::mix_colors(colors.hour, colors.second);
+        }
+        if minute_index == second_index {
+            data[minute_index as usize] = NeopixelManager::mix_colors(colors.minute, colors.second);
+        }
+    }
+
+    // Write the data to the neopixel
+    let _ = np
+        .write(brightness(
+            data.iter().copied(),
+            neopixel_mgr.clock_brightness(),
+        ))
+        .await;
+}
+
+/// Turns off all LEDs
+async fn turn_off_all_leds(np: &mut NeopixelType) {
+    let data = [RGB8::default(); NUM_LEDS_USIZE];
+    let _ = np.write(brightness(data.iter().copied(), 0)).await;
+}
+
+/// Helper struct for sunrise effect parameters
+struct SunriseParams {
+    /// Starting color (dark red)
+    start_color: RGB8,
+    /// Ending color (warm white)
+    end_color: RGB8,
+    /// Target brightness at end of effect
+    end_brightness: f32,
+    /// Duration in milliseconds
+    duration_ms: u32,
+}
+
+impl SunriseParams {
+    /// Creates standard sunrise effect parameters (60 second sunrise)
+    const fn new() -> Self {
+        Self {
+            start_color: RGB8::new(139, 0, 0),
+            end_color: RGB8::new(255, 250, 244),
+            end_brightness: 100.0,
+            duration_ms: 60_000,
+        }
+    }
+}
+
+/// Displays the sunrise effect
+async fn sunrise_effect(np: &mut NeopixelType) {
+    info!("Sunrise effect");
+
+    let mut data = [RGB8::default(); NUM_LEDS_USIZE];
+    let _ = np.write(brightness(data.iter().copied(), 0)).await;
+
+    let params = SunriseParams::new();
+    let start_time = Instant::now();
+
+    // Loop for duration milliseconds
+    'sunrise: while Instant::now() - start_time
+        < Duration::from_millis(u64::from(params.duration_ms))
+    {
+        // Check if the effect should be stopped
+        if LIGHTFX_STOP_SIGNAL.signaled() {
+            info!("Sunrise effect aborting");
+            LIGHTFX_STOP_SIGNAL.reset();
+            break 'sunrise;
+        }
+
+        // Calculate the elapsed time and the remaining time
+        let elapsed_time = Instant::now() - start_time;
+        let remaining_time = Duration::from_millis(u64::from(params.duration_ms)) - elapsed_time;
+        #[allow(clippy::cast_possible_truncation)]
+        let elapsed_millis = elapsed_time.as_millis() as u32;
+
+        #[allow(clippy::cast_precision_loss)]
+        let fraction_elapsed = elapsed_millis as f32 / params.duration_ms as f32;
+
+        // Calculate the current brightness based on the elapsed time
+        #[allow(
+            clippy::cast_precision_loss,
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss
+        )]
+        #[allow(clippy::cast_possible_truncation)]
+        let current_brightness = params.end_brightness as u8
+            - (remaining_time.as_millis() as f32 / params.duration_ms as f32
+                * params.end_brightness) as u8;
+
+        // Calculate the current color based on the elapsed time
+        let current_color = RGB8::new(
+            interpolate_color_value(
+                params.start_color.r,
+                params.end_color.r,
+                elapsed_millis,
+                params.duration_ms,
+            ),
+            interpolate_color_value(
+                params.start_color.g,
+                params.end_color.g,
+                elapsed_millis,
+                params.duration_ms,
+            ),
+            interpolate_color_value(
+                params.start_color.b,
+                params.end_color.b,
+                elapsed_millis,
+                params.duration_ms,
+            ),
+        );
+
+        // Calculate the number of leds to light up based on the elapsed time fraction
+        let current_leds = usize::from(calculate_lit_leds(fraction_elapsed));
+
+        // Set the leds
+        for current_color_led in &mut data[..current_leds] {
+            *current_color_led = current_color;
+        }
+
+        // Write the data to the neopixel
+        let _ = np
+            .write(brightness(data.iter().copied(), current_brightness))
+            .await;
+    }
+
+    EVENT_CHANNEL
+        .sender()
+        .send(Events::SunriseEffectFinished)
+        .await;
+
+    // Wait a bit, so that the last of the effect is visible
+    Timer::after(Duration::from_millis(300)).await;
+}
+
+/// Displays the rainbow noise effect
+async fn noise_effect(np: &mut NeopixelType, neopixel_mgr: &NeopixelManager) {
+    info!("Noise effect");
+
+    let mut data = [RGB8::default(); NUM_LEDS_USIZE];
+
+    'noise: loop {
+        for j in 0u16..(256 * 5) {
+            if LIGHTFX_STOP_SIGNAL.signaled() {
+                info!("Noise effect aborting");
+                LIGHTFX_STOP_SIGNAL.reset();
+                break 'noise;
+            }
+
+            for (i, data_led) in data.iter_mut().enumerate() {
+                // Calculate the color wheel index with wraparound behavior.
+                // The base offset for each LED progresses through the color wheel,
+                // and j cycles through the spectrum. We use wrapping arithmetic to
+                // ensure the rainbow continuously cycles.
+                #[allow(clippy::cast_possible_truncation)]
+                let base_offset = ((i as u16 * 256) / u16::from(NUM_LEDS)) as u8;
+                let j_clamped = (j & 255) as u8;
+                let wheel_index = base_offset.wrapping_add(j_clamped);
+                *data_led = NeopixelManager::wheel(wheel_index);
+            }
+            np.write(brightness(
+                data.iter().copied(),
+                neopixel_mgr.alarm_brightness(),
+            ))
+            .await
+            .ok();
+            Timer::after(Duration::from_millis(5)).await;
+        }
+    }
+}
+
+/// Handles the normal operation mode
+async fn handle_normal_mode(
+    np: &mut NeopixelType,
+    neopixel_mgr: &NeopixelManager,
+    state_manager: &StateManager,
+    hour: u8,
+    minute: u8,
+    second: u8,
+    colors: &ClockColors,
+) {
+    if state_manager.alarm_settings.get_enabled() {
+        turn_off_all_leds(np).await;
+    } else {
+        display_analog_clock(np, neopixel_mgr, hour, minute, second, colors).await;
+    }
+}
+
+/// Handles the alarm mode
+async fn handle_alarm_mode(
+    np: &mut NeopixelType,
+    neopixel_mgr: &NeopixelManager,
+    state_manager: &StateManager,
+) {
+    match state_manager.alarm_state {
+        AlarmState::Sunrise => {
+            sunrise_effect(np).await;
+        }
+        AlarmState::Noise => {
+            noise_effect(np, neopixel_mgr).await;
+        }
+        AlarmState::None => {
+            warn!("Alarm state is None, this should not happen");
+        }
+    }
+}
+
 #[embassy_executor::task]
 pub async fn light_effects_handler(spi: Spi<'static, SPI0, embassy_rp::spi::Async>) {
     info!("Analog clock task start");
 
     let neopixel_mgr = NeopixelManager::new();
+    let mut np: Ws2812<_, Grb, { 12 * NUM_LEDS_USIZE }> = Ws2812::new(spi);
+    let colors = ClockColors::new();
 
-    let mut np: Ws2812<_, Grb, { 12 * NUM_LEDS }> = Ws2812::new(spi);
-
-    let red = RGB8 { r: 255, g: 0, b: 0 };
-    let green = RGB8 { r: 0, g: 255, b: 0 };
-    let blue = RGB8 { r: 0, g: 0, b: 255 };
-
-    // all off
-    let mut data = [RGB8::default(); NUM_LEDS];
-    np.write(brightness(data.iter().cloned(), 0)).await.ok();
+    // All off initially
+    turn_off_all_leds(&mut np).await;
 
     'mainloop: loop {
-        // wait for the signal to update the neopixel
+        // Wait for the signal to update the neopixel
         let command = LIGHTFX_SIGNAL.wait().await;
         info!("LightFX signal received: {:?}", command);
-        let (hour, minute, second) = match command {
-            Commands::LightFXUpdate((hour, minute, second)) => (hour, minute, second),
-            _ => (0, 0, 0),
-        };
+        let (hour, minute, second) =
+            if let Commands::LightFXUpdate((hour, minute, second)) = command {
+                (hour, minute, second)
+            } else {
+                (0, 0, 0)
+            };
 
-        // get the state of the system out of the mutex and quickly drop the mutex
+        // Get the state of the system out of the mutex and quickly drop the mutex
         let state_manager: StateManager;
         '_state_manager_mutex: {
             let state_manager_guard = STATE_MANAGER_MUTEX.lock().await;
-            state_manager = match state_manager_guard.clone() {
-                Some(state_manager) => state_manager,
-                None => {
-                    warn!("State manager not initialized");
-                    drop(state_manager_guard);
-                    Timer::after(Duration::from_secs(1)).await;
-                    continue 'mainloop;
-                }
+            state_manager = if let Some(state_manager) = state_manager_guard.clone() {
+                state_manager
+            } else {
+                warn!("State manager not initialized");
+                drop(state_manager_guard);
+                Timer::after(Duration::from_secs(1)).await;
+                continue 'mainloop;
             };
         }
 
@@ -114,194 +425,23 @@ pub async fn light_effects_handler(spi: Spi<'static, SPI0, embassy_rp::spi::Asyn
             | OperationMode::Menu
             | OperationMode::SetAlarmTime
             | OperationMode::SystemInfo => {
-                if !state_manager.alarm_settings.get_enabled() {
-                    // Analog Clock mode
-
-                    // Calculate the LED indices for each hand
-                    // the hour hand will deliberately be dragging behind since we choose to not account for minutes passed in the hour
-
-                    // Convert the hour value to an index on the ring of 16 LEDs
-                    let hour = if (hour % 12) == 0 { 12 } else { hour % 12 };
-                    let hour_index = ((hour as f32 / 12.0 * NUM_LEDS as f32) as u8
-                        - (NUM_LEDS as f32 / 2.0) as u8
-                        + 1)
-                        % NUM_LEDS as u8;
-
-                    // Convert the minute value to an index on the ring of 16 LEDs
-                    let minute_index = (((minute % 60) as f32 * NUM_LEDS as f32 / 60.0
-                        + NUM_LEDS as f32 / 2.0
-                        + 1.0)
-                        % NUM_LEDS as f32) as u8;
-
-                    // Convert the second value to an index on the ring of 16 LEDs
-                    let second_index = (((second % 60) as f32 * NUM_LEDS as f32 / 60.0
-                        + NUM_LEDS as f32 / 2.0
-                        + 1.0)
-                        % NUM_LEDS as f32) as u8;
-
-                    // clear the data
-                    data = [RGB8::default(); NUM_LEDS];
-
-                    // Set the colors of the hands
-                    data[hour_index as usize] = red;
-                    data[minute_index as usize] = green;
-                    data[second_index as usize] = blue;
-
-                    // but when any hands are on the same index, their colors must be mixed
-                    if hour_index == minute_index && hour_index == second_index {
-                        data[hour_index as usize] =
-                            neopixel_mgr.mix_colors(neopixel_mgr.mix_colors(red, green), blue);
-                    } else {
-                        if hour_index == minute_index {
-                            data[hour_index as usize] = neopixel_mgr.mix_colors(red, green);
-                        }
-                        if hour_index == second_index {
-                            data[hour_index as usize] = neopixel_mgr.mix_colors(red, blue);
-                        }
-                        if minute_index == second_index {
-                            data[minute_index as usize] = neopixel_mgr.mix_colors(green, blue);
-                        }
-                    }
-
-                    // write the data to the neopixel
-                    let _ = np
-                        .write(brightness(
-                            data.iter().cloned(),
-                            neopixel_mgr.clock_brightness(),
-                        ))
-                        .await;
-                } else {
-                    // all off
-                    let data = [RGB8::default(); NUM_LEDS];
-                    let _ = np.write(brightness(data.iter().cloned(), 0)).await;
-                }
+                handle_normal_mode(
+                    &mut np,
+                    &neopixel_mgr,
+                    &state_manager,
+                    hour,
+                    minute,
+                    second,
+                    &colors,
+                )
+                .await;
             }
             OperationMode::Alarm => {
-                info!("Alarm mode");
-                match state_manager.alarm_state {
-                    AlarmState::Sunrise => {
-                        info!("Sunrise effect");
-                        // simumlate a sunrise: start with all leds off, then slowly add leds while all leds that are already used slowly change color from red to warm white
-
-                        // all off
-                        let mut data = [RGB8::default(); NUM_LEDS];
-                        let _ = np.write(brightness(data.iter().cloned(), 0)).await;
-
-                        // initialize the variables
-                        let start_color = RGB8::new(139, 0, 0); //dark red
-                        let end_color = RGB8::new(255, 250, 244); // warm white
-                        let end_brightness = 100.0;
-                        let effect_duration: u64 = 60; // seconds
-                        let start_time = Instant::now();
-
-                        // loop for duration seconds
-                        'sunrise: while Instant::now() - start_time
-                            < Duration::from_secs(effect_duration)
-                        {
-                            // check if the effect should be stopped
-                            if LIGHTFX_STOP_SIGNAL.signaled() {
-                                info!("Sunrise effect aborting");
-                                LIGHTFX_STOP_SIGNAL.reset();
-                                break 'sunrise;
-                            }
-
-                            // calculate the elapsed time and the remaining time
-                            let elapsed_time = Instant::now() - start_time;
-                            let remaining_time =
-                                Duration::from_secs(effect_duration) - elapsed_time;
-                            let fraction_elapsed =
-                                elapsed_time.as_secs() as f32 / effect_duration as f32;
-
-                            // calculate the current brightness based on the elapsed time
-                            let current_brightness = end_brightness as u8
-                                - (remaining_time.as_secs() as f32 / effect_duration as f32
-                                    * end_brightness) as u8;
-
-                            // calculate the current color based on the elapsed time
-                            let current_color = RGB8::new(
-                                start_color.r
-                                    + ((end_color.r as i16 - start_color.r as i16) as f32
-                                        / effect_duration as f32
-                                        * elapsed_time.as_secs() as f32)
-                                        as u8,
-                                start_color.g
-                                    + ((end_color.g as i16 - start_color.g as i16) as f32
-                                        / effect_duration as f32
-                                        * elapsed_time.as_secs() as f32)
-                                        as u8,
-                                start_color.b
-                                    + ((end_color.b as i16 - start_color.b as i16) as f32
-                                        / effect_duration as f32
-                                        * elapsed_time.as_secs() as f32)
-                                        as u8,
-                            );
-
-                            // calculate the number of leds to light up based on the elapsed time fraction, min 1, max NUM_LEDS
-                            let current_leds = (((fraction_elapsed * NUM_LEDS as f32) as usize)
-                                + 1)
-                            .clamp(1, NUM_LEDS);
-
-                            // set the leds
-                            for i in 0..current_leds {
-                                data[i] = current_color;
-                            }
-
-                            // write the date to the neopixel
-                            let _ = np
-                                .write(brightness(data.iter().cloned(), current_brightness))
-                                .await;
-                        }
-
-                        EVENT_CHANNEL
-                            .sender()
-                            .send(Events::SunriseEffectFinished)
-                            .await;
-
-                        // and wait a bit, so that the last of the effect is visible
-                        Timer::after(Duration::from_millis(300)).await;
-                    }
-                    AlarmState::Noise => {
-                        info!("Noise effect");
-
-                        // a beautiful rainbow effect, taken from https://github.com/kalkyl/ws2812-async
-                        let mut data = [RGB8::default(); NUM_LEDS];
-
-                        'noise: loop {
-                            for j in 0..(256 * 5) {
-                                if LIGHTFX_STOP_SIGNAL.signaled() {
-                                    info!("Noise effect aborting");
-                                    LIGHTFX_STOP_SIGNAL.reset();
-                                    break 'noise;
-                                };
-
-                                for i in 0..NUM_LEDS {
-                                    data[i] = neopixel_mgr.wheel(
-                                        (((i * 256) as u16 / NUM_LEDS as u16 + j as u16) & 255)
-                                            as u8,
-                                    );
-                                }
-                                np.write(brightness(
-                                    data.iter().cloned(),
-                                    neopixel_mgr.alarm_brightness(),
-                                ))
-                                .await
-                                .ok();
-                                Timer::after(Duration::from_millis(5)).await;
-                            }
-                        }
-                    }
-                    AlarmState::None => {
-                        // we do nothing, and even getting here is a warning
-                        warn!("Alarm state is None, this should not happen");
-                    }
-                }
+                handle_alarm_mode(&mut np, &neopixel_mgr, &state_manager).await;
             }
             OperationMode::Standby => {
                 info!("Standby mode");
-                // all off
-                let data = [RGB8::default(); NUM_LEDS];
-                let _ = np.write(brightness(data.iter().cloned(), 0)).await;
-                // we do nothing
+                turn_off_all_leds(&mut np).await;
             }
         }
     }

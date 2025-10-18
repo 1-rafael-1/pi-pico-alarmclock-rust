@@ -3,7 +3,7 @@
 //! Detremine the supply voltage of the system.
 
 use crate::task::task_messages::{EVENT_CHANNEL, Events, VSYS_WAKE_SIGNAL};
-use defmt::*;
+use defmt::info;
 use embassy_futures::select::select;
 use embassy_rp::adc::{Adc, Channel};
 use embassy_rp::gpio::Input;
@@ -47,13 +47,14 @@ pub async fn vsys_voltage_reader(
         // wait for the system to settle, before reading -> the adc is not stable immediately if we got here after either the usb power was cut the system just started
         Timer::after(Duration::from_secs(1)).await;
         // read the adc value
-        let adc_value = adc.read(&mut channel).await.unwrap();
-        // reference voltage is 3.3V, and the voltage divider ratio is 2.65. The ADC is 12-bit, so 2^12 = 4096
-        let voltage = (adc_value as f32) * 3.3 * 2.65 / 4096.0;
-        sender.send(Events::Vsys(voltage)).await;
+        if let Ok(adc_value) = adc.read(&mut channel).await {
+            // reference voltage is 3.3V, and the voltage divider ratio is 2.65. The ADC is 12-bit, so 2^12 = 4096
+            let voltage = (f32::from(adc_value)) * 3.3 * 2.65 / 4096.0;
+            sender.send(Events::Vsys(voltage)).await;
 
-        // we either wait for the downtime or until we are woken up early. Whatever comes first, starts the next iteration.
-        let downtime_timer = Timer::after(downtime);
-        select(downtime_timer, VSYS_WAKE_SIGNAL.wait()).await;
+            // we either wait for the downtime or until we are woken up early. Whatever comes first, starts the next iteration.
+            let downtime_timer = Timer::after(downtime);
+            select(downtime_timer, VSYS_WAKE_SIGNAL.wait()).await;
+        }
     }
 }

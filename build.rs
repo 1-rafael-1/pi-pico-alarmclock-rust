@@ -8,6 +8,10 @@
 //! updating `memory.x` ensures a rebuild of the application with the
 //! new memory settings.
 
+#![allow(clippy::expect_used)]
+#![allow(clippy::unwrap_used)]
+#![allow(clippy::print_stdout)]
+
 use std::env;
 use std::fs;
 use std::fs::File;
@@ -23,6 +27,7 @@ fn main() {
     time_api_config().unwrap();
 }
 
+/// Generate `wifi_secrets.rs` from `wifi_config.json`
 fn wifi_secrets() -> io::Result<()> {
     println!("in wifi_secrets");
     // Read the wifi_config.json file and write the SSID and password to wifi_secrets.rs
@@ -58,11 +63,12 @@ fn wifi_secrets() -> io::Result<()> {
 
     // Write the SSID and password to wifi_secrets.rs
     println!("in wifi_secrets, before writing ssid and password to output file");
-    writeln!(f, "pub const SSID: &str = {:?};", ssid)?;
-    writeln!(f, "pub const PASSWORD: &str = {:?};", password)?;
+    writeln!(f, "pub const SSID: &str = \"{ssid}\";")?;
+    writeln!(f, "pub const PASSWORD: &str = \"{password}\";")?;
     Ok(())
 }
 
+/// Generate `time_api_config.rs` from `time_api.json`
 fn time_api_config() -> io::Result<()> {
     println!("in time_api_config");
     // Read the time_api.json file and write the URL and timezone to time_api_config.rs
@@ -97,13 +103,14 @@ fn time_api_config() -> io::Result<()> {
         .expect("timezone not found in time_api.json file");
 
     // Combine baseurl and timezone into a single string for TIME_SERVER_URL
-    let combined_url = format!("{}{}", baseurl, timezone);
+    let combined_url = format!("{baseurl}{timezone}");
 
     // Write the baseurl and timezone to time_api_secrets.rs
-    writeln!(f, "pub const TIME_SERVER_URL: &str = {:?};", combined_url)?;
+    writeln!(f, "pub const TIME_SERVER_URL: &str = \"{combined_url}\";")?;
     Ok(())
 }
 
+/// Handle the `memory.x` linker script
 fn memory_x() {
     print!("in memory_x");
     // Put `memory.x` in our output directory and ensure it's

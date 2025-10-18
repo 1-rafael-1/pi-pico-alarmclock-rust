@@ -12,7 +12,7 @@ use embassy_sync::signal::Signal;
 
 /// Events that we want to react to together with the data that we need to react to the event.
 /// Works in conjunction with the `EVENT_CHANNEL` channel in the orchestrator task.
-#[derive(PartialEq, Debug, Format)]
+#[derive(PartialEq, Debug, Format, Clone)]
 pub enum Events {
     /// The blue button was pressed, the data is the number of presses
     BlueBtn,
@@ -46,7 +46,7 @@ pub enum Events {
 
 /// Commands that we want to send from the orchestrator to the other tasks that we want to control.
 /// Works in conjunction with the `COMMAND_CHANNEL` channel in the orchestrator task.
-#[derive(PartialEq, Debug, Format)]
+#[derive(Eq, PartialEq, Debug, Format)]
 pub enum Commands {
     /// Write the alarm settings to the flash memory, the data is the alarm settings
     /// Since the alarm settings are small amd rarely changed, we can send them in the command option
@@ -61,7 +61,6 @@ pub enum Commands {
     /// Having two mutexes for the state of the system and the time would expose us to the risk of deadlocks, so all in all, it is better to send the time here.
     LightFXUpdate((u8, u8, u8)),
     /// Update the sound task with the new state of the system
-    /// ToDo: decide if and what data we need to send to the sound task
     SoundUpdate,
     /// Stop the scheduler
     SchedulerStop,
@@ -69,7 +68,7 @@ pub enum Commands {
     SchedulerStart,
     /// Wake the scheduler early when awaiting the next iteration
     SchedulerWakeUp,
-    /// Wake the vsys_voltage_reader task early when awaiting the next iteration
+    /// Wake the `vsys_voltage_reader` task early when awaiting the next iteration
     VsysWakeUp,
     /// Handle the expiry of a running alarm
     AlarmExpiry,
@@ -89,7 +88,9 @@ pub static DISPLAY_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::n
 /// For the update commands that we want the orchestrator to send to the scheduler task. Since we only ever want to update the scheduler according to the state of
 /// the system, we will not send any data in the command option and we can afford to work only with a simple state of "the scheduler needs to be stopped/woken/...".
 pub static SCHEDULER_STOP_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
+/// Signal for starting the scheduler
 pub static SCHEDULER_START_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
+/// Signal for waking the scheduler early
 pub static SCHEDULER_WAKE_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
 
 /// Channel for the update commands that we want the orchestrator to send to the flash task.
@@ -102,9 +103,10 @@ pub static LIGHTFX_STOP_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Sign
 
 /// Signal for the update commands that we want the orchestrator to send to the sound task.
 pub static SOUND_START_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
+/// Signal for the stop command that we want the orchestrator to send to the sound task.
 pub static SOUND_STOP_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
 
-/// Signal for the wake command that we want the orchestrator to send to the vsys_voltage_reader task.
+/// Signal for the wake command that we want the orchestrator to send to the `vsys_voltage_reader` task.
 pub static VSYS_WAKE_SIGNAL: Signal<CriticalSectionRawMutex, Commands> = Signal::new();
 
 /// Signal for the alarm expiry command that we want the orchestrator to send to the alarm expiration task.

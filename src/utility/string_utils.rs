@@ -1,4 +1,4 @@
-//! # StringUtils
+//! # `StringUtils`
 //! This module contains utility functions around string handling that are used in the project.
 
 use core::fmt::Write;
@@ -6,10 +6,11 @@ use embassy_rp::rtc::{DateTime, DayOfWeek};
 use heapless::String;
 use heapless::Vec;
 
+/// A utility struct for string operations
 pub struct StringUtils;
 
 impl StringUtils {
-    /// This function converts a &str to a DateTime struct
+    /// This function converts a &str to a `DateTime` struct
     /// The input string should be in the format "YYYY-MM-DDTHH:MM:SS.ssssss+HH:MM"
     /// one example being "2024-06-26T22:01:27.106426+02:00"
     pub fn convert_str_to_datetime(s: &str, d: u8) -> DateTime {
@@ -20,7 +21,6 @@ impl StringUtils {
             month: 0,
             day: 0,
             day_of_week: match d {
-                1 => DayOfWeek::Monday,
                 2 => DayOfWeek::Tuesday,
                 3 => DayOfWeek::Wednesday,
                 4 => DayOfWeek::Thursday,
@@ -58,10 +58,12 @@ impl StringUtils {
         dt
     }
 
-    /// This function converts a DateTime struct to a string
-    /// The output string will be in the format "DayOfWeek DD.MM.YYYY", with padding to center the string in a 22 character field
+    /// This function converts a `DateTime` struct to a string
+    /// The output string will be in the format "`DayOfWeek` DD.MM.YYYY", with padding to center the string in a 22 character field
     /// one example being `" Saturday 26.06.2024  "`
-    pub fn convert_datetime_to_str(dt: DateTime) -> String<22> {
+    ///
+    /// If padding fails due to capacity constraints, the padding is skipped.
+    pub fn convert_datetime_to_str(dt: &DateTime) -> String<22> {
         let mut s: String<20> = String::new();
         let _ = write!(
             s,
@@ -71,18 +73,26 @@ impl StringUtils {
 
         let content_length = s.chars().count();
         let total_length: u8 = 22;
+        #[allow(clippy::cast_possible_truncation)]
         let padding = total_length - content_length as u8;
         let padding_left = padding / 2;
         let padding_right = padding - padding_left;
 
         let mut padded_string: String<22> = String::new();
+
+        // Add left padding (skip if it fails)
         for _ in 0..padding_left {
-            padded_string.push(' ').unwrap();
+            let _ = padded_string.push(' ');
         }
-        padded_string.push_str(&s).unwrap();
+
+        // Add the content (skip if it fails, though unlikely)
+        let _ = padded_string.push_str(&s);
+
+        // Add right padding (skip if it fails)
         for _ in 0..padding_right {
-            padded_string.push(' ').unwrap();
+            let _ = padded_string.push(' ');
         }
+
         padded_string
     }
 }

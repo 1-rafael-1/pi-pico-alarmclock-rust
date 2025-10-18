@@ -1,7 +1,7 @@
 //! # Sound task
-//!  This module contains the task that plays sound using the DFPlayer Mini module.
+//!  This module contains the task that plays sound using the `DFPlayer` Mini module.
 //!
-//! The task is responsible for initializing the DFPlayer Mini module, powering it on, playing a sound, and powering it off.
+//! The task is responsible for initializing the `DFPlayer` Mini module, powering it on, playing a sound, and powering it off.
 use crate::task::task_messages::{SOUND_START_SIGNAL, SOUND_STOP_SIGNAL};
 use defmt::{Debug2Format, info};
 use dfplayer_async::{DfPlayer, Equalizer, PlayBackSource, TimeSource};
@@ -10,6 +10,7 @@ use embassy_rp::uart::BufferedUart;
 use embassy_time::{Delay, Duration, Instant, Timer};
 
 // Time source implementation for DFPlayer
+/// Time source implementation for the `DFPlayer` using Embassy's `Instant`.
 struct MyTimeSource;
 
 impl TimeSource for MyTimeSource {
@@ -28,7 +29,7 @@ impl TimeSource for MyTimeSource {
 pub async fn sound_handler(mut uart: BufferedUart, mut pwr: Output<'static>) {
     info!("Sound task started");
 
-    let feedback_enable = false; // fails to acknoweledge when enabled
+    let feedback_enable = false;
     let timeout = Duration::from_secs(1);
     let reset_duration_override = Some(Duration::from_millis(1000));
 
@@ -39,7 +40,7 @@ pub async fn sound_handler(mut uart: BufferedUart, mut pwr: Output<'static>) {
         // power on the dfplayer
         info!("Powering on the dfplayer");
         pwr.set_high();
-        Timer::after(Duration::from_secs(1)).await;
+        Timer::after(Duration::from_millis(500)).await;
         info!("Powered on the dfplayer");
 
         let time_source = MyTimeSource;
@@ -47,10 +48,10 @@ pub async fn sound_handler(mut uart: BufferedUart, mut pwr: Output<'static>) {
         let mut dfp_result = DfPlayer::new(
             &mut uart,
             feedback_enable,
-            timeout.as_millis() as u64,
+            timeout.as_millis(),
             time_source,
             delay,
-            reset_duration_override.map(|d| d.as_millis() as u64),
+            reset_duration_override.map(|d| d.as_millis()),
         )
         .await;
 

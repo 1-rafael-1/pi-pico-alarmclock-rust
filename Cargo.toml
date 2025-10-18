@@ -1,8 +1,15 @@
 [package]
-edition = "2024"
 name = "pi-pico-alarmclock"
 version = "0.5.0"
+edition = "2024"
+authors = ["rafael.koch@gmx.net"]
+description = "Raspberry Pi Pico W alarm clock with WiFi, time sync, OLED display, and WS2812 LED support"
+readme = "README.md"
+homepage = "https://github.com/1-rafael-1/pi-pico-alarmclock-rust"
+repository = "https://github.com/1-rafael-1/pi-pico-alarmclock-rust"
 license = "MIT"
+keywords = ["embedded", "pico", "alarm-clock", "rp2040"]
+categories = ["embedded", "no-std"]
 resolver = "2"
 
 [dependencies]
