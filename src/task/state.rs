@@ -1,5 +1,5 @@
 //! # State of the system
-//! This module desccribes the state of the system and the operations that can be performed on the state.
+//! This module describes the state of the system and the operations that can be performed on the state.
 use crate::event::{Event, send_event};
 use crate::task::buttons::Button;
 use defmt::Format;
