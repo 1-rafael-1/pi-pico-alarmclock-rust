@@ -1,4 +1,4 @@
-//! # State of the system
+//! # System State
 //! This module describes the state of the system and the operations that can be performed on the state.
 use crate::event::{Event, send_event};
 use crate::task::buttons::Button;
@@ -8,26 +8,26 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use rand::Rng;
 
-/// Type alias for the system state manager protected by a mutex.
+/// Type alias for the system state protected by a mutex.
 ///
 /// This type alias defines a `Mutex` that uses a `CriticalSectionRawMutex` for synchronization.
 /// The state is wrapped in an `Option` to allow for the possibility of the state being uninitialized.
 /// This ensures that tasks can safely access and update the state across different executors (e.g., different cores).
-type StateManagerType = Mutex<CriticalSectionRawMutex, Option<StateManager>>;
+type SystemStateType = Mutex<CriticalSectionRawMutex, Option<SystemState>>;
 
-/// Global instance of the system state manager protected by a mutex.
+/// Global instance of the system state protected by a mutex.
 ///
-/// This static variable holds the system state manager, which is protected by a `Mutex` to ensure
+/// This static variable holds the system state, which is protected by a `Mutex` to ensure
 /// that only one task can access the state at a time. The mutex uses a `CriticalSectionRawMutex`
 /// for synchronization, allowing safe access across different tasks and executors.
 ///
 /// The state is initially set to `None`, indicating that it has not been initialized yet.
 /// Tasks attempting to access the state before initialization will need to handle the `None` case.
-pub static STATE_MANAGER_MUTEX: StateManagerType = Mutex::new(None);
+pub static SYSTEM_STATE: SystemStateType = Mutex::new(None);
 
 /// All the states of the system are kept in this struct.
 #[derive(PartialEq, Debug, Format, Clone)]
-pub struct StateManager {
+pub struct SystemState {
     /// The operation mode of the system
     pub operation_mode: OperationMode,
     /// The settings for the alarm
@@ -38,9 +38,9 @@ pub struct StateManager {
     pub power_state: PowerState,
 }
 
-/// State transitions
-impl StateManager {
-    /// Create a new `StateManager`.
+/// State transitions and operations
+impl SystemState {
+    /// Create a new `SystemState`.
     /// We will get the actual data pretty early in the system startup, so we can set all this to inits here
     pub const fn new() -> Self {
         Self {
@@ -124,88 +124,8 @@ impl StateManager {
     }
 
     /// Randomize the alarm stop button sequence
-    pub fn randomize_alarm_stop_buttom_sequence(&mut self) {
+    pub fn randomize_alarm_stop_button_sequence(&mut self) {
         self.alarm_settings.randomize_stop_alarm_button_sequence();
-    }
-}
-
-/// User Input Handling
-impl StateManager {
-    /// Handle state changes when the green button is pressed
-    pub async fn handle_green_button_press(&mut self) {
-        match self.operation_mode {
-            OperationMode::Normal => {
-                self.toggle_alarm_enabled().await;
-            }
-            OperationMode::SetAlarmTime => {
-                self.increment_alarm_hour();
-            }
-            OperationMode::Menu => self.set_system_info_mode(),
-            OperationMode::SystemInfo => self.set_normal_mode(),
-            OperationMode::Alarm => {
-                if self.alarm_settings.get_first_valid_stop_alarm_button() == Button::Green {
-                    self.alarm_settings.erase_first_valid_stop_alarm_button();
-                }
-                if self.alarm_settings.is_alarm_stop_button_sequence_complete() {
-                    send_event(Event::AlarmStop).await;
-                }
-            }
-            OperationMode::Standby => {
-                self.wake_up().await;
-            }
-        }
-    }
-
-    /// Handle state changes when the blue button is pressed
-    pub async fn handle_blue_button_press(&mut self) {
-        match self.operation_mode {
-            OperationMode::Normal => {
-                self.set_set_alarm_time_mode();
-            }
-            OperationMode::SetAlarmTime => {
-                self.save_alarm_settings().await;
-                self.set_normal_mode();
-            }
-            OperationMode::Menu => {
-                self.set_standby_mode().await;
-            }
-            OperationMode::SystemInfo => self.set_normal_mode(),
-            OperationMode::Alarm => {
-                if self.alarm_settings.get_first_valid_stop_alarm_button() == Button::Blue {
-                    self.alarm_settings.erase_first_valid_stop_alarm_button();
-                }
-                if self.alarm_settings.is_alarm_stop_button_sequence_complete() {
-                    send_event(Event::AlarmStop).await;
-                }
-            }
-            OperationMode::Standby => {
-                self.wake_up().await;
-            }
-        }
-    }
-
-    /// Handle state changes when the yellow button is pressed
-    pub async fn handle_yellow_button_press(&mut self) {
-        match self.operation_mode {
-            OperationMode::Normal => {
-                self.set_menu_mode();
-            }
-            OperationMode::Menu | OperationMode::SystemInfo => {
-                self.set_normal_mode();
-            }
-            OperationMode::SetAlarmTime => self.increment_alarm_minute(),
-            OperationMode::Alarm => {
-                if self.alarm_settings.get_first_valid_stop_alarm_button() == Button::Yellow {
-                    self.alarm_settings.erase_first_valid_stop_alarm_button();
-                }
-                if self.alarm_settings.is_alarm_stop_button_sequence_complete() {
-                    send_event(Event::AlarmStop).await;
-                }
-            }
-            OperationMode::Standby => {
-                self.wake_up().await;
-            }
-        }
     }
 }
 
@@ -326,7 +246,7 @@ impl AlarmSettings {
         self.set_stop_alarm_button_sequence(sequence);
     }
 
-    /// The sequence gets iterated and the first of its values that is None is returned.
+    /// The sequence gets iterated and the first of its values that is not None is returned.
     pub fn get_first_valid_stop_alarm_button(&self) -> Button {
         let sequence = self.get_stop_alarm_button_sequence();
         let mut i = 0;

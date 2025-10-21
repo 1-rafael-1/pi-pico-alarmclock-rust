@@ -32,13 +32,9 @@ use embassy_rp::uart::{BufferedInterruptHandler, BufferedUart, Config as UartCon
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
-// import the event module (submodule of src)
 mod event;
-
-// import the task module (submodule of src)
+mod state;
 mod task;
-
-// import the utility module (submodule of src)
 mod utility;
 
 // Bind the interrupts on a global scope for convenience

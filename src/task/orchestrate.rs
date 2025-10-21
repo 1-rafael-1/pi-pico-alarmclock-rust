@@ -1,13 +1,14 @@
 //! # Orchestrate Tasks
 //! Task to orchestrate the state transitions of the system.
 use crate::event::{Event, receive_event, send_event};
+use crate::state::{AlarmState, OperationMode, SYSTEM_STATE, SystemState};
 use crate::task::alarm_settings::send_flash_write_command;
 use crate::task::alarm_trigger::{signal_alarm_schedule_disable, signal_alarm_schedule_update};
+use crate::task::buttons::Button;
 use crate::task::display::signal_display_update;
 use crate::task::light_effects::{signal_lightfx_start, signal_lightfx_stop};
 use crate::task::power::signal_vsys_wake;
 use crate::task::sound::{signal_sound_start, signal_sound_stop};
-use crate::task::state::{AlarmState, STATE_MANAGER_MUTEX, StateManager};
 use crate::task::time_updater::{
     RTC_MUTEX, signal_time_updater_resume, signal_time_updater_suspend,
 };
@@ -56,69 +57,69 @@ fn signal_alarm_expirer() {
 #[embassy_executor::task]
 pub async fn orchestrator() {
     info!("Orchestrate task starting");
-    // initialize the state manager and put it into the mutex
+    // initialize the system state and put it into the mutex
     {
-        let state_manager = StateManager::new();
-        *(STATE_MANAGER_MUTEX.lock().await) = Some(state_manager);
+        let system_state = SystemState::new();
+        *(SYSTEM_STATE.lock().await) = Some(system_state);
     }
 
     loop {
         // receive the events, halting the task until an event is received
         let event = receive_event().await;
 
-        // Lock the mutex to get a mutable reference to the state manager
-        let mut state_manager_guard = STATE_MANAGER_MUTEX.lock().await;
-        let Some(state_manager) = state_manager_guard.as_mut() else {
-            warn!("State manager not initialized");
+        // Lock the mutex to get a mutable reference to the system state
+        let mut system_state_guard = SYSTEM_STATE.lock().await;
+        let Some(system_state) = system_state_guard.as_mut() else {
+            warn!("System state not initialized");
             continue;
         };
 
         // react to the events
-        handle_event(event, state_manager).await;
+        handle_event(event, system_state).await;
 
         // Report successful event handling to watchdog
         report_task_success(TaskId::Orchestrator).await;
 
-        drop(state_manager_guard);
+        drop(system_state_guard);
     }
 }
 
-/// Handles a single event by updating the state manager and signaling appropriate tasks.
-async fn handle_event(event: Event, state_manager: &mut StateManager) {
+/// Handles a single event by updating the system state and signaling appropriate tasks.
+async fn handle_event(event: Event, system_state: &mut SystemState) {
     match event {
         Event::BlueBtn => {
-            state_manager.handle_blue_button_press().await;
+            handle_blue_button_press(system_state).await;
             signal_display_update();
         }
         Event::GreenBtn => {
-            state_manager.handle_green_button_press().await;
+            handle_green_button_press(system_state).await;
             signal_display_update();
         }
         Event::YellowBtn => {
-            state_manager.handle_yellow_button_press().await;
+            handle_yellow_button_press(system_state).await;
             signal_display_update();
         }
         Event::Vbus(usb) => {
             info!("Vbus event, usb: {}", usb);
-            state_manager.power_state.set_usb_power(usb);
-            if !state_manager.power_state.get_usb_power() {
+            system_state.power_state.set_usb_power(usb);
+            if !system_state.power_state.get_usb_power() {
                 signal_vsys_wake();
             }
             signal_display_update();
         }
         Event::Vsys(voltage) => {
             info!("Vsys event, voltage: {}", voltage);
-            state_manager.power_state.set_vsys(voltage);
-            state_manager.power_state.set_battery_level();
+            system_state.power_state.set_vsys(voltage);
+            system_state.power_state.set_battery_level();
             signal_display_update();
         }
         Event::AlarmSettingsReadFromFlash(alarm_settings) => {
             info!("Alarm time read from flash: {:?}", alarm_settings);
-            state_manager.alarm_settings = alarm_settings;
+            system_state.alarm_settings = alarm_settings;
         }
         Event::Scheduler((hour, minute, second)) => {
             info!("Scheduler event");
-            handle_scheduler_event(state_manager, hour, minute, second);
+            handle_scheduler_event(system_state, hour, minute, second);
         }
         Event::RtcUpdated => {
             info!("RTC updated event");
@@ -126,7 +127,7 @@ async fn handle_event(event: Event, state_manager: &mut StateManager) {
         }
         Event::AlarmSettingsNeedUpdate => {
             info!("Alarm settings must be updated event");
-            handle_alarm_settings_update(state_manager).await;
+            handle_alarm_settings_update(system_state).await;
         }
         Event::Standby => {
             handle_standby_event();
@@ -135,22 +136,21 @@ async fn handle_event(event: Event, state_manager: &mut StateManager) {
             handle_wakeup_event();
         }
         Event::Alarm => {
-            handle_alarm_event(state_manager);
+            handle_alarm_event(system_state);
         }
         Event::AlarmStop => {
-            handle_alarm_stop_event(state_manager);
+            handle_alarm_stop_event(system_state);
         }
         Event::SunriseEffectFinished => {
-            handle_sunrise_effect_finished_event(state_manager);
+            handle_sunrise_effect_finished_event(system_state);
         }
     }
 }
 
 /// Handles the scheduler event which updates display and light effects.
-fn handle_scheduler_event(state_manager: &StateManager, hour: u8, minute: u8, second: u8) {
+fn handle_scheduler_event(system_state: &SystemState, hour: u8, minute: u8, second: u8) {
     // update the light effects if the alarm is not enabled and the alarm state is None
-    if state_manager.alarm_state == AlarmState::None && !state_manager.alarm_settings.get_enabled()
-    {
+    if system_state.alarm_state == AlarmState::None && !system_state.alarm_settings.get_enabled() {
         signal_lightfx_start(hour, minute, second);
     }
     // update the display
@@ -158,10 +158,10 @@ fn handle_scheduler_event(state_manager: &StateManager, hour: u8, minute: u8, se
 }
 
 /// Handles alarm settings update by writing to flash and coordinating with alarm task.
-async fn handle_alarm_settings_update(state_manager: &StateManager) {
-    send_flash_write_command(state_manager.alarm_settings.clone()).await;
+async fn handle_alarm_settings_update(system_state: &SystemState) {
+    send_flash_write_command(system_state.alarm_settings.clone()).await;
 
-    if state_manager.alarm_settings.get_enabled() {
+    if system_state.alarm_settings.get_enabled() {
         // if the alarm is enabled, we must update the light effects and signal the alarm task to reschedule
         signal_lightfx_start(0, 0, 0);
         signal_alarm_schedule_update();
@@ -191,20 +191,20 @@ fn handle_wakeup_event() {
 }
 
 /// Handles the alarm event by initializing alarm mode and starting effects.
-fn handle_alarm_event(state_manager: &mut StateManager) {
+fn handle_alarm_event(system_state: &mut SystemState) {
     info!("Alarm event");
-    state_manager.randomize_alarm_stop_buttom_sequence();
-    state_manager.set_alarm_mode();
+    system_state.randomize_alarm_stop_button_sequence();
+    system_state.set_alarm_mode();
     signal_display_update();
     signal_lightfx_start(0, 0, 0);
     signal_alarm_expirer();
 }
 
 /// Handles the alarm stop event by transitioning back to normal mode.
-fn handle_alarm_stop_event(state_manager: &mut StateManager) {
+fn handle_alarm_stop_event(system_state: &mut SystemState) {
     info!("Alarm stop event");
-    if state_manager.alarm_state.is_active() {
-        state_manager.set_normal_mode();
+    if system_state.alarm_state.is_active() {
+        system_state.set_normal_mode();
         signal_display_update();
         signal_lightfx_stop();
         signal_lightfx_start(0, 0, 0);
@@ -213,11 +213,115 @@ fn handle_alarm_stop_event(state_manager: &mut StateManager) {
 }
 
 /// Handles the sunrise effect finished event by transitioning to noise phase.
-fn handle_sunrise_effect_finished_event(state_manager: &mut StateManager) {
+fn handle_sunrise_effect_finished_event(system_state: &mut SystemState) {
     info!("Sunrise effect finished event");
-    state_manager.set_alarm_state(AlarmState::Noise);
+    system_state.set_alarm_state(AlarmState::Noise);
     signal_sound_start();
     signal_lightfx_start(0, 0, 0);
+}
+
+/// Handle state changes when the green button is pressed
+async fn handle_green_button_press(system_state: &mut SystemState) {
+    match system_state.operation_mode {
+        OperationMode::Normal => {
+            system_state.toggle_alarm_enabled().await;
+        }
+        OperationMode::SetAlarmTime => {
+            system_state.increment_alarm_hour();
+        }
+        OperationMode::Menu => system_state.set_system_info_mode(),
+        OperationMode::SystemInfo => system_state.set_normal_mode(),
+        OperationMode::Alarm => {
+            if system_state
+                .alarm_settings
+                .get_first_valid_stop_alarm_button()
+                == Button::Green
+            {
+                system_state
+                    .alarm_settings
+                    .erase_first_valid_stop_alarm_button();
+            }
+            if system_state
+                .alarm_settings
+                .is_alarm_stop_button_sequence_complete()
+            {
+                send_event(Event::AlarmStop).await;
+            }
+        }
+        OperationMode::Standby => {
+            system_state.wake_up().await;
+        }
+    }
+}
+
+/// Handle state changes when the blue button is pressed
+async fn handle_blue_button_press(system_state: &mut SystemState) {
+    match system_state.operation_mode {
+        OperationMode::Normal => {
+            system_state.set_set_alarm_time_mode();
+        }
+        OperationMode::SetAlarmTime => {
+            system_state.save_alarm_settings().await;
+            system_state.set_normal_mode();
+        }
+        OperationMode::Menu => {
+            system_state.set_standby_mode().await;
+        }
+        OperationMode::SystemInfo => system_state.set_normal_mode(),
+        OperationMode::Alarm => {
+            if system_state
+                .alarm_settings
+                .get_first_valid_stop_alarm_button()
+                == Button::Blue
+            {
+                system_state
+                    .alarm_settings
+                    .erase_first_valid_stop_alarm_button();
+            }
+            if system_state
+                .alarm_settings
+                .is_alarm_stop_button_sequence_complete()
+            {
+                send_event(Event::AlarmStop).await;
+            }
+        }
+        OperationMode::Standby => {
+            system_state.wake_up().await;
+        }
+    }
+}
+
+/// Handle state changes when the yellow button is pressed
+async fn handle_yellow_button_press(system_state: &mut SystemState) {
+    match system_state.operation_mode {
+        OperationMode::Normal => {
+            system_state.set_menu_mode();
+        }
+        OperationMode::Menu | OperationMode::SystemInfo => {
+            system_state.set_normal_mode();
+        }
+        OperationMode::SetAlarmTime => system_state.increment_alarm_minute(),
+        OperationMode::Alarm => {
+            if system_state
+                .alarm_settings
+                .get_first_valid_stop_alarm_button()
+                == Button::Yellow
+            {
+                system_state
+                    .alarm_settings
+                    .erase_first_valid_stop_alarm_button();
+            }
+            if system_state
+                .alarm_settings
+                .is_alarm_stop_button_sequence_complete()
+            {
+                send_event(Event::AlarmStop).await;
+            }
+        }
+        OperationMode::Standby => {
+            system_state.wake_up().await;
+        }
+    }
 }
 
 /// This task handles scheduling periodic display and LED updates by sending events to the Event Channel.
@@ -271,15 +375,15 @@ pub async fn scheduler() {
 
         // get the alarm enabled state to determine update frequency
         let alarm_enabled: bool;
-        '_state_manager_mutex: {
-            let state_manager_guard = STATE_MANAGER_MUTEX.lock().await;
-            let Some(state_manager) = state_manager_guard.as_ref() else {
-                warn!("State manager not initialized");
-                drop(state_manager_guard);
+        '_system_state_mutex: {
+            let system_state_guard = SYSTEM_STATE.lock().await;
+            let Some(system_state) = system_state_guard.as_ref() else {
+                warn!("System state not initialized");
+                drop(system_state_guard);
                 Timer::after(Duration::from_secs(1)).await;
                 continue 'mainloop;
             };
-            alarm_enabled = state_manager.alarm_settings.get_enabled();
+            alarm_enabled = system_state.alarm_settings.get_enabled();
         }
 
         // Check if the alarm enabled state changed and recreate ticker if needed

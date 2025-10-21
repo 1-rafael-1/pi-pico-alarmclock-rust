@@ -2,8 +2,8 @@
 //! This module contains the task that displays information on the OLED display.
 //!
 //! The task is responsible for initializing the display, displaying images and text, and updating the display.
+use crate::state::{BatteryLevel, OperationMode, SYSTEM_STATE};
 use crate::task::buttons::Button;
-use crate::task::state::{BatteryLevel, OperationMode, STATE_MANAGER_MUTEX};
 use crate::task::time_updater::RTC_MUTEX;
 use crate::task::watchdog::{TaskId, report_task_success};
 use crate::utility::string_utils::StringUtils;
@@ -461,23 +461,23 @@ pub async fn display_handler(i2c: I2c<'static, I2C0, Async>) {
         };
 
         // get the state of the system out of the mutex and quickly drop the mutex
-        let state_manager_guard = STATE_MANAGER_MUTEX.lock().await;
-        let Some(state_manager) = state_manager_guard.clone() else {
-            warn!("State manager not initialized");
-            drop(state_manager_guard);
+        let system_state_guard = SYSTEM_STATE.lock().await;
+        let Some(system_state) = system_state_guard.clone() else {
+            warn!("System state not initialized");
+            drop(system_state_guard);
             Timer::after(Duration::from_secs(1)).await;
             continue 'mainloop;
         };
 
         // Store operation mode locally to avoid move issues
-        let operation_mode = state_manager.operation_mode.clone();
+        let operation_mode = system_state.operation_mode.clone();
 
         // prepare the display, note that nothing is sent to the display before flush()
         display.clear();
 
         // Draw state indicator (or alarm button prompt)
         if operation_mode == OperationMode::Alarm {
-            let btn = state_manager
+            let btn = system_state
                 .alarm_settings
                 .get_first_valid_stop_alarm_button();
             draw_alarm_button_prompt(&mut display, &btn, &settings);
@@ -485,7 +485,7 @@ pub async fn display_handler(i2c: I2c<'static, I2C0, Async>) {
             draw_state_indicator(
                 &mut display,
                 &operation_mode,
-                state_manager.alarm_settings.get_enabled(),
+                system_state.alarm_settings.get_enabled(),
                 &settings,
             );
         }
@@ -493,7 +493,7 @@ pub async fn display_handler(i2c: I2c<'static, I2C0, Async>) {
         // Draw battery status
         draw_battery_status(
             &mut display,
-            &state_manager.power_state.get_battery_level(),
+            &system_state.power_state.get_battery_level(),
             &settings,
         );
 
@@ -501,8 +501,8 @@ pub async fn display_handler(i2c: I2c<'static, I2C0, Async>) {
         let (hours, minutes) = match operation_mode {
             OperationMode::Normal | OperationMode::Alarm => (dt.hour, dt.minute),
             OperationMode::SetAlarmTime => (
-                state_manager.alarm_settings.get_hour(),
-                state_manager.alarm_settings.get_minute(),
+                system_state.alarm_settings.get_hour(),
+                system_state.alarm_settings.get_minute(),
             ),
             _ => (0, 0),
         };
@@ -516,12 +516,10 @@ pub async fn display_handler(i2c: I2c<'static, I2C0, Async>) {
                 draw_menu_content(&mut display, &settings);
             }
             OperationMode::SystemInfo => {
-                let vsys = state_manager.power_state.get_vsys();
-                let usb_power = state_manager.power_state.get_usb_power();
-                let upper = state_manager
-                    .power_state
-                    .get_battery_voltage_fully_charged();
-                let lower = state_manager.power_state.get_battery_voltage_empty();
+                let vsys = system_state.power_state.get_vsys();
+                let usb_power = system_state.power_state.get_usb_power();
+                let upper = system_state.power_state.get_battery_voltage_fully_charged();
+                let lower = system_state.power_state.get_battery_voltage_empty();
 
                 draw_system_info_content(&mut display, vsys, usb_power, upper, lower, &settings);
             }

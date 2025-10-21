@@ -4,7 +4,7 @@
 
 Building a (hopefully working) alarmclock based on a Raspberry Pi Pico W written in Rust and using the Embassy framework.
 
-This is a picture of the prototype on a breadboard, in a box with bits of hardware dangling on their wires. Not pretty, but before i build a proper one in its enclosure it must do: 
+This is a picture of the prototype on a breadboard, in a box with bits of hardware dangling on their wires. Not pretty, but before i build a proper one in its enclosure it must do:
 ![Working Prototype](images/prototype.png)
 
 ## Features
@@ -68,7 +68,7 @@ The project is written in Rust making heavy use of the Embassy framework. I have
 
 The general layout of the project is as follows:
 
-+ The module `tasks` contains crates for the async tasks that make up the system. 
++ The module `tasks` contains crates for the async tasks that make up the system.
     + In this module the system state is described by `state.rs`.
     + Peripheral resources are defined in `resource.rs`.
     + The orchestration of the system is defined in `orchestrate.rs` where a scheduler task and an orchestrate task manage all system state changes.
@@ -79,7 +79,7 @@ The general layout of the project is as follows:
 + The folder `wifi-firmware`contains the firmware for the wifi-chip, copied over from the Embassy repo for convenience.
 
 To get the docs clone this repo and run this:
- 
+
 ```Shell
 cargo doc --open
 ```
@@ -147,7 +147,7 @@ This is my best attempt at a circuit diagram. Not knowing much about electronics
 
 ## Enclosure
 
-The enclosure is designed in Autodesk Fusion, a project Export of the design can be found here: [enclosure](enclosure/). 
+The enclosure is designed in Autodesk Fusion, a project Export of the design can be found here: [enclosure](enclosure/).
 
 A gallery of images can be found [here](enclosure/gallery.md).
 
@@ -170,7 +170,7 @@ This is still WIP, I have my first pair of burns to show for it, really not good
 |speaker|DFplayer Mini 3 Watt 8Ω speaker, 70*30*15mm. They can be found in some flavors from multiple vendors. Depending on the form factor, not all will fit into the enclosure as designed here.|
 |p-channel MOSFET|Two IRF9540 used here. Other models will do, as long as the gate voltage of 3.3V is sufficient to fully switch (look for "logic-level MOSFET") and they can handle 5V safely. A ton of options exist and the ones used here are probably not the most ideal choice.|
 |n-channel MOSFET|One IRLZ44N used here. Other models will do, as long as the gate voltage of 3.3V is sufficient to fully switch (look for "logic-level MOSFET") and it can handle 5V safely. A ton of options exist and the one used here is probably not the most ideal choice.|
-|Schottky diode|One used, anything rated for 5V will do.|
+|Schottky diode|1N5819 or any other rated for >= 1A continuous current|
 |mp3 module|DFR0299 (DFPlayer)|
 |micro sd card|Whatever, formatted to FAT32.|
 |push button|Three used. 13mm diameter, 8mm hight caps on 12x12x7.3mm button - these should be fairly standard. One caps each in yellow, green and blue.|
@@ -181,7 +181,7 @@ This is still WIP, I have my first pair of burns to show for it, really not good
 
 This is a hobby project and I have very little experience in electronics and had none before in Rust and also none before in Fusion. All three things i taught myself along the way. While this was incredible fun, this project will be full of imperfections, literally everywhere. In case You happen across this repo and spots a thing to improve - if You find the time to let me know, I will be more than happy. After all, this was and is about learning things.
 
-That being said: This device does work, at least as far as I did test it to this point. 
+That being said: This device does work, at least as far as I did test it to this point.
 
 Does the world need another alarmclock? Hell no, it does not. You can buy them in thousands of types for very little money and then most will have more functionality, better battery life, and whatnot. I was looking for a thing to do, had a joking conversation with my eldest daughter (who is in an age range where getting up in the morning appears to be terribly difficult) and that was that: I found myself building this thing.
 
