@@ -3,7 +3,7 @@
 //!
 //! The tasks are responsible for initializing the neopixel, setting the colors of the LEDs, and updating the LEDs.
 use crate::event::{Event, send_event};
-use crate::task::state::{AlarmState, OperationMode, STATE_MANAGER_MUTEX, StateManager};
+use crate::state::{AlarmState, OperationMode, SYSTEM_STATE, SystemState};
 use defmt::{info, warn};
 
 use embassy_rp::peripherals::SPI0;
@@ -378,13 +378,13 @@ async fn noise_effect(np: &mut NeopixelType, neopixel_mgr: &NeopixelManager) {
 async fn handle_normal_mode(
     np: &mut NeopixelType,
     neopixel_mgr: &NeopixelManager,
-    state_manager: &StateManager,
+    system_state: &SystemState,
     hour: u8,
     minute: u8,
     second: u8,
     colors: &ClockColors,
 ) {
-    if state_manager.alarm_settings.get_enabled() {
+    if system_state.alarm_settings.get_enabled() {
         turn_off_all_leds(np).await;
     } else {
         display_analog_clock(np, neopixel_mgr, hour, minute, second, colors).await;
@@ -395,9 +395,9 @@ async fn handle_normal_mode(
 async fn handle_alarm_mode(
     np: &mut NeopixelType,
     neopixel_mgr: &NeopixelManager,
-    state_manager: &StateManager,
+    system_state: &SystemState,
 ) {
-    match state_manager.alarm_state {
+    match system_state.alarm_state {
         AlarmState::Sunrise => {
             sunrise_effect(np).await;
         }
@@ -430,22 +430,22 @@ pub async fn light_effects_handler(spi: Spi<'static, SPI0, embassy_rp::spi::Asyn
         );
 
         // Get the state of the system out of the mutex and quickly drop the mutex
-        let state_manager: StateManager;
-        '_state_manager_mutex: {
-            let state_manager_guard = STATE_MANAGER_MUTEX.lock().await;
-            state_manager = if let Some(state_manager) = state_manager_guard.clone() {
-                state_manager
+        let system_state: SystemState;
+        '_system_state_mutex: {
+            let system_state_guard = SYSTEM_STATE.lock().await;
+            system_state = if let Some(system_state) = system_state_guard.clone() {
+                system_state
             } else {
-                warn!("State manager not initialized");
-                drop(state_manager_guard);
+                warn!("System state not initialized");
+                drop(system_state_guard);
                 Timer::after(Duration::from_secs(1)).await;
                 continue 'mainloop;
             };
         }
 
-        info!("{}", state_manager);
+        info!("{}", system_state);
 
-        match state_manager.operation_mode {
+        match system_state.operation_mode {
             OperationMode::Normal
             | OperationMode::Menu
             | OperationMode::SetAlarmTime
@@ -453,7 +453,7 @@ pub async fn light_effects_handler(spi: Spi<'static, SPI0, embassy_rp::spi::Asyn
                 handle_normal_mode(
                     &mut np,
                     &neopixel_mgr,
-                    &state_manager,
+                    &system_state,
                     hour,
                     minute,
                     second,
@@ -462,7 +462,7 @@ pub async fn light_effects_handler(spi: Spi<'static, SPI0, embassy_rp::spi::Asyn
                 .await;
             }
             OperationMode::Alarm => {
-                handle_alarm_mode(&mut np, &neopixel_mgr, &state_manager).await;
+                handle_alarm_mode(&mut np, &neopixel_mgr, &system_state).await;
             }
             OperationMode::Standby => {
                 info!("Standby mode");

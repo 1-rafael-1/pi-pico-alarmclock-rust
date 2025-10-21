@@ -1,6 +1,6 @@
 //! Events and system channel for sending and receiving events
 
-use crate::task::state::AlarmSettings;
+use crate::state::AlarmSettings;
 use defmt::Format;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;

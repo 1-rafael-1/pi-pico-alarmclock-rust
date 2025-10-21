@@ -3,7 +3,7 @@
 //!
 //! The alarm settings are stored in the flash memory as three separate key/value pairs.
 use crate::event::{Event, send_event};
-use crate::task::state::AlarmSettings;
+use crate::state::AlarmSettings;
 use core::ops::Range;
 use defmt::{Debug2Format, info, warn};
 use embassy_rp::flash::{Async, Flash};

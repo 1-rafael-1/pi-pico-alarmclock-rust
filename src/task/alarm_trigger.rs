@@ -5,7 +5,7 @@
 
 use crate::event::Event;
 use crate::event::send_event;
-use crate::task::state::STATE_MANAGER_MUTEX;
+use crate::state::SYSTEM_STATE;
 use crate::task::time_updater::RTC_MUTEX;
 use crate::task::watchdog::{TaskId, report_task_success};
 use defmt::{Debug2Format, info, warn};
@@ -125,19 +125,19 @@ pub async fn alarm_trigger_task() {
     }
 }
 
-/// Reads the current alarm configuration from the state manager
+/// Reads the current alarm configuration from the system state
 async fn get_alarm_config() -> Option<AlarmConfig> {
-    let state_manager_guard = STATE_MANAGER_MUTEX.lock().await;
-    let state_manager = state_manager_guard.as_ref()?;
+    let system_state_guard = SYSTEM_STATE.lock().await;
+    let system_state = system_state_guard.as_ref()?;
 
     let config = AlarmConfig {
-        enabled: state_manager.alarm_settings.get_enabled(),
-        hour: state_manager.alarm_settings.get_hour(),
-        minute: state_manager.alarm_settings.get_minute(),
+        enabled: system_state.alarm_settings.get_enabled(),
+        hour: system_state.alarm_settings.get_hour(),
+        minute: system_state.alarm_settings.get_minute(),
     };
 
     // Explicitly drop the guard to release the lock early
-    drop(state_manager_guard);
+    drop(system_state_guard);
 
     Some(config)
 }
