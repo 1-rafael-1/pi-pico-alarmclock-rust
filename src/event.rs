@@ -1,13 +1,12 @@
 //! Events and system channel for sending and receiving events
 
-use crate::state::AlarmSettings;
 use defmt::Format;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::channel::Channel;
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
+
+use crate::state::AlarmSettings;
 
 /// System event channel for sending and receiving events
-pub static EVENT_CHANNEL: Channel<CriticalSectionRawMutex, Event, EVENT_CHANNEL_CAPACITY> =
-    Channel::new();
+pub static EVENT_CHANNEL: Channel<CriticalSectionRawMutex, Event, EVENT_CHANNEL_CAPACITY> = Channel::new();
 
 /// The capacity of the event channel
 const EVENT_CHANNEL_CAPACITY: usize = 10;

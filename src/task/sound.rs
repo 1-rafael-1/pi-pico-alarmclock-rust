@@ -4,10 +4,8 @@
 //! The task is responsible for initializing the `DFPlayer` Mini module, powering it on, playing a sound, and powering it off.
 use defmt::{Debug2Format, info};
 use dfplayer_async::{DfPlayer, Equalizer, PlayBackSource, TimeSource};
-use embassy_rp::gpio::Output;
-use embassy_rp::uart::BufferedUart;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::signal::Signal;
+use embassy_rp::{gpio::Output, uart::BufferedUart};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Delay, Duration, Instant, Timer};
 
 /// Signal for starting the sound
@@ -84,10 +82,7 @@ pub async fn sound_handler(mut uart: BufferedUart, mut pwr: Output<'static>) {
 
         match dfp_result {
             Ok(_) => info!("DfPlayer initialized successfully"),
-            Err(ref e) => info!(
-                "DfPlayer initialization failed with error {:?}",
-                Debug2Format(&e)
-            ),
+            Err(ref e) => info!("DfPlayer initialization failed with error {:?}", Debug2Format(&e)),
         }
 
         info!("Playing sound");

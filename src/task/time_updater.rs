@@ -26,14 +26,12 @@
 include!(concat!(env!("OUT_DIR"), "/wifi_secrets.rs"));
 include!(concat!(env!("OUT_DIR"), "/time_api_config.rs"));
 
-use crate::Irqs;
-use crate::event::{Event, send_event};
-use crate::task::watchdog::{TaskId, report_task_failure, report_task_success};
-use crate::utility::string_utils::StringUtils;
 use core::str::from_utf8;
+
 use cyw43::JoinOptions;
 use cyw43_pio::{DEFAULT_CLOCK_DIVIDER, PioSpi};
 use defmt::{info, unwrap, warn};
+use defmt_rtt as _;
 use embassy_executor::Spawner;
 use embassy_futures::select::select;
 use embassy_net::{
@@ -48,17 +46,24 @@ use embassy_rp::{
     pio::Pio,
     rtc::Rtc,
 };
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::mutex::Mutex;
-use embassy_sync::signal::Signal;
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex, signal::Signal};
 use embassy_time::{Duration, Timer, with_timeout};
 use heapless;
-use reqwless::client::{HttpClient, TlsConfig, TlsVerify};
-use reqwless::request::Method;
+use panic_probe as _;
+use reqwless::{
+    client::{HttpClient, TlsConfig, TlsVerify},
+    request::Method,
+};
 use serde::Deserialize;
 use serde_json_core;
 use static_cell::StaticCell;
-use {defmt_rtt as _, panic_probe as _};
+
+use crate::{
+    Irqs,
+    event::{Event, send_event},
+    task::watchdog::{TaskId, report_task_failure, report_task_success},
+    utility::string_utils::StringUtils,
+};
 
 /// Signal for suspending the time updater task
 static TIME_UPDATER_SUSPEND_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
@@ -192,9 +197,7 @@ impl TimeUpdater {
 
 /// `WiFi` driver task that runs the `CYW43` firmware.
 #[embassy_executor::task]
-async fn wifi_task(
-    runner: cyw43::Runner<'static, Output<'static>, PioSpi<'static, PIO0, 0, DMA_CH0>>,
-) -> ! {
+async fn wifi_task(runner: cyw43::Runner<'static, Output<'static>, PioSpi<'static, PIO0, 0, DMA_CH0>>) -> ! {
     runner.run().await
 }
 
@@ -284,11 +287,7 @@ async fn connect_to_wifi(
     password: &str,
     timeout: Duration,
 ) -> Result<(), &'static str> {
-    let join_result = with_timeout(
-        timeout,
-        control.join(ssid, JoinOptions::new(password.as_bytes())),
-    )
-    .await;
+    let join_result = with_timeout(timeout, control.join(ssid, JoinOptions::new(password.as_bytes()))).await;
 
     match join_result {
         Ok(Ok(())) => {
@@ -439,11 +438,7 @@ async fn handle_retry_delay(retry_secs: u64, error_msg: &str) {
 /// and `RTC` synchronization.
 #[allow(clippy::large_futures)]
 #[embassy_executor::task]
-pub async fn time_updater(
-    spawner: Spawner,
-    rtc: Rtc<'static, peripherals::RTC>,
-    wifi_peripherals: WifiPeripherals,
-) {
+pub async fn time_updater(spawner: Spawner, rtc: Rtc<'static, peripherals::RTC>, wifi_peripherals: WifiPeripherals) {
     info!("time updater task started");
 
     // Initialize RTC task
@@ -471,9 +466,7 @@ pub async fn time_updater(
         }
 
         // Attempt to update time
-        if let Err(error_msg) =
-            update_time_once(&mut control, stack, ssid, password, &time_updater, seed).await
-        {
+        if let Err(error_msg) = update_time_once(&mut control, stack, ssid, password, &time_updater, seed).await {
             // Report failure to watchdog on error path
             report_task_failure(TaskId::TimeUpdater).await;
             handle_retry_delay(time_updater.retry_after_secs, error_msg).await;

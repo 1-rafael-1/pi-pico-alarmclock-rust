@@ -2,17 +2,24 @@
 //! This module contains the functionality to persist the alarm settings in the flash memory.
 //!
 //! The alarm settings are stored in the flash memory as three separate key/value pairs.
-use crate::event::{Event, send_event};
-use crate::state::AlarmSettings;
 use core::ops::Range;
+
 use defmt::{Debug2Format, info, warn};
-use embassy_rp::flash::{Async, Flash};
-use embassy_rp::peripherals::FLASH;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::channel::Channel;
-use sequential_storage;
-use sequential_storage::cache::NoCache;
-use sequential_storage::map::{fetch_item, store_item};
+use embassy_rp::{
+    flash::{Async, Flash},
+    peripherals::FLASH,
+};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
+use sequential_storage::{
+    self,
+    cache::NoCache,
+    map::{fetch_item, store_item},
+};
+
+use crate::{
+    event::{Event, send_event},
+    state::AlarmSettings,
+};
 
 /// Channel for flash write commands
 static FLASH_CHANNEL: Channel<CriticalSectionRawMutex, AlarmSettings, 1> = Channel::new();
@@ -76,11 +83,7 @@ impl<'a> PersistedAlarmSettings<'a> {
                     info!("No value found for key {:?}", &key);
                 }
                 Err(e) => {
-                    warn!(
-                        "Failed to fetch value for key {:?}: {:?}",
-                        &key,
-                        Debug2Format(&e)
-                    );
+                    warn!("Failed to fetch value for key {:?}: {:?}", &key, Debug2Format(&e));
                 }
             }
         }
@@ -120,10 +123,7 @@ impl<'a> PersistedAlarmSettings<'a> {
             .await
             {
                 Ok(()) => {
-                    info!(
-                        "Alarm settings key {:?} value {:?} stored successfully",
-                        &key, &value
-                    );
+                    info!("Alarm settings key {:?} value {:?} stored successfully", &key, &value);
                 }
                 Err(e) => {
                     warn!(
@@ -147,10 +147,7 @@ pub async fn alarm_settings_handler(flash: Flash<'static, FLASH, Async, { FLASH_
 
     // Read the alarm settings from the flash memory only once at the start of the task
     // and send them to the event channel.
-    if let Some(alarm_settings) = persisted_alarm_settings
-        .read_alarm_settings_from_flash()
-        .await
-    {
+    if let Some(alarm_settings) = persisted_alarm_settings.read_alarm_settings_from_flash().await {
         send_event(Event::AlarmSettingsReadFromFlash(alarm_settings)).await;
     } else {
         warn!("Failed to read alarm settings from flash on startup");
@@ -159,10 +156,7 @@ pub async fn alarm_settings_handler(flash: Flash<'static, FLASH, Async, { FLASH_
     // and then we wait for commands to update the alarm settings
     loop {
         let alarm_settings = wait_for_flash_write_command().await;
-        info!(
-            "Received alarm settings write command: {:?}",
-            &alarm_settings
-        );
+        info!("Received alarm settings write command: {:?}", &alarm_settings);
         persisted_alarm_settings
             .write_alarm_settings_to_flash(alarm_settings)
             .await;

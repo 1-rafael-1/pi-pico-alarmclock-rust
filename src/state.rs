@@ -1,12 +1,14 @@
 //! # System State
 //! This module describes the state of the system and the operations that can be performed on the state.
-use crate::event::{Event, send_event};
-use crate::task::buttons::Button;
 use defmt::Format;
 use embassy_rp::clocks::RoscRng;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::mutex::Mutex;
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use rand::Rng;
+
+use crate::{
+    event::{Event, send_event},
+    task::buttons::Button,
+};
 
 /// Type alias for the system state protected by a mutex.
 ///
@@ -59,8 +61,7 @@ impl SystemState {
 
     /// Toggle the alarm enabled state
     pub async fn toggle_alarm_enabled(&mut self) {
-        self.alarm_settings
-            .set_enabled(!self.alarm_settings.get_enabled());
+        self.alarm_settings.set_enabled(!self.alarm_settings.get_enabled());
         self.save_alarm_settings().await;
     }
 
@@ -334,9 +335,8 @@ impl PowerState {
             let lower_bound_voltage = self.battery_voltage_empty;
 
             // Calculate battery level based on voltage
-            let battery_percent = (self.vsys - lower_bound_voltage)
-                / (upper_bound_voltage - lower_bound_voltage)
-                * 100.0;
+            let battery_percent =
+                (self.vsys - lower_bound_voltage) / (upper_bound_voltage - lower_bound_voltage) * 100.0;
             // set the battery level
             self.battery_level = match battery_percent {
                 0f32..=5f32 => BatteryLevel::Bat000,

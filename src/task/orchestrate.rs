@@ -1,24 +1,26 @@
 //! # Orchestrate Tasks
 //! Task to orchestrate the state transitions of the system.
-use crate::event::{Event, receive_event, send_event};
-use crate::state::{AlarmState, OperationMode, SYSTEM_STATE, SystemState};
-use crate::task::alarm_settings::send_flash_write_command;
-use crate::task::alarm_trigger::{signal_alarm_schedule_disable, signal_alarm_schedule_update};
-use crate::task::buttons::Button;
-use crate::task::display::signal_display_update;
-use crate::task::light_effects::{signal_lightfx_start, signal_lightfx_stop};
-use crate::task::power::signal_vsys_wake;
-use crate::task::sound::{signal_sound_start, signal_sound_stop};
-use crate::task::time_updater::{
-    RTC_MUTEX, signal_time_updater_resume, signal_time_updater_suspend,
-};
-use crate::task::watchdog::{TaskId, report_task_success};
 use defmt::{Debug2Format, info, warn};
 use embassy_futures::select::select;
 use embassy_rp::rtc::{DateTime, DayOfWeek};
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::signal::Signal;
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Ticker, Timer};
+
+use crate::{
+    event::{Event, receive_event, send_event},
+    state::{AlarmState, OperationMode, SYSTEM_STATE, SystemState},
+    task::{
+        alarm_settings::send_flash_write_command,
+        alarm_trigger::{signal_alarm_schedule_disable, signal_alarm_schedule_update},
+        buttons::Button,
+        display::signal_display_update,
+        light_effects::{signal_lightfx_start, signal_lightfx_stop},
+        power::signal_vsys_wake,
+        sound::{signal_sound_start, signal_sound_stop},
+        time_updater::{RTC_MUTEX, signal_time_updater_resume, signal_time_updater_suspend},
+        watchdog::{TaskId, report_task_success},
+    },
+};
 
 /// Signal for stopping the scheduler
 static SCHEDULER_STOP_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
@@ -232,19 +234,10 @@ async fn handle_green_button_press(system_state: &mut SystemState) {
         OperationMode::Menu => system_state.set_system_info_mode(),
         OperationMode::SystemInfo => system_state.set_normal_mode(),
         OperationMode::Alarm => {
-            if system_state
-                .alarm_settings
-                .get_first_valid_stop_alarm_button()
-                == Button::Green
-            {
-                system_state
-                    .alarm_settings
-                    .erase_first_valid_stop_alarm_button();
+            if system_state.alarm_settings.get_first_valid_stop_alarm_button() == Button::Green {
+                system_state.alarm_settings.erase_first_valid_stop_alarm_button();
             }
-            if system_state
-                .alarm_settings
-                .is_alarm_stop_button_sequence_complete()
-            {
+            if system_state.alarm_settings.is_alarm_stop_button_sequence_complete() {
                 send_event(Event::AlarmStop).await;
             }
         }
@@ -269,19 +262,10 @@ async fn handle_blue_button_press(system_state: &mut SystemState) {
         }
         OperationMode::SystemInfo => system_state.set_normal_mode(),
         OperationMode::Alarm => {
-            if system_state
-                .alarm_settings
-                .get_first_valid_stop_alarm_button()
-                == Button::Blue
-            {
-                system_state
-                    .alarm_settings
-                    .erase_first_valid_stop_alarm_button();
+            if system_state.alarm_settings.get_first_valid_stop_alarm_button() == Button::Blue {
+                system_state.alarm_settings.erase_first_valid_stop_alarm_button();
             }
-            if system_state
-                .alarm_settings
-                .is_alarm_stop_button_sequence_complete()
-            {
+            if system_state.alarm_settings.is_alarm_stop_button_sequence_complete() {
                 send_event(Event::AlarmStop).await;
             }
         }
@@ -302,19 +286,10 @@ async fn handle_yellow_button_press(system_state: &mut SystemState) {
         }
         OperationMode::SetAlarmTime => system_state.increment_alarm_minute(),
         OperationMode::Alarm => {
-            if system_state
-                .alarm_settings
-                .get_first_valid_stop_alarm_button()
-                == Button::Yellow
-            {
-                system_state
-                    .alarm_settings
-                    .erase_first_valid_stop_alarm_button();
+            if system_state.alarm_settings.get_first_valid_stop_alarm_button() == Button::Yellow {
+                system_state.alarm_settings.erase_first_valid_stop_alarm_button();
             }
-            if system_state
-                .alarm_settings
-                .is_alarm_stop_button_sequence_complete()
-            {
+            if system_state.alarm_settings.is_alarm_stop_button_sequence_complete() {
                 send_event(Event::AlarmStop).await;
             }
         }

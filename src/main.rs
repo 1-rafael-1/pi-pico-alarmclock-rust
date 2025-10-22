@@ -4,33 +4,41 @@
 #![no_std]
 #![no_main]
 
-use crate::event::Event;
-use crate::task::alarm_settings::alarm_settings_handler;
-use crate::task::alarm_trigger::alarm_trigger_task;
-use crate::task::buttons::{Button, button_handler};
-use crate::task::display::display_handler;
-use crate::task::light_effects::light_effects_handler;
-use crate::task::orchestrate::{alarm_expirer, orchestrator, scheduler};
-use crate::task::power::{usb_power_detector, vsys_voltage_reader};
-use crate::task::sound::sound_handler;
-use crate::task::time_updater::time_updater;
-use crate::task::watchdog::watchdog_task;
 use defmt::info;
+use defmt_rtt as _;
 use embassy_executor::{Spawner, main};
-use embassy_rp::adc::{Adc, Channel, Config as AdcConfig, InterruptHandler as AdcInterruptHandler};
-use embassy_rp::bind_interrupts;
-use embassy_rp::clocks::{ClockConfig, CoreVoltage};
-use embassy_rp::config::Config;
-use embassy_rp::flash::{Async, Flash};
-use embassy_rp::gpio::{Input, Level, Output, Pull};
-use embassy_rp::i2c::{Config as I2cConfig, I2c, InterruptHandler as I2cInterruptHandler};
-use embassy_rp::peripherals::{I2C0, PIO0, UART1};
-use embassy_rp::pio::InterruptHandler as PioInterruptHandler;
-use embassy_rp::rtc::{InterruptHandler as RtcInterruptHandler, Rtc};
-use embassy_rp::spi::{Config as SpiConfig, Phase, Polarity, Spi};
-use embassy_rp::uart::{BufferedInterruptHandler, BufferedUart, Config as UartConfig};
+use embassy_rp::{
+    adc::{Adc, Channel, Config as AdcConfig, InterruptHandler as AdcInterruptHandler},
+    bind_interrupts,
+    clocks::{ClockConfig, CoreVoltage},
+    config::Config,
+    flash::{Async, Flash},
+    gpio::{Input, Level, Output, Pull},
+    i2c::{Config as I2cConfig, I2c, InterruptHandler as I2cInterruptHandler},
+    peripherals::{I2C0, PIO0, UART1},
+    pio::InterruptHandler as PioInterruptHandler,
+    rtc::{InterruptHandler as RtcInterruptHandler, Rtc},
+    spi::{Config as SpiConfig, Phase, Polarity, Spi},
+    uart::{BufferedInterruptHandler, BufferedUart, Config as UartConfig},
+};
+use panic_probe as _;
 use static_cell::StaticCell;
-use {defmt_rtt as _, panic_probe as _};
+
+use crate::{
+    event::Event,
+    task::{
+        alarm_settings::alarm_settings_handler,
+        alarm_trigger::alarm_trigger_task,
+        buttons::{Button, button_handler},
+        display::display_handler,
+        light_effects::light_effects_handler,
+        orchestrate::{alarm_expirer, orchestrator, scheduler},
+        power::{usb_power_detector, vsys_voltage_reader},
+        sound::sound_handler,
+        time_updater::time_updater,
+        watchdog::watchdog_task,
+    },
+};
 
 mod event;
 mod state;
@@ -49,10 +57,7 @@ bind_interrupts!(pub struct Irqs {
 /// Helper function to spawn tasks and unwrap, panicking if spawn fails.
 /// This is acceptable during initialization as we want to fail fast if we can't spawn a task.
 #[allow(clippy::unwrap_used)]
-fn spawn_unwrap<S>(
-    spawner: Spawner,
-    token: Result<embassy_executor::SpawnToken<S>, embassy_executor::SpawnError>,
-) {
+fn spawn_unwrap<S>(spawner: Spawner, token: Result<embassy_executor::SpawnToken<S>, embassy_executor::SpawnError>) {
     spawner.spawn(token.unwrap());
 }
 
@@ -79,24 +84,15 @@ async fn main(spawner: Spawner) {
 
     // Green button
     let btn_green = Input::new(p.PIN_20, Pull::Up);
-    spawn_unwrap(
-        spawner,
-        button_handler(btn_green, Event::GreenBtn, Button::Green),
-    );
+    spawn_unwrap(spawner, button_handler(btn_green, Event::GreenBtn, Button::Green));
 
     // Blue button
     let btn_blue = Input::new(p.PIN_21, Pull::Up);
-    spawn_unwrap(
-        spawner,
-        button_handler(btn_blue, Event::BlueBtn, Button::Blue),
-    );
+    spawn_unwrap(spawner, button_handler(btn_blue, Event::BlueBtn, Button::Blue));
 
     // Yellow button
     let btn_yellow = Input::new(p.PIN_22, Pull::Up);
-    spawn_unwrap(
-        spawner,
-        button_handler(btn_yellow, Event::YellowBtn, Button::Yellow),
-    );
+    spawn_unwrap(spawner, button_handler(btn_yellow, Event::YellowBtn, Button::Yellow));
 
     // USB power detector
     let vbus_in = Input::new(p.PIN_28, Pull::None);

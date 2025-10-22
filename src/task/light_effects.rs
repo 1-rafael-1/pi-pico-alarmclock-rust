@@ -2,20 +2,19 @@
 //! This module contains the tasks that control the neopixel LED ring.
 //!
 //! The tasks are responsible for initializing the neopixel, setting the colors of the LEDs, and updating the LEDs.
-use crate::event::{Event, send_event};
-use crate::state::{AlarmState, OperationMode, SYSTEM_STATE, SystemState};
 use defmt::{info, warn};
-
-use embassy_rp::peripherals::SPI0;
-use embassy_rp::spi::Spi;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::signal::Signal;
-use embassy_time::Instant;
-use embassy_time::{Duration, Timer};
-use smart_leds::SmartLedsWriteAsync;
-use smart_leds::{RGB8, brightness};
+use defmt_rtt as _;
+use embassy_rp::{peripherals::SPI0, spi::Spi};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
+use embassy_time::{Duration, Instant, Timer};
+use panic_probe as _;
+use smart_leds::{RGB8, SmartLedsWriteAsync, brightness};
 use ws2812_async::{Grb, Ws2812};
-use {defmt_rtt as _, panic_probe as _};
+
+use crate::{
+    event::{Event, send_event},
+    state::{AlarmState, OperationMode, SYSTEM_STATE, SystemState},
+};
 
 /// Signal for starting/updating the light effects with time data
 static LIGHTFX_START_SIGNAL: Signal<CriticalSectionRawMutex, (u8, u8, u8)> = Signal::new();
@@ -55,8 +54,7 @@ const NUM_LEDS_USIZE: usize = 16;
 const NUM_LEDS: u8 = 16;
 
 /// Type alias for the neopixel LED controller
-type NeopixelType =
-    Ws2812<Spi<'static, SPI0, embassy_rp::spi::Async>, Grb, { 12 * NUM_LEDS_USIZE }>;
+type NeopixelType = Ws2812<Spi<'static, SPI0, embassy_rp::spi::Async>, Grb, { 12 * NUM_LEDS_USIZE }>;
 
 /// Helper struct to bundle clock hand colors
 struct ClockColors {
@@ -137,9 +135,8 @@ impl NeopixelManager {
 #[allow(clippy::cast_possible_truncation)]
 fn calculate_hand_index(value: u8, max_value: u8) -> u8 {
     let value_mod = u16::from(value % max_value);
-    let index = (value_mod * u16::from(NUM_LEDS) / u16::from(max_value)
-        + u16::from(NUM_LEDS / 2 + 1))
-        % u16::from(NUM_LEDS);
+    let index =
+        (value_mod * u16::from(NUM_LEDS) / u16::from(max_value) + u16::from(NUM_LEDS / 2 + 1)) % u16::from(NUM_LEDS);
     index as u8
 }
 
@@ -168,8 +165,7 @@ fn interpolate_color_value(start: u8, end: u8, elapsed_millis: u32, total_millis
     clippy::cast_sign_loss
 )]
 fn calculate_lit_leds(fraction_elapsed: f32) -> u8 {
-    (((fraction_elapsed * f32::from(NUM_LEDS)) as u8) + 1)
-        .clamp(1, u8::try_from(NUM_LEDS_USIZE).unwrap_or(16))
+    (((fraction_elapsed * f32::from(NUM_LEDS)) as u8) + 1).clamp(1, u8::try_from(NUM_LEDS_USIZE).unwrap_or(16))
 }
 
 /// Displays the analog clock hands on the LED ring
@@ -184,11 +180,7 @@ async fn display_analog_clock(
     let mut data = [RGB8::default(); NUM_LEDS_USIZE];
 
     // Calculate LED indices for each hand
-    let hour_normalized = if hour.is_multiple_of(12) {
-        12
-    } else {
-        hour % 12
-    };
+    let hour_normalized = if hour.is_multiple_of(12) { 12 } else { hour % 12 };
     let hour_index = calculate_hand_index(hour_normalized, 12);
     let minute_index = calculate_hand_index(minute, 60);
     let second_index = calculate_hand_index(second, 60);
@@ -200,10 +192,8 @@ async fn display_analog_clock(
 
     // When any hands are on the same index, their colors must be mixed
     if hour_index == minute_index && hour_index == second_index {
-        data[hour_index as usize] = NeopixelManager::mix_colors(
-            NeopixelManager::mix_colors(colors.hour, colors.minute),
-            colors.second,
-        );
+        data[hour_index as usize] =
+            NeopixelManager::mix_colors(NeopixelManager::mix_colors(colors.hour, colors.minute), colors.second);
     } else {
         if hour_index == minute_index {
             data[hour_index as usize] = NeopixelManager::mix_colors(colors.hour, colors.minute);
@@ -218,10 +208,7 @@ async fn display_analog_clock(
 
     // Write the data to the neopixel
     let _ = np
-        .write(brightness(
-            data.iter().copied(),
-            neopixel_mgr.clock_brightness(),
-        ))
+        .write(brightness(data.iter().copied(), neopixel_mgr.clock_brightness()))
         .await;
 }
 
@@ -266,9 +253,7 @@ async fn sunrise_effect(np: &mut NeopixelType) {
     let start_time = Instant::now();
 
     // Loop for duration milliseconds
-    'sunrise: while Instant::now() - start_time
-        < Duration::from_millis(u64::from(params.duration_ms))
-    {
+    'sunrise: while Instant::now() - start_time < Duration::from_millis(u64::from(params.duration_ms)) {
         // Check if the effect should be stopped
         if is_lightfx_stop_signaled() {
             info!("Sunrise effect aborting");
@@ -293,8 +278,7 @@ async fn sunrise_effect(np: &mut NeopixelType) {
         )]
         #[allow(clippy::cast_possible_truncation)]
         let current_brightness = params.end_brightness as u8
-            - (remaining_time.as_millis() as f32 / params.duration_ms as f32
-                * params.end_brightness) as u8;
+            - (remaining_time.as_millis() as f32 / params.duration_ms as f32 * params.end_brightness) as u8;
 
         // Calculate the current color based on the elapsed time
         let current_color = RGB8::new(
@@ -327,9 +311,7 @@ async fn sunrise_effect(np: &mut NeopixelType) {
         }
 
         // Write the data to the neopixel
-        let _ = np
-            .write(brightness(data.iter().copied(), current_brightness))
-            .await;
+        let _ = np.write(brightness(data.iter().copied(), current_brightness)).await;
     }
 
     send_event(Event::SunriseEffectFinished).await;
@@ -363,12 +345,9 @@ async fn noise_effect(np: &mut NeopixelType, neopixel_mgr: &NeopixelManager) {
                 let wheel_index = base_offset.wrapping_add(j_clamped);
                 *data_led = NeopixelManager::wheel(wheel_index);
             }
-            np.write(brightness(
-                data.iter().copied(),
-                neopixel_mgr.alarm_brightness(),
-            ))
-            .await
-            .ok();
+            np.write(brightness(data.iter().copied(), neopixel_mgr.alarm_brightness()))
+                .await
+                .ok();
             Timer::after(Duration::from_millis(5)).await;
         }
     }
@@ -392,11 +371,7 @@ async fn handle_normal_mode(
 }
 
 /// Handles the alarm mode
-async fn handle_alarm_mode(
-    np: &mut NeopixelType,
-    neopixel_mgr: &NeopixelManager,
-    system_state: &SystemState,
-) {
+async fn handle_alarm_mode(np: &mut NeopixelType, neopixel_mgr: &NeopixelManager, system_state: &SystemState) {
     match system_state.alarm_state {
         AlarmState::Sunrise => {
             sunrise_effect(np).await;
@@ -424,10 +399,7 @@ pub async fn light_effects_handler(spi: Spi<'static, SPI0, embassy_rp::spi::Asyn
     'mainloop: loop {
         // Wait for the signal to update the neopixel
         let (hour, minute, second) = wait_for_lightfx_start().await;
-        info!(
-            "LightFX signal received: ({}, {}, {})",
-            hour, minute, second
-        );
+        info!("LightFX signal received: ({}, {}, {})", hour, minute, second);
 
         // Get the state of the system out of the mutex and quickly drop the mutex
         let system_state: SystemState;
@@ -446,20 +418,8 @@ pub async fn light_effects_handler(spi: Spi<'static, SPI0, embassy_rp::spi::Asyn
         info!("{}", system_state);
 
         match system_state.operation_mode {
-            OperationMode::Normal
-            | OperationMode::Menu
-            | OperationMode::SetAlarmTime
-            | OperationMode::SystemInfo => {
-                handle_normal_mode(
-                    &mut np,
-                    &neopixel_mgr,
-                    &system_state,
-                    hour,
-                    minute,
-                    second,
-                    &colors,
-                )
-                .await;
+            OperationMode::Normal | OperationMode::Menu | OperationMode::SetAlarmTime | OperationMode::SystemInfo => {
+                handle_normal_mode(&mut np, &neopixel_mgr, &system_state, hour, minute, second, &colors).await;
             }
             OperationMode::Alarm => {
                 handle_alarm_mode(&mut np, &neopixel_mgr, &system_state).await;

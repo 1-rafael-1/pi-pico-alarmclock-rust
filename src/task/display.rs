@@ -2,18 +2,15 @@
 //! This module contains the task that displays information on the OLED display.
 //!
 //! The task is responsible for initializing the display, displaying images and text, and updating the display.
-use crate::state::{BatteryLevel, OperationMode, SYSTEM_STATE};
-use crate::task::buttons::Button;
-use crate::task::time_updater::RTC_MUTEX;
-use crate::task::watchdog::{TaskId, report_task_success};
-use crate::utility::string_utils::StringUtils;
 use core::fmt::Write;
+
 use defmt::{Debug2Format, info, warn};
-use embassy_rp::i2c::{Async, I2c};
-use embassy_rp::peripherals::I2C0;
-use embassy_rp::rtc::{DateTime, DayOfWeek};
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::signal::Signal;
+use embassy_rp::{
+    i2c::{Async, I2c},
+    peripherals::I2C0,
+    rtc::{DateTime, DayOfWeek},
+};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Timer};
 use embedded_graphics::{
     image::Image,
@@ -28,6 +25,16 @@ use embedded_graphics::{
 use heapless::String;
 use ssd1306_async::{I2CDisplayInterface, Ssd1306, prelude::*};
 use tinybmp::Bmp;
+
+use crate::{
+    state::{BatteryLevel, OperationMode, SYSTEM_STATE},
+    task::{
+        buttons::Button,
+        time_updater::RTC_MUTEX,
+        watchdog::{TaskId, report_task_success},
+    },
+    utility::string_utils::StringUtils,
+};
 
 /// Signal for triggering display updates
 static DISPLAY_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
@@ -82,109 +89,87 @@ impl Settings<'_> {
         Self {
             saber: Bmp::from_slice(include_bytes!("../media/saber.bmp")).unwrap_or_else(|_| {
                 warn!("Failed to load saber.bmp, using fallback");
-                Bmp::from_slice(include_bytes!("../media/0.bmp"))
-                    .expect("Fallback 0.bmp image must be available")
+                Bmp::from_slice(include_bytes!("../media/0.bmp")).expect("Fallback 0.bmp image must be available")
             }),
             colon: Bmp::from_slice(include_bytes!("../media/colon.bmp")).unwrap_or_else(|_| {
                 warn!("Failed to load colon.bmp, using fallback");
-                Bmp::from_slice(include_bytes!("../media/0.bmp"))
-                    .expect("Fallback 0.bmp image must be available")
+                Bmp::from_slice(include_bytes!("../media/0.bmp")).expect("Fallback 0.bmp image must be available")
             }),
             digits: [
                 Bmp::from_slice(include_bytes!("../media/0.bmp")).unwrap_or_else(|_| {
                     warn!("Failed to load 0.bmp, using fallback");
-                    Bmp::from_slice(include_bytes!("../media/0.bmp"))
-                        .expect("Fallback 0.bmp image must be available")
+                    Bmp::from_slice(include_bytes!("../media/0.bmp")).expect("Fallback 0.bmp image must be available")
                 }),
                 Bmp::from_slice(include_bytes!("../media/1.bmp")).unwrap_or_else(|_| {
                     warn!("Failed to load 1.bmp, using fallback");
-                    Bmp::from_slice(include_bytes!("../media/0.bmp"))
-                        .expect("Fallback 0.bmp image must be available")
+                    Bmp::from_slice(include_bytes!("../media/0.bmp")).expect("Fallback 0.bmp image must be available")
                 }),
                 Bmp::from_slice(include_bytes!("../media/2.bmp")).unwrap_or_else(|_| {
                     warn!("Failed to load 2.bmp, using fallback");
-                    Bmp::from_slice(include_bytes!("../media/0.bmp"))
-                        .expect("Fallback 0.bmp image must be available")
+                    Bmp::from_slice(include_bytes!("../media/0.bmp")).expect("Fallback 0.bmp image must be available")
                 }),
                 Bmp::from_slice(include_bytes!("../media/3.bmp")).unwrap_or_else(|_| {
                     warn!("Failed to load 3.bmp, using fallback");
-                    Bmp::from_slice(include_bytes!("../media/0.bmp"))
-                        .expect("Fallback 0.bmp image must be available")
+                    Bmp::from_slice(include_bytes!("../media/0.bmp")).expect("Fallback 0.bmp image must be available")
                 }),
                 Bmp::from_slice(include_bytes!("../media/4.bmp")).unwrap_or_else(|_| {
                     warn!("Failed to load 4.bmp, using fallback");
-                    Bmp::from_slice(include_bytes!("../media/0.bmp"))
-                        .expect("Fallback 0.bmp image must be available")
+                    Bmp::from_slice(include_bytes!("../media/0.bmp")).expect("Fallback 0.bmp image must be available")
                 }),
                 Bmp::from_slice(include_bytes!("../media/5.bmp")).unwrap_or_else(|_| {
                     warn!("Failed to load 5.bmp, using fallback");
-                    Bmp::from_slice(include_bytes!("../media/0.bmp"))
-                        .expect("Fallback 0.bmp image must be available")
+                    Bmp::from_slice(include_bytes!("../media/0.bmp")).expect("Fallback 0.bmp image must be available")
                 }),
                 Bmp::from_slice(include_bytes!("../media/6.bmp")).unwrap_or_else(|_| {
                     warn!("Failed to load 6.bmp, using fallback");
-                    Bmp::from_slice(include_bytes!("../media/0.bmp"))
-                        .expect("Fallback 0.bmp image must be available")
+                    Bmp::from_slice(include_bytes!("../media/0.bmp")).expect("Fallback 0.bmp image must be available")
                 }),
                 Bmp::from_slice(include_bytes!("../media/7.bmp")).unwrap_or_else(|_| {
                     warn!("Failed to load 7.bmp, using fallback");
-                    Bmp::from_slice(include_bytes!("../media/0.bmp"))
-                        .expect("Fallback 0.bmp image must be available")
+                    Bmp::from_slice(include_bytes!("../media/0.bmp")).expect("Fallback 0.bmp image must be available")
                 }),
                 Bmp::from_slice(include_bytes!("../media/8.bmp")).unwrap_or_else(|_| {
                     warn!("Failed to load 8.bmp, using fallback");
-                    Bmp::from_slice(include_bytes!("../media/0.bmp"))
-                        .expect("Fallback 0.bmp image must be available")
+                    Bmp::from_slice(include_bytes!("../media/0.bmp")).expect("Fallback 0.bmp image must be available")
                 }),
                 Bmp::from_slice(include_bytes!("../media/9.bmp")).unwrap_or_else(|_| {
                     warn!("Failed to load 9.bmp, using fallback");
-                    Bmp::from_slice(include_bytes!("../media/0.bmp"))
-                        .expect("Fallback 0.bmp image must be available")
+                    Bmp::from_slice(include_bytes!("../media/0.bmp")).expect("Fallback 0.bmp image must be available")
                 }),
             ],
             bat: [
                 Bmp::from_slice(include_bytes!("../media/bat_000.bmp")).unwrap_or_else(|_| {
                     warn!("Failed to load bat_000.bmp, using fallback");
-                    Bmp::from_slice(include_bytes!("../media/0.bmp"))
-                        .expect("Fallback 0.bmp image must be available")
+                    Bmp::from_slice(include_bytes!("../media/0.bmp")).expect("Fallback 0.bmp image must be available")
                 }),
                 Bmp::from_slice(include_bytes!("../media/bat_020.bmp")).unwrap_or_else(|_| {
                     warn!("Failed to load bat_020.bmp, using fallback");
-                    Bmp::from_slice(include_bytes!("../media/0.bmp"))
-                        .expect("Fallback 0.bmp image must be available")
+                    Bmp::from_slice(include_bytes!("../media/0.bmp")).expect("Fallback 0.bmp image must be available")
                 }),
                 Bmp::from_slice(include_bytes!("../media/bat_040.bmp")).unwrap_or_else(|_| {
                     warn!("Failed to load bat_040.bmp, using fallback");
-                    Bmp::from_slice(include_bytes!("../media/0.bmp"))
-                        .expect("Fallback 0.bmp image must be available")
+                    Bmp::from_slice(include_bytes!("../media/0.bmp")).expect("Fallback 0.bmp image must be available")
                 }),
                 Bmp::from_slice(include_bytes!("../media/bat_060.bmp")).unwrap_or_else(|_| {
                     warn!("Failed to load bat_060.bmp, using fallback");
-                    Bmp::from_slice(include_bytes!("../media/0.bmp"))
-                        .expect("Fallback 0.bmp image must be available")
+                    Bmp::from_slice(include_bytes!("../media/0.bmp")).expect("Fallback 0.bmp image must be available")
                 }),
                 Bmp::from_slice(include_bytes!("../media/bat_080.bmp")).unwrap_or_else(|_| {
                     warn!("Failed to load bat_080.bmp, using fallback");
-                    Bmp::from_slice(include_bytes!("../media/0.bmp"))
-                        .expect("Fallback 0.bmp image must be available")
+                    Bmp::from_slice(include_bytes!("../media/0.bmp")).expect("Fallback 0.bmp image must be available")
                 }),
                 Bmp::from_slice(include_bytes!("../media/bat_100.bmp")).unwrap_or_else(|_| {
                     warn!("Failed to load bat_100.bmp, using fallback");
-                    Bmp::from_slice(include_bytes!("../media/0.bmp"))
-                        .expect("Fallback 0.bmp image must be available")
+                    Bmp::from_slice(include_bytes!("../media/0.bmp")).expect("Fallback 0.bmp image must be available")
                 }),
             ],
-            bat_mains: Bmp::from_slice(include_bytes!("../media/bat_mains.bmp")).unwrap_or_else(
-                |_| {
-                    warn!("Failed to load bat_mains.bmp, using fallback");
-                    Bmp::from_slice(include_bytes!("../media/0.bmp"))
-                        .expect("Fallback 0.bmp image must be available")
-                },
-            ),
+            bat_mains: Bmp::from_slice(include_bytes!("../media/bat_mains.bmp")).unwrap_or_else(|_| {
+                warn!("Failed to load bat_mains.bmp, using fallback");
+                Bmp::from_slice(include_bytes!("../media/0.bmp")).expect("Fallback 0.bmp image must be available")
+            }),
             setup: Bmp::from_slice(include_bytes!("../media/settings.bmp")).unwrap_or_else(|_| {
                 warn!("Failed to load settings.bmp, using fallback");
-                Bmp::from_slice(include_bytes!("../media/0.bmp"))
-                    .expect("Fallback 0.bmp image must be available")
+                Bmp::from_slice(include_bytes!("../media/0.bmp")).expect("Fallback 0.bmp image must be available")
             }),
             state_indicator_position: Point::new(0, 0),
             bat_position: Point::new(108, 0),
@@ -208,12 +193,8 @@ impl Settings<'_> {
 }
 
 /// Draws the state indicator in the top-left area of the display
-fn draw_state_indicator<D>(
-    display: &mut D,
-    operation_mode: &OperationMode,
-    alarm_enabled: bool,
-    settings: &Settings,
-) where
+fn draw_state_indicator<D>(display: &mut D, operation_mode: &OperationMode, alarm_enabled: bool, settings: &Settings)
+where
     D: embedded_graphics::draw_target::DrawTarget<Color = BinaryColor>,
 {
     match operation_mode {
@@ -279,23 +260,16 @@ where
     let first_hour_digit = Image::new(&settings.digits[(hours / 10) as usize], digit_next_position);
     digit_next_position.x += 24;
 
-    let second_hour_digit =
-        Image::new(&settings.digits[(hours % 10) as usize], digit_next_position);
+    let second_hour_digit = Image::new(&settings.digits[(hours % 10) as usize], digit_next_position);
     digit_next_position.x += 24;
 
     let colon = Image::new(&settings.colon, digit_next_position);
     digit_next_position.x += 11;
 
-    let first_minute_digit = Image::new(
-        &settings.digits[(minutes / 10) as usize],
-        digit_next_position,
-    );
+    let first_minute_digit = Image::new(&settings.digits[(minutes / 10) as usize], digit_next_position);
     digit_next_position.x += 24;
 
-    let second_minute_digit = Image::new(
-        &settings.digits[(minutes % 10) as usize],
-        digit_next_position,
-    );
+    let second_minute_digit = Image::new(&settings.digits[(minutes % 10) as usize], digit_next_position);
 
     let _ = first_hour_digit.draw(&mut display.color_converted());
     let _ = second_hour_digit.draw(&mut display.color_converted());
@@ -336,14 +310,8 @@ where
 }
 
 /// Draws the system info content in the center area of the display
-fn draw_system_info_content<D>(
-    display: &mut D,
-    vsys: f32,
-    usb_power: bool,
-    upper: f32,
-    lower: f32,
-    settings: &Settings,
-) where
+fn draw_system_info_content<D>(display: &mut D, vsys: f32, usb_power: bool, upper: f32, lower: f32, settings: &Settings)
+where
     D: embedded_graphics::draw_target::DrawTarget<Color = BinaryColor>,
 {
     let mut content_next_position = settings.content_start_position;
@@ -403,13 +371,7 @@ where
     D: embedded_graphics::draw_target::DrawTarget<Color = BinaryColor>,
 {
     let date = StringUtils::convert_datetime_to_str(dt);
-    let _ = Text::with_baseline(
-        &date,
-        settings.date_position,
-        settings.date_text_style,
-        Baseline::Top,
-    )
-    .draw(display);
+    let _ = Text::with_baseline(&date, settings.date_position, settings.date_text_style, Baseline::Top).draw(display);
 }
 
 #[embassy_executor::task]
@@ -418,8 +380,8 @@ pub async fn display_handler(i2c: I2c<'static, I2C0, Async>) {
     info!("Display task started");
 
     let interface = I2CDisplayInterface::new(i2c);
-    let mut display = Ssd1306::new(interface, DisplaySize128x64, DisplayRotation::Rotate0)
-        .into_buffered_graphics_mode();
+    let mut display =
+        Ssd1306::new(interface, DisplaySize128x64, DisplayRotation::Rotate0).into_buffered_graphics_mode();
     if let Err(e) = display.init().await {
         warn!("Failed to initialize display: {}", defmt::Debug2Format(&e));
         return;
@@ -477,9 +439,7 @@ pub async fn display_handler(i2c: I2c<'static, I2C0, Async>) {
 
         // Draw state indicator (or alarm button prompt)
         if operation_mode == OperationMode::Alarm {
-            let btn = system_state
-                .alarm_settings
-                .get_first_valid_stop_alarm_button();
+            let btn = system_state.alarm_settings.get_first_valid_stop_alarm_button();
             draw_alarm_button_prompt(&mut display, &btn, &settings);
         } else {
             draw_state_indicator(
@@ -491,11 +451,7 @@ pub async fn display_handler(i2c: I2c<'static, I2C0, Async>) {
         }
 
         // Draw battery status
-        draw_battery_status(
-            &mut display,
-            &system_state.power_state.get_battery_level(),
-            &settings,
-        );
+        draw_battery_status(&mut display, &system_state.power_state.get_battery_level(), &settings);
 
         // Draw main content (time or menu)
         let (hours, minutes) = match operation_mode {

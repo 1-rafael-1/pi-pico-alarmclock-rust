@@ -2,9 +2,9 @@
 //! This module contains utility functions around string handling that are used in the project.
 
 use core::fmt::Write;
+
 use embassy_rp::rtc::{DateTime, DayOfWeek};
-use heapless::String;
-use heapless::Vec;
+use heapless::{String, Vec};
 
 /// A utility struct for string operations
 pub struct StringUtils;
@@ -65,11 +65,7 @@ impl StringUtils {
     /// If padding fails due to capacity constraints, the padding is skipped.
     pub fn convert_datetime_to_str(dt: &DateTime) -> String<22> {
         let mut s: String<20> = String::new();
-        let _ = write!(
-            s,
-            "{:?} {:02}.{:02}.{}",
-            dt.day_of_week, dt.day, dt.month, dt.year
-        );
+        let _ = write!(s, "{:?} {:02}.{:02}.{}", dt.day_of_week, dt.day, dt.month, dt.year);
 
         let content_length = s.chars().count();
         let total_length: u8 = 22;
