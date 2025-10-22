@@ -2,6 +2,10 @@
   "lsp": {
     "rust-analyzer": {
       "initialization_options": {
+        "cargo": {
+          "allTargets": false,
+          "target": "thumbv6m-none-eabi"
+        },
         "check": {
           "command": "clippy"
         }

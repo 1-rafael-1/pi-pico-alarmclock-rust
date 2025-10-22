@@ -2,14 +2,16 @@
 //! Determine the power state of the system: battery or power supply.
 //! Detremine the supply voltage of the system.
 
-use crate::event::{Event, send_event};
 use defmt::info;
 use embassy_futures::select::select;
-use embassy_rp::adc::{Adc, Channel};
-use embassy_rp::gpio::Input;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::signal::Signal;
+use embassy_rp::{
+    adc::{Adc, Channel},
+    gpio::Input,
+};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Timer};
+
+use crate::event::{Event, send_event};
 
 /// Signal for waking the vsys voltage reader early
 static VSYS_WAKE_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
@@ -48,10 +50,7 @@ pub async fn usb_power_detector(mut vbus_in: Input<'static>) {
 /// the VSYS pin is not available for direct use (it is run through the wifi module, and there is no safe way to use wifi and the
 /// vsys concurrently).
 #[embassy_executor::task]
-pub async fn vsys_voltage_reader(
-    mut adc: Adc<'static, embassy_rp::adc::Async>,
-    mut channel: Channel<'static>,
-) {
+pub async fn vsys_voltage_reader(mut adc: Adc<'static, embassy_rp::adc::Async>, mut channel: Channel<'static>) {
     info!("vsys_voltage task started");
 
     let downtime = Duration::from_secs(600); // 10 minutes

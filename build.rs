@@ -12,13 +12,13 @@
 #![allow(clippy::unwrap_used)]
 #![allow(clippy::print_stdout)]
 
-use std::env;
-use std::fs;
-use std::fs::File;
-use std::io;
-use std::io::Write;
-use std::path::Path;
-use std::path::PathBuf;
+use std::{
+    env, fs,
+    fs::File,
+    io,
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 fn main() {
     println!("in build.rs");
@@ -38,8 +38,7 @@ fn wifi_secrets() -> io::Result<()> {
     let mut f = File::create(dest_path).expect("Could not create wifi_secrets.rs file");
 
     // Read the wifi_config.json file, or create it with dummy values if it doesn't exist
-    let manifest_dir =
-        env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR environment variable not set");
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR environment variable not set");
     let config_path = Path::new(&manifest_dir).join("config/wifi_config.json");
     //let config_path = Path::new("src/config/wifi_config.json");
     let config_contents = if config_path.exists() {
@@ -79,8 +78,7 @@ fn time_api_config() -> io::Result<()> {
     let mut f = File::create(dest_path).expect("Could not create time_api_config.rs file");
 
     // Read the time_api.json file, or create it with dummy values if it doesn't exist
-    let manifest_dir =
-        env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR environment variable not set");
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR environment variable not set");
     let config_path = Path::new(&manifest_dir).join("config/time_api.json");
     //let config_path = Path::new("src/config/time_api.json");
     let config_contents = if config_path.exists() {
@@ -93,8 +91,7 @@ fn time_api_config() -> io::Result<()> {
     };
 
     // Parse the JSON and extract the URL and timezone
-    let config: serde_json::Value =
-        serde_json::from_str(&config_contents).expect("Could not parse time_api.json file");
+    let config: serde_json::Value = serde_json::from_str(&config_contents).expect("Could not parse time_api.json file");
     let baseurl = config["time api by zone"]["baseurl"]
         .as_str()
         .expect("baseurl not found in time_api.json file");

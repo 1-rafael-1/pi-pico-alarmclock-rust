@@ -3,17 +3,22 @@
 //! It uses the embassy-rp RTC alarm API to schedule alarms and await their triggering,
 //! replacing the previous busy-polling approach.
 
-use crate::event::Event;
-use crate::event::send_event;
-use crate::state::SYSTEM_STATE;
-use crate::task::time_updater::RTC_MUTEX;
-use crate::task::watchdog::{TaskId, report_task_success};
 use defmt::{Debug2Format, info, warn};
-use embassy_rp::peripherals;
-use embassy_rp::rtc::{DateTime, DateTimeFilter, DayOfWeek, Rtc};
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::signal::Signal;
+use embassy_rp::{
+    peripherals,
+    rtc::{DateTime, DateTimeFilter, DayOfWeek, Rtc},
+};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Timer};
+
+use crate::{
+    event::{Event, send_event},
+    state::SYSTEM_STATE,
+    task::{
+        time_updater::RTC_MUTEX,
+        watchdog::{TaskId, report_task_success},
+    },
+};
 
 /// Signal to update the alarm schedule when alarm settings change
 static ALARM_SCHEDULE_UPDATE_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
@@ -161,10 +166,7 @@ async fn schedule_alarm(config: &AlarmConfig) -> bool {
     let now = match rtc.now() {
         Ok(dt) => dt,
         Err(e) => {
-            warn!(
-                "Failed to get current time from RTC: {:?}",
-                Debug2Format(&e)
-            );
+            warn!("Failed to get current time from RTC: {:?}", Debug2Format(&e));
             return false;
         }
     };
@@ -193,21 +195,13 @@ const fn is_alarm_time_in_past(now: &DateTime, alarm_hour: u8, alarm_minute: u8)
 fn schedule_alarm_for_today(rtc: &mut Rtc<'static, peripherals::RTC>, hour: u8, minute: u8) {
     info!("Scheduling alarm for today at {:02}:{:02}", hour, minute);
 
-    let filter = DateTimeFilter::default()
-        .hour(hour)
-        .minute(minute)
-        .second(0);
+    let filter = DateTimeFilter::default().hour(hour).minute(minute).second(0);
 
     rtc.schedule_alarm(filter);
 }
 
 /// Schedules the alarm for tomorrow at the specified time
-fn schedule_alarm_for_tomorrow(
-    rtc: &mut Rtc<'static, peripherals::RTC>,
-    now: &DateTime,
-    hour: u8,
-    minute: u8,
-) {
+fn schedule_alarm_for_tomorrow(rtc: &mut Rtc<'static, peripherals::RTC>, now: &DateTime, hour: u8, minute: u8) {
     let tomorrow = calculate_tomorrow(now);
 
     info!(

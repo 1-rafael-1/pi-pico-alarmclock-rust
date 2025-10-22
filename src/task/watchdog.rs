@@ -39,7 +39,7 @@ impl TaskId {
         match self {
             Self::Orchestrator | Self::Display => Duration::from_secs(120), // 2 minutes
             Self::AlarmTrigger => Duration::from_secs(300),                 // 5 minutes
-            Self::TimeUpdater => Duration::from_secs(25200), // 7 hours (refreshes every 6h)
+            Self::TimeUpdater => Duration::from_secs(25200),                // 7 hours (refreshes every 6h)
         }
     }
 }
@@ -191,8 +191,7 @@ impl SystemHealth {
 }
 
 /// Global system health tracker
-static SYSTEM_HEALTH: Mutex<CriticalSectionRawMutex, SystemHealth> =
-    Mutex::new(SystemHealth::new());
+static SYSTEM_HEALTH: Mutex<CriticalSectionRawMutex, SystemHealth> = Mutex::new(SystemHealth::new());
 
 /// Report a successful task iteration
 ///

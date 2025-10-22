@@ -1,11 +1,13 @@
 //! # Button Tasks
 //! This module contains the tasks for the buttons. Each button has its own task.
 
-use crate::event::{Event, send_event};
 use defmt::{Format, info};
+use defmt_rtt as _;
 use embassy_rp::gpio::{Input, Level};
 use embassy_time::{Duration, Instant, Timer, with_deadline};
-use {defmt_rtt as _, panic_probe as _};
+use panic_probe as _;
+
+use crate::event::{Event, send_event};
 
 /// Handles button press, hold, and long hold
 /// Debounces button press
@@ -61,8 +63,7 @@ impl<'a> ButtonManager<'a> {
             }
 
             // we wait for the button to be released, depending on how fast that happens, we have a one-time press event or a hold.
-            let level_result =
-                with_deadline(Instant::now() + Duration::from_secs(1), self.debounce()).await;
+            let level_result = with_deadline(Instant::now() + Duration::from_secs(1), self.debounce()).await;
 
             // Button Released < 1s -> we have a one-time press event
             if let Ok(level) = level_result {
