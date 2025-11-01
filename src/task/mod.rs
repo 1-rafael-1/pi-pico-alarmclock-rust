@@ -1,6 +1,7 @@
 //! Tasks that make up the application.
 pub mod alarm_settings;
 pub mod alarm_trigger;
+pub mod button_leds;
 pub mod buttons;
 pub mod display;
 pub mod light_effects;

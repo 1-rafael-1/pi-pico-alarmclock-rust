@@ -12,6 +12,7 @@ use crate::{
     task::{
         alarm_settings::send_flash_write_command,
         alarm_trigger::{signal_alarm_schedule_disable, signal_alarm_schedule_update},
+        button_leds::{ButtonLedCommand, signal_button_leds},
         buttons::Button,
         display::signal_display_update,
         light_effects::{signal_lightfx_start, signal_lightfx_stop},
@@ -92,14 +93,17 @@ async fn handle_event(event: Event, system_state: &mut SystemState) {
         Event::BlueBtn => {
             handle_blue_button_press(system_state).await;
             signal_display_update();
+            handle_button_led_on_button_press(system_state);
         }
         Event::GreenBtn => {
             handle_green_button_press(system_state).await;
             signal_display_update();
+            handle_button_led_on_button_press(system_state);
         }
         Event::YellowBtn => {
             handle_yellow_button_press(system_state).await;
             signal_display_update();
+            handle_button_led_on_button_press(system_state);
         }
         Event::Vbus(usb) => {
             info!("Vbus event, usb: {}", usb);
@@ -200,6 +204,7 @@ fn handle_alarm_event(system_state: &mut SystemState) {
     signal_display_update();
     signal_lightfx_start(0, 0, 0);
     signal_alarm_expirer();
+    signal_button_leds(ButtonLedCommand::On);
 }
 
 /// Handles the alarm stop event by transitioning back to normal mode.
@@ -211,6 +216,7 @@ fn handle_alarm_stop_event(system_state: &mut SystemState) {
         signal_lightfx_stop();
         signal_lightfx_start(0, 0, 0);
         signal_sound_stop();
+        signal_button_leds(ButtonLedCommand::Off);
     }
 }
 
@@ -244,6 +250,15 @@ async fn handle_green_button_press(system_state: &mut SystemState) {
         OperationMode::Standby => {
             system_state.wake_up().await;
         }
+    }
+}
+
+/// Handles button LED control when a button is pressed (non-alarm mode only)
+fn handle_button_led_on_button_press(system_state: &SystemState) {
+    // Only trigger the timeout if not in alarm mode
+    // During alarm mode, button LEDs are controlled by alarm start/stop
+    if system_state.operation_mode != OperationMode::Alarm {
+        signal_button_leds(ButtonLedCommand::OnWithTimeout);
     }
 }
 
