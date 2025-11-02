@@ -175,7 +175,7 @@ This is still WIP, I have my first pair of burns to show for it, really not good
 ### Push Buttons
 |Component|Qty|Description|
 |---------|---|-----------|
-|Push Buttons|3|12×12×7.3mm tactile buttons with 13mm diameter, 8mm height caps (one each: yellow, green, blue)|
+|LED Ring Push Buttons|3|16mm LED ring illuminated push buttons with JST 4-pin connectors (one each: yellow, green, blue). LED rings are controlled via MOSFET Q4 (IRLZ44N) on GPIO 26 with 10-second auto-off timeout on button press (except during alarm mode)|
 
 ### Semiconductors
 |Component|Qty|Type|Description|
