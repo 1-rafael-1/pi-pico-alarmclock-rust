@@ -122,19 +122,20 @@ This keeps `info!` and `warn!` logs but removes `debug!` and `trace!`.
 
 ### Flashing Manually
 
-To flash the device manually without a debug probe:
+To flash the device manually without a debug probe (note: `elf2uf2-rs` does not work with Rust versions 1.89 and up):
 
 ```Shell
+# Build for release (optimized for size and power)
 DEFMT_LOG=warn cargo build --release
-cargo install elf2uf2-rs
-elf2uf2-rs .\target\thumbv6m-none-eabi\release\pi-pico-alarmclock
+
+# Option 1: Flash directly with picotool
+# Put board in bootloader mode (hold BOOTSEL while connecting USB)
+picotool load -u -v -x -t elf target/thumbv6m-none-eabi/release/pi-pico-alarmclock
+
+# Option 2: Convert to UF2 and copy manually
+picotool uf2 convert target/thumbv6m-none-eabi/release/pi-pico-alarmclock -t elf pi-pico-alarmclock.uf2 -t uf2
+# Copy the resulting .uf2 file to the RPI-RP2 drive that appears when holding BOOTSEL during USB connection
 ```
-
-Then find the `uf2` file in the above folder and flash it manually to the Pi Pico by:
-1. Hold the BOOTSEL button on the Pico while connecting it via USB
-2. Copy the `uf2` file to the RPI-RP2 drive that appears
-
-As an alternative, find the latest release and use the `uf2` file from there.
 
 ## Testing
 
@@ -142,8 +143,7 @@ For testing during development, use the debug build with a debug probe connected
 
 ## Circuit
 
-This is my best attempt at a circuit diagram. Not knowing much about electronics and long-buried memories from school slowly re-loading from cold storage this was trial and error and a lot of googling before it worked. In this configuration I am reasonably sure it is okay to start soldering a first model.
-![Circuit Diagram](circuit/circuit.png)
+The circuit schematic can be found in KiCad format at [circuit/pi-pico-alarmclock/](circuit/pi-pico-alarmclock/). The design includes power management with a battery charger module, voltage level sensing, MOSFET switching for display and audio control, and all necessary peripheral connections.
 
 ## Enclosure
 
@@ -155,27 +155,68 @@ A gallery of images can be found [here](enclosure/gallery.md).
 
 This is still WIP, I have my first pair of burns to show for it, really not good at soldering... Will update when done.
 
-## Components
+## Components (Bill of Materials)
 
+### Main Components
+|Component|Qty|Description|
+|---------|---|-----------|
+|Raspberry Pi Pico W|1|Microcontroller with WiFi|
+|OLED Display|1|SSD1306 compatible I²C OLED Display 128×64 pixels with two color yellow/blue. Input Voltage 3.3V|
+|DFPlayer Mini|1|MP3 module (DFR0299)|
+|TC4056A Charger Module|1|Li-ion battery charging module with protection|
+|Step-up Converter|1|5V boost converter (e.g., U3V16F5 or similar), 2.5-5.5V input, 5V/1A output|
+|WS2812B NeoPixel Ring|1|16 RGB LED ring (this is the limit the power supply can handle)|
+|Speaker|1|3W 8Ω speaker, 70×30×15mm (DFPlayer Mini compatible)|
+|18650 Li-ion Battery|1|3350mAh or similar capacity|
+|Battery Holder|1|For 18650 cell|
+|Power Switch|1|Simple on/off switch|
+|Micro SD Card|1|Any capacity, formatted to FAT32|
+
+### Push Buttons
+|Component|Qty|Description|
+|---------|---|-----------|
+|Push Buttons|3|12×12×7.3mm tactile buttons with 13mm diameter, 8mm height caps (one each: yellow, green, blue)|
+
+### Semiconductors
+|Component|Qty|Type|Description|
+|---------|---|----|-----------| 
+|Q1, Q4|2|IRLZ44N|N-channel MOSFET, logic-level (TO-220)|
+|Q3|1|IRF9540|P-channel MOSFET, logic-level (TO-220)|
+|D3|1|1N5819|Schottky diode, 40V, 1A (DO-41)|
+
+### Resistors (1/4W)
+|Reference|Qty|Value|
+|---------|---|-----|
+|R1, R5|2|10kΩ|
+|R2|1|100Ω|
+|R3, R7|2|1kΩ|
+|R6|1|2.2kΩ|
+|R8|1|220Ω|
+|R9, R11|2|680kΩ|
+|R10, R12|2|1MΩ|
+
+### Capacitors
+|Reference|Qty|Type|Value|Voltage|
+|---------|---|----|-----|-------|
+|C1, C3, C4, C6|4|Ceramic|100nF|50V|
+|C2, C7|2|Electrolytic|470µF|16V|
+
+### Connectors
+|Reference|Qty|Type|Description|
+|---------|---|----|-----------|
+|J1|1|Screw Terminal 2P|5mm pitch, for speaker connection|
+|J2|1|JST PH 4-pin|Button Green (2mm pitch)|
+|J3|1|JST PH 4-pin|Button Blue (2mm pitch)|
+|J4|1|JST PH 4-pin|Button Yellow (2mm pitch)|
+|J5|1|JST PH 3-pin|NeoPixel connection (2mm pitch)|
+|J6|1|JST PH 4-pin|OLED display (2mm pitch)|
+|J7|1|Screw Terminal 2P|5mm pitch, for battery connection|
+
+### Miscellaneous
 |Component|Description|
-|---------|---------|
-|Microcontroller|Raspberry Pi Pico W|
-|OLED Display|SSD1306 compatible I²C OLED Display 128*64 pixels with two color yellow/blue. Input Voltage 3.3V|
-|battery|A 18650 Li-ion battery with 3350mAh. Anything else will work, as long as it fits with the charger module and outputs no more than 5V.|
-|battery holder|really anything will do|
-|power switch|Any simple switch to cut power between the battery and the charger module|
-|charger module|A TC4056A module here, but any similar module will work, as long as it can be powered by pads and fits the Li-Ion battery specs. A managed charger that protects the battery is preferred.|
-|NeoPixel ring|WS2812B with 16 RGB LED on it. This is the limit on what the power supply can handle.|
-|step-up converter|U3V16F5 used here. Any other converter will do, that can convert the expected input between 2.5V and 5V and convert that to a steady 5V with 1000mA.|
-|speaker|DFplayer Mini 3 Watt 8Ω speaker, 70*30*15mm. They can be found in some flavors from multiple vendors. Depending on the form factor, not all will fit into the enclosure as designed here.|
-|p-channel MOSFET|Two IRF9540 used here. Other models will do, as long as the gate voltage of 3.3V is sufficient to fully switch (look for "logic-level MOSFET") and they can handle 5V safely. A ton of options exist and the ones used here are probably not the most ideal choice.|
-|n-channel MOSFET|One IRLZ44N used here. Other models will do, as long as the gate voltage of 3.3V is sufficient to fully switch (look for "logic-level MOSFET") and it can handle 5V safely. A ton of options exist and the one used here is probably not the most ideal choice.|
-|Schottky diode|1N5819 or any other rated for >= 1A continuous current|
-|mp3 module|DFR0299 (DFPlayer)|
-|micro sd card|Whatever, formatted to FAT32.|
-|push button|Three used. 13mm diameter, 8mm hight caps on 12x12x7.3mm button - these should be fairly standard. One caps each in yellow, green and blue.|
-|Resistors|Three 1MΩ, Two 680KΩ and one 220Ω|
-|Wires|Plenty :-)|
+|---------|-----------|
+|Wires|Various gauges for connections|
+|Header pins|For Pico W if using socket mount|
 
 ## Disclaimer and Thanks
 
