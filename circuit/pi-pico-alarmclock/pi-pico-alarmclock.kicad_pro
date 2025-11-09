@@ -58,7 +58,16 @@
           "width": 0.0
         }
       ],
-      "drc_exclusions": [],
+      "drc_exclusions": [
+        [
+          "items_not_allowed|144160000|98250000|b21ce3b7-b9a2-4fc0-bcee-6663868aaa95|00000000-0000-0000-0000-000000000000",
+          ""
+        ],
+        [
+          "items_not_allowed|163540000|98250000|0b3aa22d-ab00-4cf8-ab2b-1f9fca81375a|00000000-0000-0000-0000-000000000000",
+          ""
+        ]
+      ],
       "meta": {
         "version": 2
       },
@@ -523,7 +532,7 @@
         "pcb_color": "rgba(0, 0, 0, 0.000)",
         "priority": 2147483647,
         "schematic_color": "rgba(0, 0, 0, 0.000)",
-        "track_width": 0.2,
+        "track_width": 0.4,
         "via_diameter": 0.6,
         "via_drill": 0.3,
         "wire_width": 6
@@ -574,7 +583,7 @@
       "netlist": "",
       "plot": "",
       "pos_files": "",
-      "specctra_dsn": "",
+      "specctra_dsn": "../../../../Downloads/pi-pico-alarmclock.dsn",
       "step": "",
       "svg": "",
       "vrml": ""
