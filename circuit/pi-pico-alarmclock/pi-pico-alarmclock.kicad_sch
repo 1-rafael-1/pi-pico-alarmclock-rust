@@ -5857,6 +5857,16 @@
 		)
 		(uuid "7c055158-1353-4eb8-88d9-3a07dd53e523")
 	)
+	(label "BAT-"
+		(at 173.99 48.26 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "7eb2476f-b818-4525-a305-0f45f76d2ac6")
+	)
 	(label "GP13"
 		(at 63.5 88.9 180)
 		(effects
@@ -5947,6 +5957,16 @@
 		)
 		(uuid "b2b5f5e9-74a1-47c1-981e-9f9ba9d372be")
 	)
+	(label "BAT+"
+		(at 144.78 48.26 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "b62ac5ae-bc52-46c7-9ef6-c1a118cdbeaf")
+	)
 	(label "GP22"
 		(at 144.78 146.05 0)
 		(effects
@@ -5987,6 +6007,16 @@
 		)
 		(uuid "c5066f92-0141-4fa3-9173-70eb381b9654")
 	)
+	(label "GP28"
+		(at 107.95 63.5 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "c54d581b-f53f-42aa-bf33-ff5ed0d563a9")
+	)
 	(label "GP4"
 		(at 63.5 60.96 180)
 		(effects
@@ -6026,16 +6056,6 @@
 			(justify left bottom)
 		)
 		(uuid "dc64c9db-8d08-42e9-ad69-66b95534b079")
-	)
-	(label "VBUS"
-		(at 107.95 63.5 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "f2d17af1-30da-483f-9825-7e307ed72f7c")
 	)
 	(label "GP21"
 		(at 144.78 134.62 0)
