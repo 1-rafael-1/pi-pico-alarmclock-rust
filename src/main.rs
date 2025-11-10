@@ -29,6 +29,7 @@ use crate::{
     task::{
         alarm_settings::alarm_settings_handler,
         alarm_trigger::alarm_trigger_task,
+        button_leds::button_leds_handler,
         buttons::{Button, button_handler},
         display::display_handler,
         light_effects::light_effects_handler,
@@ -117,7 +118,7 @@ async fn main(spawner: Spawner) {
     let tx_buf = TX_BUFFER.init([0u8; 256]);
     let rx_buf = RX_BUFFER.init([0u8; 256]);
     let uart = BufferedUart::new(p.UART1, p.PIN_4, p.PIN_5, Irqs, tx_buf, rx_buf, uart_config);
-    let dfplayer_pwr = Output::new(p.PIN_8, Level::Low);
+    let dfplayer_pwr = Output::new(p.PIN_6, Level::Low);
     spawn_unwrap(spawner, sound_handler(uart, dfplayer_pwr));
 
     // Alarm settings persistence
@@ -144,4 +145,8 @@ async fn main(spawner: Spawner) {
     spi_config.polarity = Polarity::IdleLow;
     let spi = Spi::new_txonly(p.SPI0, p.PIN_18, p.PIN_19, p.DMA_CH1, spi_config);
     spawn_unwrap(spawner, light_effects_handler(spi));
+
+    // Button LEDs controller
+    let button_leds_control = Output::new(p.PIN_26, Level::Low);
+    spawn_unwrap(spawner, button_leds_handler(button_leds_control));
 }
