@@ -66,7 +66,6 @@ embedded-graphics = "0.8.1"
 
 smart-leds = "0.4.0"
 ssd1306-async = { git = "https://github.com/kalkyl/ssd1306-async", rev = "21b611be2f0dc85cf7ff6dca01f53a71dbe1c622" }
-ws2812-async = "0.3.0"
 heapless = "0.9.1"
 serde = { version = "1.0.203", default-features = false, features = ["derive"] }
 serde-json-core = "0.6.0"
