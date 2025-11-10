@@ -6557,7 +6557,6 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(fields_autoplaced yes)
 		(uuid "1f4556bf-0b0e-4ecd-9a85-1de401107bee")
 		(property "Reference" "J2"
 			(at 133.35 116.84 0)
@@ -6568,7 +6567,7 @@
 			)
 		)
 		(property "Value" "BTN GREEN"
-			(at 133.35 119.38 0)
+			(at 123.952 126.746 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6902,7 +6901,6 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(fields_autoplaced yes)
 		(uuid "4331110d-e5a1-4d25-ba60-382b68c542da")
 		(property "Reference" "J4"
 			(at 133.35 139.7 0)
@@ -6913,7 +6911,7 @@
 			)
 		)
 		(property "Value" "BTN_YELLOW"
-			(at 133.35 142.24 0)
+			(at 123.952 150.114 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8389,7 +8387,6 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(fields_autoplaced yes)
 		(uuid "8e9dcda7-df07-42b3-88ad-2c53918623da")
 		(property "Reference" "J3"
 			(at 133.35 128.27 0)
@@ -8400,7 +8397,7 @@
 			)
 		)
 		(property "Value" "BTN BLUE"
-			(at 133.35 130.81 0)
+			(at 123.952 138.43 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8530,7 +8527,6 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(fields_autoplaced yes)
 		(uuid "9a7a73f8-2482-4d97-a12d-d11aded986db")
 		(property "Reference" "Q4"
 			(at 149.86 134.6199 0)
@@ -8542,7 +8538,7 @@
 			)
 		)
 		(property "Value" "IRLZ44N"
-			(at 149.86 137.1599 0)
+			(at 165.354 137.16 0)
 			(effects
 				(font
 					(size 1.27 1.27)
