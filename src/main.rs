@@ -15,10 +15,10 @@ use embassy_rp::{
     flash::{Async, Flash},
     gpio::{Input, Level, Output, Pull},
     i2c::{Config as I2cConfig, I2c, InterruptHandler as I2cInterruptHandler},
-    peripherals::{I2C0, PIO0, UART1},
-    pio::InterruptHandler as PioInterruptHandler,
+    peripherals::{I2C0, PIO0, PIO1, UART1},
+    pio::{InterruptHandler as PioInterruptHandler, Pio},
+    pio_programs::ws2812::PioWs2812Program,
     rtc::{InterruptHandler as RtcInterruptHandler, Rtc},
-    spi::{Config as SpiConfig, Phase, Polarity, Spi},
     uart::{BufferedInterruptHandler, BufferedUart, Config as UartConfig},
 };
 use panic_probe as _;
@@ -49,6 +49,7 @@ mod utility;
 // Bind the interrupts on a global scope for convenience
 bind_interrupts!(pub struct Irqs {
     PIO0_IRQ_0 => PioInterruptHandler<PIO0>;
+    PIO1_IRQ_0 => PioInterruptHandler<PIO1>;
     I2C0_IRQ => I2cInterruptHandler<I2C0>;
     UART1_IRQ => BufferedInterruptHandler<UART1>;
     ADC_IRQ_FIFO => AdcInterruptHandler;
@@ -139,12 +140,12 @@ async fn main(spawner: Spawner) {
     spawn_unwrap(spawner, time_updater(spawner, rtc, wifi_peripherals));
 
     // Neopixel light effects
-    let mut spi_config = SpiConfig::default();
-    spi_config.frequency = 3_800_000;
-    spi_config.phase = Phase::CaptureOnFirstTransition;
-    spi_config.polarity = Polarity::IdleLow;
-    let spi = Spi::new_txonly(p.SPI0, p.PIN_18, p.PIN_19, p.DMA_CH1, spi_config);
-    spawn_unwrap(spawner, light_effects_handler(spi));
+    let Pio { mut common, sm0, .. } = Pio::new(p.PIO1, Irqs);
+    let ws2812_program = PioWs2812Program::new(&mut common);
+    spawn_unwrap(
+        spawner,
+        light_effects_handler(common, sm0, p.PIN_18, p.DMA_CH2, ws2812_program),
+    );
 
     // Button LEDs controller
     let button_leds_control = Output::new(p.PIN_26, Level::Low);
