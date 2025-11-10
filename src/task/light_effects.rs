@@ -4,12 +4,16 @@
 //! The tasks are responsible for initializing the neopixel, setting the colors of the LEDs, and updating the LEDs.
 use defmt::{info, warn};
 use defmt_rtt as _;
-use embassy_rp::{peripherals::SPI0, spi::Spi};
+use embassy_rp::{
+    Peri,
+    peripherals::{DMA_CH2, PIN_18, PIO1},
+    pio::{Common, StateMachine},
+    pio_programs::ws2812::{PioWs2812, PioWs2812Program},
+};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Instant, Timer};
 use panic_probe as _;
-use smart_leds::{RGB8, SmartLedsWriteAsync, brightness};
-use ws2812_async::{Grb, Ws2812};
+use smart_leds::{RGB8, brightness};
 
 use crate::{
     event::{Event, send_event},
@@ -54,7 +58,7 @@ const NUM_LEDS_USIZE: usize = 16;
 const NUM_LEDS: u8 = 16;
 
 /// Type alias for the neopixel LED controller
-type NeopixelType = Ws2812<Spi<'static, SPI0, embassy_rp::spi::Async>, Grb, { 12 * NUM_LEDS_USIZE }>;
+type NeopixelType = PioWs2812<'static, PIO1, 0, NUM_LEDS_USIZE>;
 
 /// Helper struct to bundle clock hand colors
 struct ClockColors {
@@ -126,6 +130,18 @@ impl NeopixelManager {
         wheel_pos -= 170;
         (wheel_pos * 3, 255 - wheel_pos * 3, 0).into()
     }
+}
+
+/// Helper function to apply brightness to an LED data array
+fn apply_brightness(data: &[RGB8], brightness_level: u8) -> [RGB8; NUM_LEDS_USIZE] {
+    let mut result = [RGB8::default(); NUM_LEDS_USIZE];
+    for (i, led) in brightness(data.iter().copied(), brightness_level)
+        .take(NUM_LEDS_USIZE)
+        .enumerate()
+    {
+        result[i] = led;
+    }
+    result
 }
 
 /// Calculates the LED index for a given time value
@@ -207,15 +223,14 @@ async fn display_analog_clock(
     }
 
     // Write the data to the neopixel
-    let _ = np
-        .write(brightness(data.iter().copied(), neopixel_mgr.clock_brightness()))
-        .await;
+    let bright_data = apply_brightness(&data, neopixel_mgr.clock_brightness());
+    np.write(&bright_data).await;
 }
 
 /// Turns off all LEDs
 async fn turn_off_all_leds(np: &mut NeopixelType) {
     let data = [RGB8::default(); NUM_LEDS_USIZE];
-    let _ = np.write(brightness(data.iter().copied(), 0)).await;
+    np.write(&data).await;
 }
 
 /// Helper struct for sunrise effect parameters
@@ -247,7 +262,7 @@ async fn sunrise_effect(np: &mut NeopixelType) {
     info!("Sunrise effect");
 
     let mut data = [RGB8::default(); NUM_LEDS_USIZE];
-    let _ = np.write(brightness(data.iter().copied(), 0)).await;
+    np.write(&data).await;
 
     let params = SunriseParams::new();
     let start_time = Instant::now();
@@ -311,7 +326,8 @@ async fn sunrise_effect(np: &mut NeopixelType) {
         }
 
         // Write the data to the neopixel
-        let _ = np.write(brightness(data.iter().copied(), current_brightness)).await;
+        let bright_data = apply_brightness(&data, current_brightness);
+        np.write(&bright_data).await;
     }
 
     send_event(Event::SunriseEffectFinished).await;
@@ -325,6 +341,8 @@ async fn noise_effect(np: &mut NeopixelType, neopixel_mgr: &NeopixelManager) {
     info!("Noise effect");
 
     let mut data = [RGB8::default(); NUM_LEDS_USIZE];
+
+    let brightness_level = neopixel_mgr.alarm_brightness();
 
     'noise: loop {
         for j in 0u16..(256 * 5) {
@@ -343,11 +361,16 @@ async fn noise_effect(np: &mut NeopixelType, neopixel_mgr: &NeopixelManager) {
                 let base_offset = ((i as u16 * 256) / u16::from(NUM_LEDS)) as u8;
                 let j_clamped = (j & 255) as u8;
                 let wheel_index = base_offset.wrapping_add(j_clamped);
-                *data_led = NeopixelManager::wheel(wheel_index);
+
+                // Apply brightness directly to each LED to avoid recalculating for entire array
+                let color = NeopixelManager::wheel(wheel_index);
+                *data_led = RGB8 {
+                    r: (u16::from(color.r) * u16::from(brightness_level) / 255) as u8,
+                    g: (u16::from(color.g) * u16::from(brightness_level) / 255) as u8,
+                    b: (u16::from(color.b) * u16::from(brightness_level) / 255) as u8,
+                };
             }
-            np.write(brightness(data.iter().copied(), neopixel_mgr.alarm_brightness()))
-                .await
-                .ok();
+            np.write(&data).await;
             Timer::after(Duration::from_millis(5)).await;
         }
     }
@@ -386,11 +409,17 @@ async fn handle_alarm_mode(np: &mut NeopixelType, neopixel_mgr: &NeopixelManager
 }
 
 #[embassy_executor::task]
-pub async fn light_effects_handler(spi: Spi<'static, SPI0, embassy_rp::spi::Async>) {
+pub async fn light_effects_handler(
+    mut common: Common<'static, PIO1>,
+    sm: StateMachine<'static, PIO1, 0>,
+    pin: Peri<'static, PIN_18>,
+    dma: Peri<'static, DMA_CH2>,
+    program: PioWs2812Program<'static, PIO1>,
+) {
     info!("Analog clock task start");
 
     let neopixel_mgr = NeopixelManager::new();
-    let mut np: Ws2812<_, Grb, { 12 * NUM_LEDS_USIZE }> = Ws2812::new(spi);
+    let mut np = PioWs2812::new(&mut common, sm, dma, pin, &program);
     let colors = ClockColors::new();
 
     // All off initially
