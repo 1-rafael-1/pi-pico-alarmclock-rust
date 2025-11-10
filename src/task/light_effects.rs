@@ -135,10 +135,10 @@ impl NeopixelManager {
 /// Helper function to apply brightness to an LED data array
 fn apply_brightness(data: &[RGB8], brightness_level: u8) -> [RGB8; NUM_LEDS_USIZE] {
     let mut result = [RGB8::default(); NUM_LEDS_USIZE];
-    for (i, led) in brightness(data.iter().copied(), brightness_level).enumerate() {
-        if i >= NUM_LEDS_USIZE {
-            break;
-        }
+    for (i, led) in brightness(data.iter().copied(), brightness_level)
+        .take(NUM_LEDS_USIZE)
+        .enumerate()
+    {
         result[i] = led;
     }
     result
@@ -342,6 +342,8 @@ async fn noise_effect(np: &mut NeopixelType, neopixel_mgr: &NeopixelManager) {
 
     let mut data = [RGB8::default(); NUM_LEDS_USIZE];
 
+    let brightness_level = neopixel_mgr.alarm_brightness();
+
     'noise: loop {
         for j in 0u16..(256 * 5) {
             if is_lightfx_stop_signaled() {
@@ -359,10 +361,16 @@ async fn noise_effect(np: &mut NeopixelType, neopixel_mgr: &NeopixelManager) {
                 let base_offset = ((i as u16 * 256) / u16::from(NUM_LEDS)) as u8;
                 let j_clamped = (j & 255) as u8;
                 let wheel_index = base_offset.wrapping_add(j_clamped);
-                *data_led = NeopixelManager::wheel(wheel_index);
+
+                // Apply brightness directly to each LED to avoid recalculating for entire array
+                let color = NeopixelManager::wheel(wheel_index);
+                *data_led = RGB8 {
+                    r: (u16::from(color.r) * u16::from(brightness_level) / 255) as u8,
+                    g: (u16::from(color.g) * u16::from(brightness_level) / 255) as u8,
+                    b: (u16::from(color.b) * u16::from(brightness_level) / 255) as u8,
+                };
             }
-            let bright_data = apply_brightness(&data, neopixel_mgr.alarm_brightness());
-            np.write(&bright_data).await;
+            np.write(&data).await;
             Timer::after(Duration::from_millis(5)).await;
         }
     }
