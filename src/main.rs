@@ -144,7 +144,7 @@ async fn main(spawner: Spawner) {
     let ws2812_program = PioWs2812Program::new(&mut common);
     spawn_unwrap(
         spawner,
-        light_effects_handler(common, sm0, p.PIN_18, p.DMA_CH2, ws2812_program),
+        light_effects_handler(common, sm0, p.PIN_19, p.DMA_CH2, ws2812_program),
     );
 
     // Button LEDs controller
