@@ -241,8 +241,8 @@ async fn setup_wifi(
         wifi_peripherals.dma_ch,
     );
 
-    let fw = include_bytes!("../wifi-firmware/cyw43-firmware/43439A0.bin");
-    let clm = include_bytes!("../wifi-firmware/cyw43-firmware/43439A0_clm.bin");
+    let fw = include_bytes!("../../wifi-firmware/cyw43-firmware/43439A0.bin");
+    let clm = include_bytes!("../../wifi-firmware/cyw43-firmware/43439A0_clm.bin");
 
     let state = WIFI_STATE.init(cyw43::State::new());
 
@@ -308,39 +308,54 @@ async fn connect_to_wifi(
 
 /// Wait for network to be ready (DHCP and link up).
 async fn wait_for_network_ready(stack: &embassy_net::Stack<'static>) -> Result<(), &'static str> {
-    // Wait for DHCP
+    info!("Waiting for network to be ready...");
+
+    // Wait for link first - must be up before DHCP can work
+    info!("Waiting for link to be up...");
     let mut timeout_counter = 0;
-    while !stack.is_config_up() {
+    while !stack.is_link_up() {
         Timer::after_millis(100).await;
         timeout_counter += 1;
         if timeout_counter > 100 {
-            warn!("DHCP timeout");
-            return Err("DHCP timeout");
-        }
-    }
-
-    // Wait for link
-    timeout_counter = 0;
-    while !stack.is_link_up() {
-        Timer::after_millis(500).await;
-        timeout_counter += 1;
-        if timeout_counter > 100 {
-            warn!("Link timeout");
+            warn!("Link timeout after 10 seconds");
             return Err("Link timeout");
         }
     }
+    info!("Link is up");
 
+    // Now wait for DHCP config
+    info!("Waiting for DHCP config...");
+    timeout_counter = 0;
+    while !stack.is_config_up() {
+        Timer::after_millis(100).await;
+        timeout_counter += 1;
+        if timeout_counter > 300 {
+            warn!("DHCP timeout after 30 seconds");
+            return Err("DHCP timeout");
+        }
+    }
+    info!("DHCP config is up");
+
+    info!("Waiting for final config...");
     stack.wait_config_up().await;
+    info!("Network is fully ready");
+
+    // Give the network stack a moment to stabilize
+    info!("Waiting 500ms for network stack to stabilize...");
+    Timer::after_millis(500).await;
+
     Ok(())
 }
 
-/// API response structure for time data.
+/// API response structure for time data from worldclockapi.com
 #[derive(Deserialize)]
 struct ApiResponse<'a> {
-    /// ISO 8601 datetime string
-    datetime: &'a str,
-    /// Day of week (0-6, where 0 is Sunday)
-    day_of_week: u8,
+    /// ISO 8601 datetime string (e.g., "2025-01-15T19:10+01:00")
+    #[serde(rename = "currentDateTime")]
+    current_date_time: &'a str,
+    /// Day of week as string (e.g., "Saturday")
+    #[serde(rename = "dayOfTheWeek")]
+    day_of_the_week: &'a str,
 }
 
 /// Fetch time data from the `API` using static buffers.
@@ -350,36 +365,54 @@ async fn fetch_time_from_api(
     url: &str,
     seed: u64,
 ) -> Result<heapless::String<8192>, &'static str> {
+    info!("Starting HTTP request to: {}", url);
+
     let mut buffers_guard = HTTP_BUFFERS.lock().await;
     let buffers = buffers_guard.as_mut().ok_or("HTTP buffers not available")?;
+    info!("HTTP buffers acquired");
 
     let client_state = TcpClientState::<1, 1024, 1024>::new();
     let tcp_client = TcpClient::new(*stack, &client_state);
     let dns_client = dns::DnsSocket::new(*stack);
+    info!("TCP and DNS clients created");
+
     let _tls_config = TlsConfig::new(
         seed,
         &mut buffers.tls_read_buffer,
         &mut buffers.tls_write_buffer,
         TlsVerify::None,
     );
+    info!("TLS config created (not used for HTTP)");
 
     let mut http_client = HttpClient::new(&tcp_client, &dns_client);
+    info!("HTTP client created");
 
-    let mut request = http_client
-        .request(Method::GET, url)
-        .await
-        .map_err(|_| "Failed to create HTTP request")?;
+    info!("Creating HTTP GET request...");
+    let mut request = http_client.request(Method::GET, url).await.map_err(|e| {
+        warn!(
+            "Failed to create HTTP request (could be DNS or connection issue): {:?}",
+            e
+        );
+        "Failed to create HTTP request"
+    })?;
+    info!("HTTP request created successfully (DNS resolved, TCP connection established)");
 
-    let response = request
-        .send(&mut buffers.rx_buffer)
-        .await
-        .map_err(|_| "Failed to send HTTP request")?;
+    info!("Sending HTTP request...");
+    let response = request.send(&mut buffers.rx_buffer).await.map_err(|e| {
+        warn!(
+            "Failed to send HTTP request (connection reset or send failure): {:?}",
+            e
+        );
+        "Failed to send HTTP request"
+    })?;
+    info!("HTTP response received");
 
-    let response_bytes = response
-        .body()
-        .read_to_end()
-        .await
-        .map_err(|_| "Failed to read response body")?;
+    info!("Reading response body...");
+    let response_bytes = response.body().read_to_end().await.map_err(|e| {
+        warn!("Failed to read response body: {:?}", e);
+        "Failed to read response body"
+    })?;
+    info!("Response body read successfully, {} bytes", response_bytes.len());
 
     let body_str = from_utf8(response_bytes).map_err(|_| "Failed to parse response as UTF-8")?;
 
@@ -396,10 +429,22 @@ fn parse_time_response(body: &str) -> Result<(&str, u8), &'static str> {
         .map_err(|_| "Failed to parse JSON response")?
         .0;
 
-    info!("Datetime: {:?}", response.datetime);
-    info!("Day of week: {:?}", response.day_of_week);
+    info!("Datetime: {:?}", response.current_date_time);
+    info!("Day of week: {:?}", response.day_of_the_week);
 
-    Ok((response.datetime, response.day_of_week))
+    // Convert day of week string to number (0 = Sunday, 6 = Saturday)
+    let day_num = match response.day_of_the_week {
+        "Sunday" => 0,
+        "Monday" => 1,
+        "Tuesday" => 2,
+        "Wednesday" => 3,
+        "Thursday" => 4,
+        "Friday" => 5,
+        "Saturday" => 6,
+        _ => return Err("Invalid day of week"),
+    };
+
+    Ok((response.current_date_time, day_num))
 }
 
 /// Update the RTC with the fetched time data.
@@ -419,10 +464,23 @@ async fn update_rtc_with_time(datetime_str: &str, day_of_week: u8) -> Result<(),
 }
 
 /// Disconnect from `WiFi` and turn off `LED`.
-async fn disconnect_wifi(control: &mut cyw43::Control<'static>) {
+async fn disconnect_wifi(control: &mut cyw43::Control<'static>, stack: &embassy_net::Stack<'static>) {
     control.leave().await;
     control.gpio_set(0, false).await;
     info!("Disconnected from wifi");
+
+    // Wait for network stack to go down
+    info!("Waiting for network stack to go DOWN...");
+    let mut timeout_counter = 0;
+    while stack.is_link_up() || stack.is_config_up() {
+        Timer::after_millis(100).await;
+        timeout_counter += 1;
+        if timeout_counter > 50 {
+            warn!("Timeout waiting for network stack to go down");
+            break;
+        }
+    }
+    info!("Network stack is DOWN");
 }
 
 /// Handle the retry delay after an error.
@@ -501,14 +559,18 @@ async fn update_time_once(
         .await;
 
     // Connect to WiFi
+    info!(
+        "Attempting to connect to WiFi - SSID: '{}', Password: '{}'",
+        ssid, password
+    );
     if let Err(e) = connect_to_wifi(control, ssid, password, config.timeout_duration).await {
-        disconnect_wifi(control).await;
+        disconnect_wifi(control, stack).await;
         return Err(e);
     }
 
     // Wait for network to be ready
     if let Err(e) = wait_for_network_ready(stack).await {
-        disconnect_wifi(control).await;
+        disconnect_wifi(control, stack).await;
         return Err(e);
     }
 
@@ -516,7 +578,7 @@ async fn update_time_once(
     let body = match fetch_time_from_api(stack, config.time_api_url(), seed).await {
         Ok(b) => b,
         Err(e) => {
-            disconnect_wifi(control).await;
+            disconnect_wifi(control, stack).await;
             return Err(e);
         }
     };
@@ -525,19 +587,19 @@ async fn update_time_once(
     let (datetime_str, day_of_week) = match parse_time_response(&body) {
         Ok(data) => data,
         Err(e) => {
-            disconnect_wifi(control).await;
+            disconnect_wifi(control, stack).await;
             return Err(e);
         }
     };
 
     // Update RTC
     if let Err(e) = update_rtc_with_time(datetime_str, day_of_week).await {
-        disconnect_wifi(control).await;
+        disconnect_wifi(control, stack).await;
         return Err(e);
     }
 
     // Cleanup
-    disconnect_wifi(control).await;
+    disconnect_wifi(control, stack).await;
     control
         .set_power_management(cyw43::PowerManagementMode::Aggressive)
         .await;

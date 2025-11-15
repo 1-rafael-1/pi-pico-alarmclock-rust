@@ -11,8 +11,9 @@ pub struct StringUtils;
 
 impl StringUtils {
     /// This function converts a &str to a `DateTime` struct
-    /// The input string should be in the format "YYYY-MM-DDTHH:MM:SS.ssssss+HH:MM"
-    /// one example being "2024-06-26T22:01:27.106426+02:00"
+    /// The input string can be in the format:
+    /// - "YYYY-MM-DDTHH:MM:SS.ssssss+HH:MM" (e.g., "2024-06-26T22:01:27.106426+02:00")
+    /// - "YYYY-MM-DDTHH:MM+HH:MM" (e.g., "2025-01-15T19:27+01:00")
     pub fn convert_str_to_datetime(s: &str, d: u8) -> DateTime {
         const CAPACITY: usize = 10;
 
@@ -45,14 +46,27 @@ impl StringUtils {
                 dt.day = date_parts[2].parse::<u8>().unwrap_or_default();
             }
 
-            // Process the time part, ignoring fractional seconds and timezone
-            let time_parts: Vec<&str, CAPACITY> = parts[1].split(':').collect();
-            if time_parts.len() >= 3 {
+            // Process the time part - first strip timezone info (everything after + or -)
+            let time_with_tz = parts[1];
+            let time_str = if let Some(pos) = time_with_tz.find('+') {
+                &time_with_tz[..pos]
+            } else if let Some(pos) = time_with_tz.find('-') {
+                &time_with_tz[..pos]
+            } else {
+                time_with_tz
+            };
+
+            // Now split by colon to get time components
+            let time_parts: Vec<&str, CAPACITY> = time_str.split(':').collect();
+            if time_parts.len() >= 2 {
                 dt.hour = time_parts[0].parse::<u8>().unwrap_or_default();
                 dt.minute = time_parts[1].parse::<u8>().unwrap_or_default();
-                // Extract seconds, ignoring fractional part
-                let second_parts: Vec<&str, CAPACITY> = time_parts[2].split('.').collect();
-                dt.second = second_parts[0].parse::<u8>().unwrap_or_default();
+
+                // If there's a seconds component, parse it (ignoring fractional part)
+                if time_parts.len() >= 3 {
+                    let second_parts: Vec<&str, CAPACITY> = time_parts[2].split('.').collect();
+                    dt.second = second_parts[0].parse::<u8>().unwrap_or_default();
+                }
             }
         }
         dt
