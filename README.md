@@ -5,7 +5,7 @@
 Building a (hopefully working) alarmclock based on a Raspberry Pi Pico W written in Rust and using the Embassy framework.
 
 This is a picture of the prototype on a breadboard, in a box with bits of hardware dangling on their wires. Not pretty, but before i build a proper one in its enclosure it must do:
-![Working Prototype](images/prototype.png)
+![Working Prototype](images/prototype.jpg)
 
 ## Features
 
