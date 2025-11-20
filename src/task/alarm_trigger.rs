@@ -3,11 +3,8 @@
 //! It uses the embassy-rp RTC alarm API to schedule alarms and await their triggering,
 //! replacing the previous busy-polling approach.
 
-use defmt::{Debug2Format, info, warn};
-use embassy_rp::{
-    peripherals,
-    rtc::{DateTime, DateTimeFilter, DayOfWeek, Rtc},
-};
+use defmt::{info, warn};
+use embassy_rp::rtc::{DateTime, DateTimeFilter, DayOfWeek};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Timer};
 
@@ -15,7 +12,10 @@ use crate::{
     event::{Event, send_event},
     state::SYSTEM_STATE,
     task::{
-        time_updater::RTC_MUTEX,
+        rtc_manager::{
+            rtc_clear_and_disable_alarm, rtc_get_time, rtc_schedule_alarm, rtc_start_alarm_wait, rtc_stop_alarm_wait,
+            rtc_wait_for_alarm_signal,
+        },
         watchdog::{TaskId, report_task_success},
     },
 };
@@ -105,8 +105,14 @@ pub async fn alarm_trigger_task() {
         // Report successful alarm scheduling to watchdog
         report_task_success(TaskId::AlarmTrigger).await;
 
+        // Tell the RTC manager to start waiting for the alarm
+        rtc_start_alarm_wait();
+
         // Step 4: Wait for alarm trigger or configuration change
         let result = wait_for_alarm_event().await;
+
+        // Tell the RTC manager to stop waiting (we're rescheduling or disabling)
+        rtc_stop_alarm_wait();
 
         // Step 5: Clean up RTC state
         cleanup_rtc_alarm().await;
@@ -156,52 +162,88 @@ async fn wait_for_enable_signal() {
 /// Schedules the alarm in the RTC based on the provided configuration
 /// Returns true if successful, false if RTC is not available
 async fn schedule_alarm(config: &AlarmConfig) -> bool {
-    let mut rtc_guard = RTC_MUTEX.lock().await;
-    let Some(rtc) = rtc_guard.as_mut() else {
-        warn!("RTC not initialized");
+    // Get current time from RTC manager
+    let Some(now) = rtc_get_time().await else {
+        warn!("Failed to get current time from RTC");
         return false;
     };
 
-    // Get current time
-    let now = match rtc.now() {
-        Ok(dt) => dt,
-        Err(e) => {
-            warn!("Failed to get current time from RTC: {:?}", Debug2Format(&e));
-            return false;
-        }
-    };
-
     // Determine if we need to schedule for today or tomorrow
+    // The alarm fires at HH:MM:00, so we need to check if that exact time has passed
     let alarm_already_passed = is_alarm_time_in_past(&now, config.hour, config.minute);
 
-    if alarm_already_passed {
-        schedule_alarm_for_tomorrow(rtc, &now, config.hour, config.minute);
+    let filter = if alarm_already_passed {
+        create_alarm_filter_for_tomorrow(&now, config.hour, config.minute)
     } else {
-        schedule_alarm_for_today(rtc, config.hour, config.minute);
-    }
+        create_alarm_filter_for_today(config.hour, config.minute).await
+    };
 
-    // Explicitly drop the guard to release the lock early
-    drop(rtc_guard);
-
-    true
+    // Schedule the alarm via RTC manager
+    rtc_schedule_alarm(filter).await.is_ok()
 }
 
 /// Checks if the alarm time has already passed today
+/// The alarm triggers at HH:MM:00, so we need to check if that specific second has passed
+/// This ensures alarms are ALWAYS scheduled for a time in the future
 const fn is_alarm_time_in_past(now: &DateTime, alarm_hour: u8, alarm_minute: u8) -> bool {
-    (alarm_hour < now.hour) || (alarm_hour == now.hour && alarm_minute <= now.minute)
+    // If alarm hour is in the past, definitely schedule for tomorrow
+    if alarm_hour < now.hour {
+        return true;
+    }
+
+    // If alarm hour is in the future, definitely schedule for today
+    if alarm_hour > now.hour {
+        return false;
+    }
+
+    // Same hour - need to check minutes and seconds
+    // The alarm fires at alarm_minute:00 (second 0)
+
+    // If alarm minute is in the past, schedule for tomorrow
+    if alarm_minute < now.minute {
+        return true;
+    }
+
+    // If alarm minute is in the future, schedule for today
+    if alarm_minute > now.minute {
+        return false;
+    }
+
+    // Same hour and minute - the alarm fires at second 0
+    // If we're past second 0 in this minute, we've missed it for today
+    // We consider it "in the past" even at second 0 to ensure we're always scheduling
+    // for a future time (the next occurrence)
+    true
 }
 
-/// Schedules the alarm for today at the specified time
-fn schedule_alarm_for_today(rtc: &mut Rtc<'static, peripherals::RTC>, hour: u8, minute: u8) {
-    info!("Scheduling alarm for today at {:02}:{:02}", hour, minute);
+/// Creates an alarm filter for today at the specified time
+async fn create_alarm_filter_for_today(hour: u8, minute: u8) -> DateTimeFilter {
+    // Get current time to set the specific date for today
+    // If RTC time is unavailable, fall back to time-only filter (shouldn't happen as we check before calling)
+    rtc_get_time().await.map_or_else(
+        || {
+            warn!("RTC time unavailable when creating today's alarm filter, using time-only filter");
+            DateTimeFilter::default().hour(hour).minute(minute).second(0)
+        },
+        |now| {
+            info!(
+                "Scheduling alarm for today: {:04}-{:02}-{:02} at {:02}:{:02}",
+                now.year, now.month, now.day, hour, minute
+            );
 
-    let filter = DateTimeFilter::default().hour(hour).minute(minute).second(0);
-
-    rtc.schedule_alarm(filter);
+            DateTimeFilter::default()
+                .year(now.year)
+                .month(now.month)
+                .day(now.day)
+                .hour(hour)
+                .minute(minute)
+                .second(0)
+        },
+    )
 }
 
-/// Schedules the alarm for tomorrow at the specified time
-fn schedule_alarm_for_tomorrow(rtc: &mut Rtc<'static, peripherals::RTC>, now: &DateTime, hour: u8, minute: u8) {
+/// Creates an alarm filter for tomorrow at the specified time
+fn create_alarm_filter_for_tomorrow(now: &DateTime, hour: u8, minute: u8) -> DateTimeFilter {
     let tomorrow = calculate_tomorrow(now);
 
     info!(
@@ -209,56 +251,51 @@ fn schedule_alarm_for_tomorrow(rtc: &mut Rtc<'static, peripherals::RTC>, now: &D
         tomorrow.year, tomorrow.month, tomorrow.day, hour, minute
     );
 
-    let filter = DateTimeFilter::default()
+    DateTimeFilter::default()
         .year(tomorrow.year)
         .month(tomorrow.month)
         .day(tomorrow.day)
         .hour(hour)
         .minute(minute)
-        .second(0);
-
-    rtc.schedule_alarm(filter);
+        .second(0)
 }
 
 /// Waits for any alarm-related event (trigger, settings change, or disable)
+/// This waits on signals from the RTC manager and user settings changes
+/// Reports health periodically while waiting to prevent watchdog timeout
 async fn wait_for_alarm_event() -> AlarmWaitResult {
-    // Wait for one of three events
-    let result = embassy_futures::select::select3(
-        wait_for_rtc_alarm(),
-        ALARM_SCHEDULE_UPDATE_SIGNAL.wait(),
-        ALARM_SCHEDULE_DISABLE_SIGNAL.wait(),
-    )
-    .await;
+    loop {
+        // Wait for one of four events: alarm trigger, settings change, disable, or health report timeout
+        let result = embassy_futures::select::select4(
+            rtc_wait_for_alarm_signal(),
+            ALARM_SCHEDULE_UPDATE_SIGNAL.wait(),
+            ALARM_SCHEDULE_DISABLE_SIGNAL.wait(),
+            Timer::after(Duration::from_secs(240)), // Report health every 4 minutes
+        )
+        .await;
 
-    // Determine which event occurred based on select result
-    match result {
-        embassy_futures::select::Either3::First(()) => AlarmWaitResult::Triggered,
-        embassy_futures::select::Either3::Second(()) => {
-            ALARM_SCHEDULE_UPDATE_SIGNAL.reset();
-            AlarmWaitResult::SettingsChanged
+        // Determine which event occurred based on select result
+        match result {
+            embassy_futures::select::Either4::First(()) => return AlarmWaitResult::Triggered,
+            embassy_futures::select::Either4::Second(()) => {
+                ALARM_SCHEDULE_UPDATE_SIGNAL.reset();
+                return AlarmWaitResult::SettingsChanged;
+            }
+            embassy_futures::select::Either4::Third(()) => {
+                ALARM_SCHEDULE_DISABLE_SIGNAL.reset();
+                return AlarmWaitResult::Disabled;
+            }
+            embassy_futures::select::Either4::Fourth(()) => {
+                // Timeout - report health and continue waiting
+                report_task_success(TaskId::AlarmTrigger).await;
+            }
         }
-        embassy_futures::select::Either3::Third(()) => {
-            ALARM_SCHEDULE_DISABLE_SIGNAL.reset();
-            AlarmWaitResult::Disabled
-        }
-    }
-}
-
-/// Helper function to wait for the RTC alarm to trigger
-async fn wait_for_rtc_alarm() {
-    let mut rtc_guard = RTC_MUTEX.lock().await;
-    if let Some(rtc) = rtc_guard.as_mut() {
-        rtc.wait_for_alarm().await;
     }
 }
 
 /// Clears the RTC alarm interrupt and disables the alarm
 async fn cleanup_rtc_alarm() {
-    let mut rtc_guard = RTC_MUTEX.lock().await;
-    if let Some(rtc) = rtc_guard.as_mut() {
-        rtc.clear_interrupt();
-        rtc.disable_alarm();
-    }
+    rtc_clear_and_disable_alarm().await;
 }
 
 /// Handles the alarm trigger event by sending notification and cooling down

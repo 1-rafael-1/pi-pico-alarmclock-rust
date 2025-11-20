@@ -4,7 +4,7 @@
 //! The task is responsible for initializing the display, displaying images and text, and updating the display.
 use core::fmt::Write;
 
-use defmt::{Debug2Format, info, warn};
+use defmt::{info, warn};
 use embassy_rp::{
     i2c::{Async, I2c},
     peripherals::I2C0,
@@ -28,9 +28,10 @@ use tinybmp::Bmp;
 
 use crate::{
     state::{BatteryLevel, OperationMode, SYSTEM_STATE},
+    task::rtc_manager::rtc_get_scheduled_alarm,
     task::{
         buttons::Button,
-        time_updater::RTC_MUTEX,
+        rtc_manager::rtc_get_time,
         watchdog::{TaskId, report_task_success},
     },
     utility::string_utils::StringUtils,
@@ -204,7 +205,7 @@ where
                 let _ = saber.draw(&mut display.color_converted());
             }
         }
-        OperationMode::SetAlarmTime => {
+        OperationMode::Initializing | OperationMode::SetAlarmTime => {
             let setup_img = Image::new(&settings.setup, settings.state_indicator_position);
             let _ = setup_img.draw(&mut display.color_converted());
         }
@@ -310,7 +311,7 @@ where
 }
 
 /// Draws the system info content in the center area of the display
-fn draw_system_info_content<D>(display: &mut D, vsys: f32, usb_power: bool, upper: f32, lower: f32, settings: &Settings)
+fn draw_system_info_content<D>(display: &mut D, vsys: f32, usb_power: bool, firmware_version: &str, settings: &Settings)
 where
     D: embedded_graphics::draw_target::DrawTarget<Color = BinaryColor>,
 {
@@ -338,10 +339,72 @@ where
     .draw(display);
     content_next_position.y += 15;
 
-    let mut bounds_txt: String<20> = String::new();
-    let _ = write!(bounds_txt, "Upper/Lower {upper}/{lower}V");
+    let mut fw_txt: String<20> = String::new();
+    let _ = write!(fw_txt, "FW: {firmware_version}");
     let _ = Text::with_baseline(
-        &bounds_txt,
+        &fw_txt,
+        content_next_position,
+        settings.content_text_style,
+        Baseline::Top,
+    )
+    .draw(display);
+}
+
+/// Draws the alarm info content in the center area of the display
+async fn draw_alarm_info_content<D>(
+    display: &mut D,
+    alarm_hour: u8,
+    alarm_minute: u8,
+    alarm_enabled: bool,
+    settings: &Settings<'_>,
+) where
+    D: embedded_graphics::draw_target::DrawTarget<Color = BinaryColor>,
+{
+    let mut content_next_position = settings.content_start_position;
+
+    let mut time_txt: String<20> = String::new();
+    let _ = write!(time_txt, "Alarm: {alarm_hour}:{alarm_minute}");
+    let _ = Text::with_baseline(
+        &time_txt,
+        content_next_position,
+        settings.content_text_style,
+        Baseline::Top,
+    )
+    .draw(display);
+    content_next_position.y += 15;
+
+    // Get the scheduled alarm from RTC hardware
+    let scheduled_alarm = rtc_get_scheduled_alarm().await;
+
+    let mut date_txt: String<20> = String::new();
+    if let Some(filter) = scheduled_alarm {
+        // Extract date components from the filter
+        let day = filter.day.unwrap_or(0);
+        let month = filter.month.unwrap_or(0);
+        let year = filter.year.unwrap_or(0);
+
+        if day > 0 && month > 0 && year > 0 {
+            let _ = write!(date_txt, "Next:  {day}.{month}.{year}");
+        } else {
+            // No specific date set (repeating daily alarm)
+            let _ = write!(date_txt, "Next:  Daily");
+        }
+    } else {
+        let _ = write!(date_txt, "Next:  Not set");
+    }
+    let _ = Text::with_baseline(
+        &date_txt,
+        content_next_position,
+        settings.content_text_style,
+        Baseline::Top,
+    )
+    .draw(display);
+    content_next_position.y += 15;
+
+    let mut enabled_txt: String<20> = String::new();
+    let _ = write!(enabled_txt, "Active: {}", if alarm_enabled { "Yes" } else { "No" });
+    let _ = Text::with_baseline(
+        &enabled_txt,
         content_next_position,
         settings.content_text_style,
         Baseline::Top,
@@ -395,32 +458,23 @@ pub async fn display_handler(i2c: I2c<'static, I2C0, Async>) {
         // Wait for a signal to update the display
         wait_for_display_update().await;
 
-        // get the current time out of the mutex and quickly drop the mutex
-        let dt: DateTime = {
-            let rtc_guard = RTC_MUTEX.lock().await;
-            let Some(rtc) = rtc_guard.as_ref() else {
-                warn!("RTC not initialized");
-                drop(rtc_guard);
-                Timer::after(Duration::from_secs(1)).await;
-                continue 'mainloop;
-            };
-            match rtc.now() {
-                Ok(dt) => dt,
-                Err(e) => {
-                    info!("RTC not running: {:?}", Debug2Format(&e));
-                    // Return an empty DateTime
-                    DateTime {
-                        year: 0,
-                        month: 0,
-                        day: 0,
-                        day_of_week: DayOfWeek::Monday,
-                        hour: 0,
-                        minute: 0,
-                        second: 0,
-                    }
+        // Get the current time from RTC manager
+        let dt: DateTime = rtc_get_time().await.map_or_else(
+            || {
+                info!("RTC not running");
+                // Return an empty DateTime
+                DateTime {
+                    year: 0,
+                    month: 0,
+                    day: 0,
+                    day_of_week: DayOfWeek::Monday,
+                    hour: 0,
+                    minute: 0,
+                    second: 0,
                 }
-            }
-        };
+            },
+            |dt| dt,
+        );
 
         // get the state of the system out of the mutex and quickly drop the mutex
         let system_state_guard = SYSTEM_STATE.lock().await;
@@ -464,6 +518,20 @@ pub async fn display_handler(i2c: I2c<'static, I2C0, Async>) {
         };
 
         match operation_mode {
+            OperationMode::Initializing => {
+                // Display "Initializing" message centered on screen
+                // Display is 128x64, font is 6x13, text is 15 chars
+                // Horizontal center: (128 - 15*6) / 2 = 19
+                // Vertical center: (64 - 13) / 2 = 25
+                let centered_position = Point::new(19, 25);
+                let _ = Text::with_baseline(
+                    "Initializing...",
+                    centered_position,
+                    settings.content_text_style,
+                    Baseline::Top,
+                )
+                .draw(&mut display);
+            }
             OperationMode::Normal | OperationMode::Alarm | OperationMode::SetAlarmTime => {
                 // Display the time
                 draw_time_display(&mut display, hours, minutes, &settings);
@@ -472,12 +540,20 @@ pub async fn display_handler(i2c: I2c<'static, I2C0, Async>) {
                 draw_menu_content(&mut display, &settings);
             }
             OperationMode::SystemInfo => {
-                let vsys = system_state.power_state.get_vsys();
-                let usb_power = system_state.power_state.get_usb_power();
-                let upper = system_state.power_state.get_battery_voltage_fully_charged();
-                let lower = system_state.power_state.get_battery_voltage_empty();
+                if system_state.system_info_page == 0 {
+                    // Page 0: Power info
+                    let vsys = system_state.power_state.get_vsys();
+                    let usb_power = system_state.power_state.get_usb_power();
 
-                draw_system_info_content(&mut display, vsys, usb_power, upper, lower, &settings);
+                    draw_system_info_content(&mut display, vsys, usb_power, crate::FIRMWARE_VERSION, &settings);
+                } else {
+                    // Page 1: Alarm info
+                    let alarm_hour = system_state.alarm_settings.get_hour();
+                    let alarm_minute = system_state.alarm_settings.get_minute();
+                    let alarm_enabled = system_state.alarm_settings.get_enabled();
+
+                    draw_alarm_info_content(&mut display, alarm_hour, alarm_minute, alarm_enabled, &settings).await;
+                }
             }
             OperationMode::Standby => {
                 let _ = Text::with_baseline(
@@ -494,7 +570,7 @@ pub async fn display_handler(i2c: I2c<'static, I2C0, Async>) {
             }
         }
 
-        // Draw date (if in normal/alarm mode)
+        // Draw date (if in normal/alarm mode, but not during initialization)
         if matches!(operation_mode, OperationMode::Normal | OperationMode::Alarm) {
             draw_date(&mut display, &dt, &settings);
         }

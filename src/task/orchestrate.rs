@@ -1,9 +1,9 @@
 //! # Orchestrate Tasks
 //! Task to orchestrate the state transitions of the system.
-use defmt::{Debug2Format, info, warn};
+use defmt::{info, warn};
 use embassy_futures::select::select;
 use embassy_rp::rtc::{DateTime, DayOfWeek};
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex, signal::Signal};
 use embassy_time::{Duration, Ticker, Timer};
 
 use crate::{
@@ -17,11 +17,48 @@ use crate::{
         display::signal_display_update,
         light_effects::{signal_lightfx_start, signal_lightfx_stop},
         power::signal_vsys_wake,
+        rtc_manager::rtc_get_time,
         sound::{signal_sound_start, signal_sound_stop},
-        time_updater::{RTC_MUTEX, signal_time_updater_resume, signal_time_updater_suspend},
+        time_updater::{signal_time_updater_resume, signal_time_updater_suspend},
         watchdog::{TaskId, report_task_success},
     },
 };
+
+/// Tracks initialization state protected by a mutex
+static INIT_STATE: Mutex<CriticalSectionRawMutex, InitializationState> = Mutex::new(InitializationState::new());
+
+/// Struct to track what has been initialized
+struct InitializationState {
+    /// Whether the RTC has been set with valid time
+    rtc_ready: bool,
+    /// Whether alarm settings have been loaded from flash
+    alarm_settings_loaded: bool,
+}
+
+impl InitializationState {
+    /// Create a new initialization state with nothing ready
+    const fn new() -> Self {
+        Self {
+            rtc_ready: false,
+            alarm_settings_loaded: false,
+        }
+    }
+
+    /// Check if both RTC and alarm settings are ready
+    const fn is_ready(&self) -> bool {
+        self.rtc_ready && self.alarm_settings_loaded
+    }
+
+    /// Mark RTC as ready
+    const fn mark_rtc_ready(&mut self) {
+        self.rtc_ready = true;
+    }
+
+    /// Mark alarm settings as loaded
+    const fn mark_alarm_settings_loaded(&mut self) {
+        self.alarm_settings_loaded = true;
+    }
+}
 
 /// Signal for stopping the scheduler
 static SCHEDULER_STOP_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
@@ -65,6 +102,9 @@ pub async fn orchestrator() {
         let system_state = SystemState::new();
         *(SYSTEM_STATE.lock().await) = Some(system_state);
     }
+
+    // Signal display to show initializing screen
+    signal_display_update();
 
     loop {
         // receive the events, halting the task until an event is received
@@ -122,6 +162,12 @@ async fn handle_event(event: Event, system_state: &mut SystemState) {
         Event::AlarmSettingsReadFromFlash(alarm_settings) => {
             info!("Alarm time read from flash: {:?}", alarm_settings);
             system_state.alarm_settings = alarm_settings;
+            let mut init_state = INIT_STATE.lock().await;
+            init_state.mark_alarm_settings_loaded();
+            if init_state.is_ready() {
+                drop(init_state);
+                send_event(Event::SystemReady).await;
+            }
         }
         Event::Scheduler((hour, minute, second)) => {
             info!("Scheduler event");
@@ -129,7 +175,19 @@ async fn handle_event(event: Event, system_state: &mut SystemState) {
         }
         Event::RtcUpdated => {
             info!("RTC updated event");
+            let mut init_state = INIT_STATE.lock().await;
+            init_state.mark_rtc_ready();
+            if init_state.is_ready() {
+                drop(init_state);
+                send_event(Event::SystemReady).await;
+            }
             signal_display_update();
+        }
+        Event::SystemReady => {
+            info!("System initialization complete");
+            system_state.complete_initialization();
+            signal_display_update();
+            signal_scheduler_wake();
         }
         Event::AlarmSettingsNeedUpdate => {
             info!("Alarm settings must be updated event");
@@ -155,6 +213,11 @@ async fn handle_event(event: Event, system_state: &mut SystemState) {
 
 /// Handles the scheduler event which updates display and light effects.
 fn handle_scheduler_event(system_state: &SystemState, hour: u8, minute: u8, second: u8) {
+    // Don't update anything if we're still initializing
+    if system_state.operation_mode == OperationMode::Initializing {
+        return;
+    }
+
     // update the light effects if the alarm is not enabled and the alarm state is None
     if system_state.alarm_state == AlarmState::None && !system_state.alarm_settings.get_enabled() {
         signal_lightfx_start(hour, minute, second);
@@ -231,6 +294,9 @@ fn handle_sunrise_effect_finished_event(system_state: &mut SystemState) {
 /// Handle state changes when the green button is pressed
 async fn handle_green_button_press(system_state: &mut SystemState) {
     match system_state.operation_mode {
+        OperationMode::Initializing => {
+            // Ignore button presses during initialization
+        }
         OperationMode::Normal => {
             system_state.toggle_alarm_enabled().await;
         }
@@ -238,7 +304,12 @@ async fn handle_green_button_press(system_state: &mut SystemState) {
             system_state.increment_alarm_hour();
         }
         OperationMode::Menu => system_state.set_system_info_mode(),
-        OperationMode::SystemInfo => system_state.set_normal_mode(),
+        OperationMode::SystemInfo => {
+            // Advance to next page, or exit if on last page
+            if !system_state.next_system_info_page() {
+                system_state.set_normal_mode();
+            }
+        }
         OperationMode::Alarm => {
             if system_state.alarm_settings.get_first_valid_stop_alarm_button() == Button::Green {
                 system_state.alarm_settings.erase_first_valid_stop_alarm_button();
@@ -265,6 +336,9 @@ fn handle_button_led_on_button_press(system_state: &SystemState) {
 /// Handle state changes when the blue button is pressed
 async fn handle_blue_button_press(system_state: &mut SystemState) {
     match system_state.operation_mode {
+        OperationMode::Initializing => {
+            // Ignore button presses during initialization
+        }
         OperationMode::Normal => {
             system_state.set_set_alarm_time_mode();
         }
@@ -293,6 +367,9 @@ async fn handle_blue_button_press(system_state: &mut SystemState) {
 /// Handle state changes when the yellow button is pressed
 async fn handle_yellow_button_press(system_state: &mut SystemState) {
     match system_state.operation_mode {
+        OperationMode::Initializing => {
+            // Ignore button presses during initialization
+        }
         OperationMode::Normal => {
             system_state.set_menu_mode();
         }
@@ -330,33 +407,23 @@ pub async fn scheduler() {
             SCHEDULER_START_SIGNAL.wait().await;
         }
 
-        // get the current time
-        let dt: DateTime;
-        '_rtc_mutex: {
-            let rtc_guard = RTC_MUTEX.lock().await;
-            let Some(rtc) = rtc_guard.as_ref() else {
-                warn!("RTC not initialized");
-                drop(rtc_guard);
-                Timer::after(Duration::from_secs(3)).await;
-                continue 'mainloop;
-            };
-            dt = match rtc.now() {
-                Ok(dt) => dt,
-                Err(e) => {
-                    info!("RTC not running: {:?}", Debug2Format(&e));
-                    // Return an empty DateTime
-                    DateTime {
-                        year: 0,
-                        month: 0,
-                        day: 0,
-                        day_of_week: DayOfWeek::Monday,
-                        hour: 0,
-                        minute: 0,
-                        second: 0,
-                    }
+        // Get the current time from RTC manager
+        let dt: DateTime = rtc_get_time().await.map_or_else(
+            || {
+                info!("RTC not running");
+                // Return an empty DateTime
+                DateTime {
+                    year: 0,
+                    month: 0,
+                    day: 0,
+                    day_of_week: DayOfWeek::Monday,
+                    hour: 0,
+                    minute: 0,
+                    second: 0,
                 }
-            };
-        };
+            },
+            |dt| dt,
+        );
 
         send_event(Event::Scheduler((dt.hour, dt.minute, dt.second))).await;
 
