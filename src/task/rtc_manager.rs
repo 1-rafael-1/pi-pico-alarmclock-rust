@@ -8,70 +8,61 @@
 //! ## Architecture
 //!
 //! - The `rtc_manager_task` owns the RTC exclusively
-//! - Other tasks send requests via a channel with embedded response channels
+//! - Other tasks send requests via channels to:
+//!   - Get current time
+//!   - Set time
+//!   - Schedule alarms
+//!   - Wait for alarms (via signal)
 //! - The manager task services requests while also waiting for alarm interrupts
-//! - Each request carries its own response channel (oneshot pattern)
+//! - Each request type has its own response signal to avoid contention
 
 use defmt::{info, warn};
 use embassy_rp::{
     peripherals,
     rtc::{DateTime, DateTimeFilter, Rtc},
 };
-use embassy_sync::{
-    blocking_mutex::raw::CriticalSectionRawMutex,
-    channel::{Channel, Sender},
-    signal::Signal,
-};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, mutex::Mutex, signal::Signal};
 use embassy_time::{Duration, with_timeout};
 
 /// Maximum number of pending RTC requests in the queue
 const RTC_REQUEST_QUEUE_SIZE: usize = 5;
 
-/// Response type for `GetTime` requests
-pub type GetTimeResponse = Option<DateTime>;
-
-/// Response type for `SetTime` requests
-pub type SetTimeResponse = Result<(), ()>;
-
-/// Response type for `ScheduleAlarm` requests
-pub type ScheduleAlarmResponse = Result<(), ()>;
-
-/// Response type for `GetScheduledAlarm` requests
-pub type GetScheduledAlarmResponse = Option<DateTimeFilter>;
-
 /// Requests that can be sent to the RTC manager
-/// Each variant carries a response channel for sending the result back
+#[derive(Debug)]
 pub enum RtcRequest {
     /// Get the current date and time
-    GetTime {
-        /// Response channel for sending back the result
-        response: Sender<'static, CriticalSectionRawMutex, GetTimeResponse, 1>,
-    },
+    GetTime,
     /// Set the current date and time
-    SetTime {
-        /// The datetime to set
-        dt: DateTime,
-        /// Response channel for sending back the result
-        response: Sender<'static, CriticalSectionRawMutex, SetTimeResponse, 1>,
-    },
+    SetTime(DateTime),
     /// Schedule an alarm with the given filter
-    ScheduleAlarm {
-        /// The alarm filter to schedule
-        filter: DateTimeFilter,
-        /// Response channel for sending back the result
-        response: Sender<'static, CriticalSectionRawMutex, ScheduleAlarmResponse, 1>,
-    },
+    ScheduleAlarm(DateTimeFilter),
     /// Clear the alarm interrupt and disable the alarm
     ClearAndDisableAlarm,
     /// Get the scheduled alarm filter
-    GetScheduledAlarm {
-        /// Response channel for sending back the result
-        response: Sender<'static, CriticalSectionRawMutex, GetScheduledAlarmResponse, 1>,
-    },
+    GetScheduledAlarm,
 }
 
 /// Channel for sending requests to the RTC manager
 static RTC_REQUEST_CHANNEL: Channel<CriticalSectionRawMutex, RtcRequest, RTC_REQUEST_QUEUE_SIZE> = Channel::new();
+
+/// Signal with the response for `GetTime` requests (None if RTC not running)
+static GET_TIME_RESPONSE: Signal<CriticalSectionRawMutex, Option<DateTime>> = Signal::new();
+
+/// Signal with the response for `SetTime` requests (true = success, false = failure)
+static SET_TIME_RESPONSE: Signal<CriticalSectionRawMutex, bool> = Signal::new();
+
+/// Signal with the response for `ScheduleAlarm` requests (true = success, false = failure)
+static SCHEDULE_ALARM_RESPONSE: Signal<CriticalSectionRawMutex, bool> = Signal::new();
+
+/// Signal with the response for `ClearAndDisableAlarm` requests
+static CLEAR_ALARM_RESPONSE: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+
+/// Signal with the response for `GetScheduledAlarm` requests (None if no alarm scheduled)
+static GET_SCHEDULED_ALARM_RESPONSE: Signal<CriticalSectionRawMutex, Option<DateTimeFilter>> = Signal::new();
+
+/// Mutex to serialize RTC API calls - prevents concurrent callers from stealing each other's responses
+/// Only ONE task can have a pending RTC request at a time
+static RTC_API_MUTEX: Mutex<CriticalSectionRawMutex, ()> = Mutex::new(());
 
 /// Signal that fires when the RTC alarm is triggered
 static RTC_ALARM_TRIGGERED_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
@@ -151,10 +142,12 @@ async fn handle_single_request(rtc: &mut Rtc<'static, peripherals::RTC>) {
     handle_request(rtc, request);
 }
 
-/// Handle an RTC request and send the response via the request's embedded channel
+/// Handle an RTC request and send the response via the appropriate signal
 fn handle_request(rtc: &mut Rtc<'static, peripherals::RTC>, request: RtcRequest) {
     match request {
-        RtcRequest::GetTime { response } => {
+        RtcRequest::GetTime => {
+            // Reset signal BEFORE processing to prevent stale responses
+            GET_TIME_RESPONSE.reset();
             let time = rtc.now().map_or_else(
                 |_| {
                     warn!("RTC manager: GetTime request -> RTC not running");
@@ -168,29 +161,32 @@ fn handle_request(rtc: &mut Rtc<'static, peripherals::RTC>, request: RtcRequest)
                     Some(dt)
                 },
             );
-            // Send response back through the oneshot channel
-            let _ = response.try_send(time);
+            GET_TIME_RESPONSE.signal(time);
         }
-        RtcRequest::SetTime { dt, response } => {
-            let result = rtc.set_datetime(dt).map_err(|_| ());
-            if result.is_err() {
+        RtcRequest::SetTime(dt) => {
+            SET_TIME_RESPONSE.reset();
+            let result = rtc.set_datetime(dt).is_ok();
+            if !result {
                 warn!("Failed to set RTC time");
             }
-            let _ = response.try_send(result);
+            SET_TIME_RESPONSE.signal(result);
         }
-        RtcRequest::ScheduleAlarm { filter, response } => {
+        RtcRequest::ScheduleAlarm(filter) => {
+            SCHEDULE_ALARM_RESPONSE.reset();
             rtc.schedule_alarm(filter);
-            let _ = response.try_send(Ok(()));
+            SCHEDULE_ALARM_RESPONSE.signal(true);
         }
         RtcRequest::ClearAndDisableAlarm => {
+            CLEAR_ALARM_RESPONSE.reset();
             rtc.clear_interrupt();
             rtc.disable_alarm();
-            // No response needed for this fire-and-forget operation
+            CLEAR_ALARM_RESPONSE.signal(());
         }
-        RtcRequest::GetScheduledAlarm { response } => {
+        RtcRequest::GetScheduledAlarm => {
+            GET_SCHEDULED_ALARM_RESPONSE.reset();
             let scheduled = rtc.alarm_scheduled();
             info!("RTC manager: GetScheduledAlarm request -> {:?}", scheduled);
-            let _ = response.try_send(scheduled);
+            GET_SCHEDULED_ALARM_RESPONSE.signal(scheduled);
         }
     }
 }
@@ -202,17 +198,15 @@ fn handle_request(rtc: &mut Rtc<'static, peripherals::RTC>, request: RtcRequest)
 /// Get the current date and time from the RTC
 /// Returns None if the RTC is not running or if the request times out
 pub async fn rtc_get_time() -> Option<DateTime> {
-    // Create a oneshot channel for the response
-    static RESPONSE_CHANNEL: Channel<CriticalSectionRawMutex, GetTimeResponse, 1> = Channel::new();
-    let response_sender = RESPONSE_CHANNEL.sender();
+    // Lock the API mutex to ensure only one caller at a time
+    // This prevents concurrent requests from stealing each other's responses
+    let _lock = RTC_API_MUTEX.lock().await;
 
     info!("rtc_get_time: sending request");
     // Send request with timeout to prevent blocking during startup
     if with_timeout(
         Duration::from_millis(200),
-        RTC_REQUEST_CHANNEL.send(RtcRequest::GetTime {
-            response: response_sender,
-        }),
+        RTC_REQUEST_CHANNEL.send(RtcRequest::GetTime),
     )
     .await
     .is_err()
@@ -222,8 +216,8 @@ pub async fn rtc_get_time() -> Option<DateTime> {
     }
 
     info!("rtc_get_time: waiting for response");
-    // Wait for response with timeout
-    with_timeout(Duration::from_millis(200), RESPONSE_CHANNEL.receive())
+    // Wait for response signal with timeout
+    with_timeout(Duration::from_millis(200), GET_TIME_RESPONSE.wait())
         .await
         .map_or_else(
             |_| {
@@ -235,21 +229,19 @@ pub async fn rtc_get_time() -> Option<DateTime> {
                 dt
             },
         )
+    // Mutex is released here when _lock drops
 }
 
 /// Set the RTC date and time
 /// Returns Ok(()) on success, Err(()) on failure or timeout
 pub async fn rtc_set_time(dt: DateTime) -> Result<(), ()> {
-    static RESPONSE_CHANNEL: Channel<CriticalSectionRawMutex, SetTimeResponse, 1> = Channel::new();
-    let response_sender = RESPONSE_CHANNEL.sender();
+    // Lock the API mutex to ensure only one caller at a time
+    let _lock = RTC_API_MUTEX.lock().await;
 
     // Send request with timeout
     if with_timeout(
         Duration::from_secs(1),
-        RTC_REQUEST_CHANNEL.send(RtcRequest::SetTime {
-            dt,
-            response: response_sender,
-        }),
+        RTC_REQUEST_CHANNEL.send(RtcRequest::SetTime(dt)),
     )
     .await
     .is_err()
@@ -258,28 +250,29 @@ pub async fn rtc_set_time(dt: DateTime) -> Result<(), ()> {
         return Err(());
     }
 
-    // Wait for response with timeout
-    with_timeout(Duration::from_secs(1), RESPONSE_CHANNEL.receive())
+    // Wait for response signal with timeout
+    with_timeout(Duration::from_secs(1), SET_TIME_RESPONSE.wait())
         .await
-        .unwrap_or_else(|_| {
-            warn!("RTC set time response timed out");
-            Err(())
-        })
+        .map_or_else(
+            |_| {
+                warn!("RTC set time response timed out");
+                Err(())
+            },
+            |success| if success { Ok(()) } else { Err(()) },
+        )
+    // Mutex is released here when _lock drops
 }
 
 /// Schedule an alarm with the given filter
 /// Returns Ok(()) on success, Err(()) on failure or timeout
 pub async fn rtc_schedule_alarm(filter: DateTimeFilter) -> Result<(), ()> {
-    static RESPONSE_CHANNEL: Channel<CriticalSectionRawMutex, ScheduleAlarmResponse, 1> = Channel::new();
-    let response_sender = RESPONSE_CHANNEL.sender();
+    // Lock the API mutex to ensure only one caller at a time
+    let _lock = RTC_API_MUTEX.lock().await;
 
     // Send request with timeout
     if with_timeout(
         Duration::from_secs(1),
-        RTC_REQUEST_CHANNEL.send(RtcRequest::ScheduleAlarm {
-            filter,
-            response: response_sender,
-        }),
+        RTC_REQUEST_CHANNEL.send(RtcRequest::ScheduleAlarm(filter)),
     )
     .await
     .is_err()
@@ -288,18 +281,25 @@ pub async fn rtc_schedule_alarm(filter: DateTimeFilter) -> Result<(), ()> {
         return Err(());
     }
 
-    // Wait for response with timeout
-    with_timeout(Duration::from_secs(1), RESPONSE_CHANNEL.receive())
+    // Wait for response signal with timeout
+    with_timeout(Duration::from_secs(1), SCHEDULE_ALARM_RESPONSE.wait())
         .await
-        .unwrap_or_else(|_| {
-            warn!("RTC schedule alarm response timed out");
-            Err(())
-        })
+        .map_or_else(
+            |_| {
+                warn!("RTC schedule alarm response timed out");
+                Err(())
+            },
+            |success| if success { Ok(()) } else { Err(()) },
+        )
+    // Mutex is released here when _lock drops
 }
 
 /// Clear the RTC alarm interrupt and disable the alarm
 pub async fn rtc_clear_and_disable_alarm() {
-    // Send request with timeout - this is fire-and-forget, no response needed
+    // Lock the API mutex to ensure only one caller at a time
+    let _lock = RTC_API_MUTEX.lock().await;
+
+    // Send request with timeout
     if with_timeout(
         Duration::from_secs(1),
         RTC_REQUEST_CHANNEL.send(RtcRequest::ClearAndDisableAlarm),
@@ -308,7 +308,12 @@ pub async fn rtc_clear_and_disable_alarm() {
     .is_err()
     {
         warn!("RTC clear alarm request timed out");
+        return;
     }
+
+    // Wait for response signal with timeout
+    let _ = with_timeout(Duration::from_secs(1), CLEAR_ALARM_RESPONSE.wait()).await;
+    // Mutex is released here when _lock drops
 }
 
 /// Signal the RTC manager to start waiting for an alarm
@@ -331,16 +336,14 @@ pub async fn rtc_wait_for_alarm_signal() {
 /// Get the currently scheduled alarm filter from the RTC
 /// Returns None if no alarm is scheduled or if the request times out
 pub async fn rtc_get_scheduled_alarm() -> Option<DateTimeFilter> {
-    static RESPONSE_CHANNEL: Channel<CriticalSectionRawMutex, GetScheduledAlarmResponse, 1> = Channel::new();
-    let response_sender = RESPONSE_CHANNEL.sender();
+    // Lock the API mutex to ensure only one caller at a time
+    let _lock = RTC_API_MUTEX.lock().await;
 
     info!("rtc_get_scheduled_alarm: sending request");
     // Send request with timeout
     if with_timeout(
         Duration::from_millis(200),
-        RTC_REQUEST_CHANNEL.send(RtcRequest::GetScheduledAlarm {
-            response: response_sender,
-        }),
+        RTC_REQUEST_CHANNEL.send(RtcRequest::GetScheduledAlarm),
     )
     .await
     .is_err()
@@ -350,8 +353,8 @@ pub async fn rtc_get_scheduled_alarm() -> Option<DateTimeFilter> {
     }
 
     info!("rtc_get_scheduled_alarm: waiting for response");
-    // Wait for response with timeout
-    with_timeout(Duration::from_millis(200), RESPONSE_CHANNEL.receive())
+    // Wait for response signal with timeout
+    with_timeout(Duration::from_millis(200), GET_SCHEDULED_ALARM_RESPONSE.wait())
         .await
         .map_or_else(
             |_| {
@@ -363,4 +366,5 @@ pub async fn rtc_get_scheduled_alarm() -> Option<DateTimeFilter> {
                 filter
             },
         )
+    // Mutex is released here when _lock drops
 }
