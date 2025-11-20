@@ -389,15 +389,7 @@ impl PowerState {
         self.usb_power
     }
 
-    /// Get the battery voltage when fully charged
-    pub const fn get_battery_voltage_fully_charged(&self) -> f32 {
-        self.battery_voltage_fully_charged
-    }
 
-    /// Get the battery voltage when empty
-    pub const fn get_battery_voltage_empty(&self) -> f32 {
-        self.battery_voltage_empty
-    }
 
     /// Set the vsys voltage
     pub const fn set_vsys(&mut self, vsys: f32) {

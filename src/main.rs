@@ -47,6 +47,9 @@ mod state;
 mod task;
 mod utility;
 
+/// Firmware version
+pub static FIRMWARE_VERSION: &str = "v0.2";
+
 // Bind the interrupts on a global scope for convenience
 bind_interrupts!(pub struct Irqs {
     PIO0_IRQ_0 => PioInterruptHandler<PIO0>;

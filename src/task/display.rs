@@ -311,7 +311,7 @@ where
 }
 
 /// Draws the system info content in the center area of the display
-fn draw_system_info_content<D>(display: &mut D, vsys: f32, usb_power: bool, upper: f32, lower: f32, settings: &Settings)
+fn draw_system_info_content<D>(display: &mut D, vsys: f32, usb_power: bool, firmware_version: &str, settings: &Settings)
 where
     D: embedded_graphics::draw_target::DrawTarget<Color = BinaryColor>,
 {
@@ -339,10 +339,10 @@ where
     .draw(display);
     content_next_position.y += 15;
 
-    let mut bounds_txt: String<20> = String::new();
-    let _ = write!(bounds_txt, "Upper/Lower {upper}/{lower}V");
+    let mut fw_txt: String<20> = String::new();
+    let _ = write!(fw_txt, "FW: {firmware_version}");
     let _ = Text::with_baseline(
-        &bounds_txt,
+        &fw_txt,
         content_next_position,
         settings.content_text_style,
         Baseline::Top,
@@ -544,10 +544,8 @@ pub async fn display_handler(i2c: I2c<'static, I2C0, Async>) {
                     // Page 0: Power info
                     let vsys = system_state.power_state.get_vsys();
                     let usb_power = system_state.power_state.get_usb_power();
-                    let upper = system_state.power_state.get_battery_voltage_fully_charged();
-                    let lower = system_state.power_state.get_battery_voltage_empty();
 
-                    draw_system_info_content(&mut display, vsys, usb_power, upper, lower, &settings);
+                    draw_system_info_content(&mut display, vsys, usb_power, crate::FIRMWARE_VERSION, &settings);
                 } else {
                     // Page 1: Alarm info
                     let alarm_hour = system_state.alarm_settings.get_hour();
