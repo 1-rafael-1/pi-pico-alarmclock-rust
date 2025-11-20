@@ -169,7 +169,12 @@ fn interpolate_color_value(start: u8, end: u8, elapsed_millis: u32, total_millis
     }
     let delta = i16::from(end) - i16::from(start);
     let progress = elapsed_millis as f32 / total_millis as f32;
-    let change = (delta as f32 * progress) as i16;
+
+    // Apply quintic easing (ease-in-quintic) to keep red much longer
+    // This makes the transition very slow at first (staying red) and fast at the end (white dominates in last ~20-25%)
+    let eased_progress = progress * progress * progress * progress * progress;
+
+    let change = (delta as f32 * eased_progress) as i16;
     let result = i16::from(start) + change;
     result.clamp(0, 255) as u8
 }
@@ -364,11 +369,13 @@ async fn noise_effect(np: &mut NeopixelType, neopixel_mgr: &NeopixelManager) {
 
                 // Apply brightness directly to each LED to avoid recalculating for entire array
                 let color = NeopixelManager::wheel(wheel_index);
-                *data_led = RGB8 {
-                    r: (u16::from(color.r) * u16::from(brightness_level) / 255) as u8,
-                    g: (u16::from(color.g) * u16::from(brightness_level) / 255) as u8,
-                    b: (u16::from(color.b) * u16::from(brightness_level) / 255) as u8,
-                };
+                #[allow(clippy::cast_possible_truncation)]
+                let r = (u16::from(color.r) * u16::from(brightness_level) / 255) as u8;
+                #[allow(clippy::cast_possible_truncation)]
+                let g = (u16::from(color.g) * u16::from(brightness_level) / 255) as u8;
+                #[allow(clippy::cast_possible_truncation)]
+                let b = (u16::from(color.b) * u16::from(brightness_level) / 255) as u8;
+                *data_led = RGB8 { r, g, b };
             }
             np.write(&data).await;
             Timer::after(Duration::from_millis(5)).await;
@@ -447,6 +454,11 @@ pub async fn light_effects_handler(
         info!("{}", system_state);
 
         match system_state.operation_mode {
+            OperationMode::Initializing => {
+                info!("Initializing mode - LEDs remain off");
+                // Keep LEDs off during initialization
+                turn_off_all_leds(&mut np).await;
+            }
             OperationMode::Normal | OperationMode::Menu | OperationMode::SetAlarmTime | OperationMode::SystemInfo => {
                 handle_normal_mode(&mut np, &neopixel_mgr, &system_state, hour, minute, second, &colors).await;
             }

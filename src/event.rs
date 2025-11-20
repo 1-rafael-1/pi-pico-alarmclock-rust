@@ -42,6 +42,8 @@ pub enum Event {
     Scheduler((u8, u8, u8)),
     /// The rtc has been updated
     RtcUpdated,
+    /// The system has completed initialization (RTC set and alarm settings loaded)
+    SystemReady,
     /// The system must go to standby mode
     Standby,
     /// The system must wake up from standby mode

@@ -35,6 +35,7 @@ use crate::{
         light_effects::light_effects_handler,
         orchestrate::{alarm_expirer, orchestrator, scheduler},
         power::{usb_power_detector, vsys_voltage_reader},
+        rtc_manager::rtc_manager_task,
         sound::sound_handler,
         time_updater::time_updater,
         watchdog::watchdog_task,
@@ -70,7 +71,7 @@ async fn main(spawner: Spawner) {
 
     // Initialize the peripherals for the RP2040, use reduced clock settings for lower power consumption
     #[allow(clippy::unwrap_used)]
-    let mut clock_config = ClockConfig::system_freq(18_000_000).unwrap();
+    let mut clock_config = ClockConfig::system_freq(10_000_000).unwrap();
     clock_config.core_voltage = CoreVoltage::V0_90;
     let config = Config::new(clock_config);
     let p = embassy_rp::init(config);
@@ -127,8 +128,11 @@ async fn main(spawner: Spawner) {
     let flash = Flash::<_, Async, FLASH_SIZE>::new(p.FLASH, p.DMA_CH4);
     spawn_unwrap(spawner, alarm_settings_handler(flash));
 
-    // Time updater with WiFi and RTC
+    // RTC manager task - must be spawned before time_updater
     let rtc = Rtc::new(p.RTC, Irqs);
+    spawn_unwrap(spawner, rtc_manager_task(rtc));
+
+    // Time updater with WiFi
     let wifi_peripherals = crate::task::time_updater::WifiPeripherals {
         pwr_pin: p.PIN_23,
         cs_pin: p.PIN_25,
@@ -137,7 +141,7 @@ async fn main(spawner: Spawner) {
         clk_pin: p.PIN_29,
         dma_ch: p.DMA_CH0,
     };
-    spawn_unwrap(spawner, time_updater(spawner, rtc, wifi_peripherals));
+    spawn_unwrap(spawner, time_updater(spawner, wifi_peripherals));
 
     // Neopixel light effects
     let Pio { mut common, sm0, .. } = Pio::new(p.PIO1, Irqs);

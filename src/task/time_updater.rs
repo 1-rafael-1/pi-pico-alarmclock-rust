@@ -44,9 +44,8 @@ use embassy_rp::{
     gpio::{Level, Output},
     peripherals::{self, DMA_CH0, PIO0},
     pio::Pio,
-    rtc::Rtc,
 };
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex, signal::Signal};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Timer, with_timeout};
 use heapless;
 use panic_probe as _;
@@ -113,10 +112,6 @@ pub struct WifiPeripherals {
 }
 
 /// Type alias for the RTC mutex.
-type RtcType = Mutex<CriticalSectionRawMutex, Option<Rtc<'static, peripherals::RTC>>>;
-/// The RTC mutex, which is used to access the RTC from multiple tasks. There was no apparent place to put this anywhere else, so it is here.
-pub static RTC_MUTEX: RtcType = Mutex::new(None);
-
 /// Static cell for `CYW43` `WiFi` state.
 static WIFI_STATE: StaticCell<cyw43::State> = StaticCell::new();
 
@@ -205,20 +200,6 @@ async fn wifi_task(runner: cyw43::Runner<'static, Output<'static>, PioSpi<'stati
 #[embassy_executor::task]
 async fn net_task(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'static>>) -> ! {
     runner.run().await
-}
-
-/// RTC management task that stores the RTC in a static mutex for access by other tasks.
-#[embassy_executor::task]
-async fn rtc_task(rtc: embassy_rp::rtc::Rtc<'static, embassy_rp::peripherals::RTC>) {
-    // RTC management task - store RTC in static context here
-    {
-        *(RTC_MUTEX.lock().await) = Some(rtc);
-    }
-
-    // Keep the task alive
-    loop {
-        embassy_time::Timer::after(embassy_time::Duration::from_secs(60)).await;
-    }
 }
 
 /// Initialize `WiFi` hardware and return the control handle and network device.
@@ -450,13 +431,11 @@ fn parse_time_response(body: &str) -> Result<(&str, u8), &'static str> {
 /// Update the RTC with the fetched time data.
 #[allow(clippy::significant_drop_tightening)]
 async fn update_rtc_with_time(datetime_str: &str, day_of_week: u8) -> Result<(), &'static str> {
+    use crate::task::rtc_manager::rtc_set_time;
+
     let dt = StringUtils::convert_str_to_datetime(datetime_str, day_of_week);
 
-    {
-        let mut rtc_guard = RTC_MUTEX.lock().await;
-        let rtc = rtc_guard.as_mut().ok_or("RTC not initialized")?;
-        rtc.set_datetime(dt).map_err(|_| "Failed to set datetime")?;
-    }
+    rtc_set_time(dt).await.map_err(|()| "Failed to set datetime")?;
 
     // Send event to state manager
     send_event(Event::RtcUpdated).await;
@@ -496,12 +475,8 @@ async fn handle_retry_delay(retry_secs: u64, error_msg: &str) {
 /// and `RTC` synchronization.
 #[allow(clippy::large_futures)]
 #[embassy_executor::task]
-pub async fn time_updater(spawner: Spawner, rtc: Rtc<'static, peripherals::RTC>, wifi_peripherals: WifiPeripherals) {
+pub async fn time_updater(spawner: Spawner, wifi_peripherals: WifiPeripherals) {
     info!("time updater task started");
-
-    // Initialize RTC task
-    info!("init rtc");
-    spawner.spawn(unwrap!(rtc_task(rtc)));
 
     // Initialize WiFi and network stack
     let (mut control, net_device) = setup_wifi(&spawner, wifi_peripherals).await;

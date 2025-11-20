@@ -48,13 +48,10 @@ impl StringUtils {
 
             // Process the time part - first strip timezone info (everything after + or -)
             let time_with_tz = parts[1];
-            let time_str = if let Some(pos) = time_with_tz.find('+') {
-                &time_with_tz[..pos]
-            } else if let Some(pos) = time_with_tz.find('-') {
-                &time_with_tz[..pos]
-            } else {
-                time_with_tz
-            };
+            let time_str = time_with_tz.find('+').map_or_else(
+                || time_with_tz.find('-').map_or(time_with_tz, |pos| &time_with_tz[..pos]),
+                |pos| &time_with_tz[..pos],
+            );
 
             // Now split by colon to get time components
             let time_parts: Vec<&str, CAPACITY> = time_str.split(':').collect();

@@ -7,6 +7,7 @@ pub mod display;
 pub mod light_effects;
 pub mod orchestrate;
 pub mod power;
+pub mod rtc_manager;
 pub mod sound;
 pub mod time_updater;
 pub mod watchdog;

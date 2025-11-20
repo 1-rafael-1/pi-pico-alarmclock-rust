@@ -38,6 +38,8 @@ pub struct SystemState {
     pub alarm_state: AlarmState,
     /// The power state of the system
     pub power_state: PowerState,
+    /// The current page of system info (0-based, 0 = power info, 1 = alarm info)
+    pub system_info_page: u8,
 }
 
 /// State transitions and operations
@@ -46,7 +48,7 @@ impl SystemState {
     /// We will get the actual data pretty early in the system startup, so we can set all this to inits here
     pub const fn new() -> Self {
         Self {
-            operation_mode: OperationMode::Normal,
+            operation_mode: OperationMode::Initializing,
             alarm_settings: AlarmSettings::new_empty(),
             alarm_state: AlarmState::None,
             power_state: PowerState {
@@ -56,6 +58,7 @@ impl SystemState {
                 battery_voltage_empty: 2.6,
                 battery_level: BatteryLevel::Bat000,
             },
+            system_info_page: 0,
         }
     }
 
@@ -74,6 +77,13 @@ impl SystemState {
     pub const fn set_normal_mode(&mut self) {
         self.operation_mode = OperationMode::Normal;
         self.set_alarm_state(AlarmState::None);
+    }
+
+    /// Transition from initializing to normal mode (only allowed from Initializing state)
+    pub const fn complete_initialization(&mut self) {
+        if matches!(self.operation_mode, OperationMode::Initializing) {
+            self.operation_mode = OperationMode::Normal;
+        }
     }
 
     /// Set the system to set alarm time mode
@@ -95,6 +105,17 @@ impl SystemState {
     /// Set the system to system info mode
     pub const fn set_system_info_mode(&mut self) {
         self.operation_mode = OperationMode::SystemInfo;
+        self.system_info_page = 0;
+    }
+
+    /// Advance to the next system info page, or exit if on the last page
+    pub const fn next_system_info_page(&mut self) -> bool {
+        if self.system_info_page == 0 {
+            self.system_info_page = 1;
+            true // Still in system info mode
+        } else {
+            false // Should exit system info mode
+        }
     }
 
     /// Increment the alarm hour
@@ -133,6 +154,10 @@ impl SystemState {
 /// The operation mode of the system
 #[derive(Eq, PartialEq, Debug, Format, Clone)]
 pub enum OperationMode {
+    /// The system is initializing, waiting for RTC and alarm settings to be loaded.
+    ///
+    /// Displays the setup icon and "Initializing" text. Does not update the neopixel ring.
+    Initializing,
     /// The regular operation mode.
     ///
     /// Displays the time, the alarm status, etc. Showing the analog clock on the neopixel
