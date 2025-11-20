@@ -4,6 +4,12 @@
 	(generator_version "9.0")
 	(uuid "4c5cb0eb-2550-406b-8a38-335faa16f981")
 	(paper "A4")
+	(title_block
+		(title "pi-pico-alarmclock-rust")
+		(date "2025-11-20")
+		(rev "v0.2")
+		(company "rafael")
+	)
 	(lib_symbols
 		(symbol "JST_04_1"
 			(exclude_from_sim no)
@@ -4828,6 +4834,12 @@
 		(uuid "6e44a764-d3d8-4346-bae4-74e74e02dc4c")
 	)
 	(junction
+		(at 161.29 44.45)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "6ea8eef3-7c72-4a3b-86fe-ed254a4abd36")
+	)
+	(junction
 		(at 153.67 97.79)
 		(diameter 0)
 		(color 0 0 0 0)
@@ -7509,6 +7521,71 @@
 		)
 	)
 	(symbol
+		(lib_id "power:GND")
+		(at 161.29 44.45 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "61e40f1a-8f68-40dc-a90d-2a75d14ca47b")
+		(property "Reference" "#PWR03"
+			(at 161.29 50.8 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "GND"
+			(at 164.084 46.99 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 161.29 44.45 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 161.29 44.45 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 161.29 44.45 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "11f3c183-795f-46fb-bc22-097c31da00d6")
+		)
+		(instances
+			(project "pi-pico-alarmclock"
+				(path "/4c5cb0eb-2550-406b-8a38-335faa16f981"
+					(reference "#PWR03")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "PCM_SL_Screw_Terminal:Screw_Terminal_2_P5.00mm")
 		(at 195.58 147.32 180)
 		(unit 1)
@@ -7904,7 +7981,7 @@
 		(dnp no)
 		(uuid "749a7089-066d-484b-87c6-5cac84cf5d5e")
 		(property "Reference" "U3"
-			(at 160.274 48.514 0)
+			(at 159.258 48.768 0)
 			(effects
 				(font
 					(size 1.27 1.27)
