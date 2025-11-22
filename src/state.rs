@@ -34,12 +34,18 @@ pub struct SystemState {
     pub operation_mode: OperationMode,
     /// The settings for the alarm
     pub alarm_settings: AlarmSettings,
+    /// User-configurable system settings (volume, brightness, etc.)
+    pub system_settings: SystemSettings,
     /// The state of the alarm
     pub alarm_state: AlarmState,
     /// The power state of the system
     pub power_state: PowerState,
     /// The current page of system info (0-based, 0 = power info, 1 = alarm info)
     pub system_info_page: u8,
+    /// Temporary buffer for manual time setting (hour, minute)
+    pub manual_time_buffer: (u8, u8),
+    /// The tick count of the last user interaction (for menu timeout)
+    pub last_interaction_tick: u64,
 }
 
 /// State transitions and operations
@@ -50,6 +56,7 @@ impl SystemState {
         Self {
             operation_mode: OperationMode::Initializing,
             alarm_settings: AlarmSettings::new_empty(),
+            system_settings: SystemSettings::new_default(),
             alarm_state: AlarmState::None,
             power_state: PowerState {
                 usb_power: false,
@@ -59,6 +66,8 @@ impl SystemState {
                 battery_level: BatteryLevel::Bat000,
             },
             system_info_page: 0,
+            manual_time_buffer: (0, 0),
+            last_interaction_tick: 0,
         }
     }
 
@@ -108,6 +117,42 @@ impl SystemState {
         self.system_info_page = 0;
     }
 
+    /// Set the system to settings menu mode
+    pub const fn set_settings_menu_mode(&mut self) {
+        self.operation_mode = OperationMode::SettingsMenu;
+    }
+
+    /// Set the system to set volume mode
+    pub const fn set_volume_mode(&mut self) {
+        self.operation_mode = OperationMode::SetVolume;
+    }
+
+    /// Set the system to set clock brightness mode
+    pub const fn set_clock_brightness_mode(&mut self) {
+        self.operation_mode = OperationMode::SetClockBrightness;
+    }
+
+    /// Set the system to manual time setting mode, initializing buffer with current RTC time
+    pub const fn set_time_manual_mode(&mut self, current_hour: u8, current_minute: u8) {
+        self.manual_time_buffer = (current_hour, current_minute);
+        self.operation_mode = OperationMode::SetTimeManual;
+    }
+
+    /// Increment the manual time hour
+    pub const fn increment_manual_hour(&mut self) {
+        self.manual_time_buffer.0 = (self.manual_time_buffer.0 + 1) % 24;
+    }
+
+    /// Increment the manual time minute
+    pub const fn increment_manual_minute(&mut self) {
+        self.manual_time_buffer.1 = (self.manual_time_buffer.1 + 1) % 60;
+    }
+
+    /// Save the system settings to flash
+    pub async fn save_system_settings(&self) {
+        send_event(Event::SystemSettingsNeedUpdate).await;
+    }
+
     /// Advance to the next system info page, or exit if on the last page
     pub const fn next_system_info_page(&mut self) -> bool {
         if self.system_info_page == 0 {
@@ -116,6 +161,25 @@ impl SystemState {
         } else {
             false // Should exit system info mode
         }
+    }
+
+    /// Update the last interaction tick to current time
+    pub const fn update_interaction_tick(&mut self, tick: u64) {
+        self.last_interaction_tick = tick;
+    }
+
+    /// Check if any interactive mode should timeout (10 seconds = 10000ms of inactivity)
+    pub const fn should_interactive_mode_timeout(&self, current_tick: u64) -> bool {
+        matches!(
+            self.operation_mode,
+            OperationMode::Menu
+                | OperationMode::SettingsMenu
+                | OperationMode::SystemInfo
+                | OperationMode::SetAlarmTime
+                | OperationMode::SetVolume
+                | OperationMode::SetClockBrightness
+                | OperationMode::SetTimeManual
+        ) && (current_tick.saturating_sub(self.last_interaction_tick) >= 10000)
     }
 
     /// Increment the alarm hour
@@ -174,8 +238,83 @@ pub enum OperationMode {
     Menu,
     /// Displaying the system info
     SystemInfo,
+    /// The settings menu is active, displaying settings options
+    SettingsMenu,
+    /// Setting the volume level
+    SetVolume,
+    /// Setting the clock brightness level
+    SetClockBrightness,
+    /// Setting the time manually
+    SetTimeManual,
     /// The system is in standby mode, the display is off, the neopixel ring is off, the system is in a low power state.
     Standby,
+}
+
+/// User-configurable system settings (persisted to flash)
+#[derive(Eq, PartialEq, Debug, Format, Clone)]
+pub struct SystemSettings {
+    /// Volume level for alarm sound (0-30, `DFPlayer` range)
+    volume: u8,
+    /// Brightness for `NeoPixel` clock mode (0-20, reasonable range to avoid power issues)
+    clock_brightness: u8,
+}
+
+impl SystemSettings {
+    /// Create new settings with sensible defaults
+    pub const fn new_default() -> Self {
+        Self {
+            volume: 13,          // Current hardcoded value
+            clock_brightness: 1, // Current hardcoded value
+        }
+    }
+
+    /// Get the volume level
+    pub const fn get_volume(&self) -> u8 {
+        self.volume
+    }
+
+    /// Set the volume level (clamped to valid `DFPlayer` range)
+    pub const fn set_volume(&mut self, volume: u8) {
+        self.volume = if volume > 30 { 30 } else { volume };
+    }
+
+    /// Increment the volume level (wraps from 30 to 0)
+    pub const fn increment_volume(&mut self) {
+        self.volume = if self.volume >= 30 { 0 } else { self.volume + 1 };
+    }
+
+    /// Decrement the volume level (wraps from 0 to 30)
+    pub const fn decrement_volume(&mut self) {
+        self.volume = if self.volume == 0 { 30 } else { self.volume - 1 };
+    }
+
+    /// Get the clock brightness level
+    pub const fn get_clock_brightness(&self) -> u8 {
+        self.clock_brightness
+    }
+
+    /// Set the clock brightness level (clamped to reasonable range)
+    pub const fn set_clock_brightness(&mut self, brightness: u8) {
+        self.clock_brightness = if brightness > 20 { 20 } else { brightness };
+    }
+
+    /// Increment the clock brightness level (wraps from 20 to 0)
+    pub const fn increment_clock_brightness(&mut self) {
+        self.clock_brightness = if self.clock_brightness >= 20 {
+            0
+        } else {
+            self.clock_brightness + 1
+        };
+    }
+
+    /// Decrement the clock brightness level (wraps from 0 to 20)
+    pub const fn decrement_clock_brightness(&mut self) {
+        self.clock_brightness = if self.clock_brightness == 0 {
+            20
+        } else {
+            self.clock_brightness - 1
+        };
+    }
 }
 
 /// The settings for the alarm
@@ -388,8 +527,6 @@ impl PowerState {
     pub const fn get_usb_power(&self) -> bool {
         self.usb_power
     }
-
-
 
     /// Set the vsys voltage
     pub const fn set_vsys(&mut self, vsys: f32) {

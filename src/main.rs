@@ -47,8 +47,8 @@ mod state;
 mod task;
 mod utility;
 
-/// Firmware version
-pub static FIRMWARE_VERSION: &str = "v0.2";
+/// Firmware version - automatically populated from Cargo.toml
+pub static FIRMWARE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // Bind the interrupts on a global scope for convenience
 bind_interrupts!(pub struct Irqs {

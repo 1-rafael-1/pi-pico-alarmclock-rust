@@ -5,7 +5,7 @@
 use defmt::{Debug2Format, info};
 use dfplayer_async::{DfPlayer, Equalizer, PlayBackSource, TimeSource};
 use embassy_rp::{gpio::Output, uart::BufferedUart};
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex, signal::Signal};
 use embassy_time::{Delay, Duration, Instant, Timer};
 
 /// Signal for starting the sound
@@ -13,6 +13,27 @@ static SOUND_START_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
 /// Signal for stopping the sound
 static SOUND_STOP_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+
+/// Current volume level (protected by mutex)
+static SOUND_VOLUME: Mutex<CriticalSectionRawMutex, u8> = Mutex::new(13);
+
+/// Updates the current volume level
+pub fn signal_sound_volume_update(volume: u8) {
+    // We need to update the volume in the mutex
+    // This will be picked up next time sound plays
+    // Use try_lock to avoid blocking
+    if let Ok(mut vol) = SOUND_VOLUME.try_lock() {
+        *vol = volume;
+    } else {
+        info!("Volume update skipped: mutex locked");
+    }
+}
+
+/// Gets the current volume level
+async fn get_current_volume() -> u8 {
+    let vol = SOUND_VOLUME.lock().await;
+    *vol
+}
 
 /// Signals the sound task to start playing
 pub fn signal_sound_start() {
@@ -87,7 +108,9 @@ pub async fn sound_handler(mut uart: BufferedUart, mut pwr: Output<'static>) {
 
         info!("Playing sound");
         if let Ok(ref mut dfp) = dfp_result {
-            let _ = dfp.set_volume(13).await;
+            let volume = get_current_volume().await;
+            info!("Setting volume to {}", volume);
+            let _ = dfp.set_volume(volume).await;
             Timer::after(Duration::from_millis(100)).await;
             let _ = dfp.set_equalizer(Equalizer::Classic).await;
             Timer::after(Duration::from_millis(100)).await;

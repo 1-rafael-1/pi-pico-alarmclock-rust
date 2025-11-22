@@ -3,7 +3,7 @@
 use defmt::Format;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
 
-use crate::state::AlarmSettings;
+use crate::state::{AlarmSettings, SystemSettings};
 
 /// System event channel for sending and receiving events
 pub static EVENT_CHANNEL: Channel<CriticalSectionRawMutex, Event, EVENT_CHANNEL_CAPACITY> = Channel::new();
@@ -38,6 +38,12 @@ pub enum Event {
     AlarmSettingsReadFromFlash(AlarmSettings),
     /// The alarm settings need to be updated in the flash memory
     AlarmSettingsNeedUpdate,
+    /// The system settings have been read from the flash memory, the data is the system settings
+    SystemSettingsReadFromFlash(SystemSettings),
+    /// The system settings need to be updated in the flash memory
+    SystemSettingsNeedUpdate,
+    /// Manual time has been set, the data is (hour, minute)
+    ManualTimeSet((u8, u8)),
     /// The scheduler has ticked, the data is the time in (hour, minute, second)
     Scheduler((u8, u8, u8)),
     /// The rtc has been updated
@@ -54,4 +60,6 @@ pub enum Event {
     AlarmStop,
     /// The light effect `sunrise` has finished
     SunriseEffectFinished,
+    /// An interactive mode (menu, settings, or setting mode) has timed out due to inactivity
+    InteractiveModeTimeout,
 }
