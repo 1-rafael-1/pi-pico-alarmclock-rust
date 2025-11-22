@@ -35,13 +35,14 @@ A fully-featured alarm clock built on a Raspberry Pi Pico W, written in Rust usi
 
 ### Build and Flash
 
-```bash
-# Build for release with minimal logging
-DEFMT_LOG=warn cargo build --release
+This project uses **probe-rs** for debugging and flashing via a debug probe (e.g., Raspberry Pi Debug Probe, Picoprobe).
 
-# Flash to device (hold BOOTSEL while connecting USB)
-picotool load -u -v -x -t elf target/thumbv6m-none-eabi/release/pi-pico-alarmclock
+```bash
+# Build and flash with probe-rs (recommended)
+DEFMT_LOG=warn cargo run --release
 ```
+
+See the [Building the Project](#building-the-project) section for more details.
 
 ### First Use
 
@@ -119,9 +120,7 @@ cargo build
 cargo run
 ```
 
-Logs are output via RTT (Real-Time Transfer) to your debugger.
-
-### Release Build (Recommended for Deployment)
+### Release Build
 
 **Warnings only** (prevents RTT buffer overflow when running standalone):
 
@@ -135,24 +134,6 @@ DEFMT_LOG=warn cargo run --release
 ```bash
 DEFMT_LOG=info cargo build --release
 ```
-
-### Flashing
-
-**Option 1: Direct flash with picotool**
-
-```bash
-# Put board in bootloader mode (hold BOOTSEL while connecting USB)
-picotool load -u -v -x -t elf target/thumbv6m-none-eabi/release/pi-pico-alarmclock
-```
-
-**Option 2: Convert to UF2 and copy manually**
-
-```bash
-picotool uf2 convert target/thumbv6m-none-eabi/release/pi-pico-alarmclock -t elf pi-pico-alarmclock.uf2 -t uf2
-# Copy the .uf2 file to the RPI-RP2 drive
-```
-
----
 
 ## User Manual
 
