@@ -401,7 +401,7 @@ Gallery of images: [enclosure/gallery.md](enclosure/gallery.md)
 |WS2812B NeoPixel Ring|1|16 RGB LED ring (this is the limit the power supply can handle)|
 |Speaker|1|3W 8Ω speaker, 70×30×15mm (DFPlayer Mini compatible)|
 |18650 Li-ion Battery|1|3350mAh or similar capacity|
-|Battery Holder|1|For 18650 battey|
+|Battery Holder|1|For 18650 battery|
 |Micro SD Card|1|Any capacity, formatted to FAT32|
 
 ### Push Buttons
@@ -480,12 +480,12 @@ Does the world need another alarm clock? Hell no, it does not. You can buy them 
 
 It took me two years, much of which time this project sat in some state of being unfinished. Mostly it sat idle when I had hit a wall in Rust-skill, electronics skill or 3d-printing skill. I only very recently found a huge ground bounce that messed up the DFPlayer audio output.
 
-When I started this, Coding AI was in relative infancy. I am glad it was, because that made me learn a lot the hard and memorable way. By today all that I do uses AI to some extent, it is amazing what kind of reach this bestows. So, in this iteration of the project I did use AI for almost all refactoring and - shame on me - also for some features. Woult I dare to if this was a commercial project? No. But for a hobby thing? Why not?
+When I started this, Coding AI was in relative infancy. I am glad it was, because that made me learn a lot the hard and memorable way. By today all that I do uses AI to some extent, it is amazing what kind of reach this bestows. So, in this iteration of the project I did use AI for almost all refactoring and - shame on me - also for some features. Would I dare to if this was a commercial project? No. But for a hobby thing? Why not?
 
 ## Thanks
 
 - **[Embassy Framework](https://github.com/embassy-rs/embassy)** - Rust async framework for embedded devices with excellent examples and HALs
-- **Embassy Community** - Patient and helpful individuals who answered my Rust-rookie and Embassy-rookie questions. From the orchestrator pattern through a number of headscratchers with Cells, Mutexes adn Sync Primitives.... I learned it all from them.
+- **Embassy Community** - Patient and helpful individuals who answered my Rust-rookie and Embassy-rookie questions. From the orchestrator pattern through a number of headscratchers with Cells, Mutexes and Sync Primitives.... I learned it all from them.
 
 ## License
 
