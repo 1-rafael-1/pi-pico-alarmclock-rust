@@ -25,6 +25,7 @@ A fully-featured alarm clock built on a Raspberry Pi Pico W, written in Rust usi
 ### Advanced Features
 - **Multi-Mode Interface** - Normal, Menu, Settings, Alarm, System Info, and Standby modes
 - **Smart Alarm** - Sunrise light effect followed by audio, with randomized button sequence to dismiss
+- **Auto-Timeout Protection** - All menus and settings automatically return to Normal mode after 10 seconds of inactivity (with auto-save)
 - **Power Management** - Standby mode with task suspension for minimal power consumption
 - **Persistent Storage** - All settings saved to flash memory and survive power cycles
 
@@ -199,6 +200,7 @@ This is the default mode showing the current time.
 - Hold button for continuous increment
 - Time wraps around for easy adjustment
 - Alarm setting is saved to flash automatically
+- **Auto-timeout:** Returns to Normal mode after 10 seconds of inactivity (changes are saved)
 
 ---
 
@@ -212,6 +214,8 @@ Press **Yellow** from Normal mode to access the menu.
 | **Blue** | **Standby Mode** |
 | **Yellow** | System Info |
 
+**Auto-timeout:** Returns to Normal mode after 10 seconds of inactivity
+
 ---
 
 ### Settings Menu
@@ -223,6 +227,8 @@ Configure volume, brightness, and time.
 | **Green** | Set Volume |
 | **Blue** | Set LED Brightness |
 | **Yellow** | Set Time Manually |
+
+**Auto-timeout:** Returns to Normal mode after 10 seconds of inactivity
 
 ---
 
@@ -239,6 +245,8 @@ Adjust alarm sound volume (0-30).
 **Display shows:** `Volume: 13`
 
 **Range:** 0-30 (DFPlayer Mini volume range)
+
+**Auto-timeout:** Auto-saves and returns to Normal mode after 10 seconds of inactivity
 
 ---
 
@@ -258,6 +266,8 @@ Adjust NeoPixel clock brightness (0-20).
 
 **✨ Live Preview:** Clock LEDs update immediately as you adjust!
 
+**Auto-timeout:** Auto-saves and returns to Normal mode after 10 seconds of inactivity
+
 ---
 
 ### Set Time Manually
@@ -273,6 +283,8 @@ Set time when WiFi is unavailable or for DST adjustments.
 **Display shows:** Time in large digits (HH:MM)
 
 **Note:** Seconds are reset to :00, date is preserved from current RTC
+
+**Auto-timeout:** Auto-saves and returns to Normal mode after 10 seconds of inactivity
 
 ---
 
@@ -295,6 +307,8 @@ View power and alarm information (2 pages).
 | **Green** | Next page (or exit if on last page) |
 | **Blue** | Back to Normal mode |
 | **Yellow** | Back to Normal mode |
+
+**Auto-timeout:** Returns to Normal mode after 10 seconds of inactivity
 
 ---
 
@@ -366,7 +380,7 @@ All numeric values wrap around for easy adjustment:
 1. **Settings Persist** - Volume and brightness are saved to flash and survive power cycles
 2. **Live Preview** - LED brightness changes are visible immediately while adjusting
 3. **No Confirmation Prompts** - Pressing Blue always saves/confirms
-4. **Menu Navigation** - You can always get back to Normal mode from any menu
+4. **Auto-Timeout Protection** - All menus and settings automatically return to Normal mode after 10 seconds of inactivity (settings are auto-saved)
 5. **WiFi Not Required** - Manual time setting works even if WiFi is down
 6. **Alarm Preserved** - Setting time manually doesn't affect your alarm settings
 7. **Hold for Speed** - Hold Green or Yellow buttons for continuous increment

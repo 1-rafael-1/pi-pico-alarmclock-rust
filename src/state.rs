@@ -44,6 +44,8 @@ pub struct SystemState {
     pub system_info_page: u8,
     /// Temporary buffer for manual time setting (hour, minute)
     pub manual_time_buffer: (u8, u8),
+    /// The tick count of the last user interaction (for menu timeout)
+    pub last_interaction_tick: u64,
 }
 
 /// State transitions and operations
@@ -65,6 +67,7 @@ impl SystemState {
             },
             system_info_page: 0,
             manual_time_buffer: (0, 0),
+            last_interaction_tick: 0,
         }
     }
 
@@ -158,6 +161,25 @@ impl SystemState {
         } else {
             false // Should exit system info mode
         }
+    }
+
+    /// Update the last interaction tick to current time
+    pub const fn update_interaction_tick(&mut self, tick: u64) {
+        self.last_interaction_tick = tick;
+    }
+
+    /// Check if any interactive mode should timeout (10 seconds = 10000ms of inactivity)
+    pub const fn should_interactive_mode_timeout(&self, current_tick: u64) -> bool {
+        matches!(
+            self.operation_mode,
+            OperationMode::Menu
+                | OperationMode::SettingsMenu
+                | OperationMode::SystemInfo
+                | OperationMode::SetAlarmTime
+                | OperationMode::SetVolume
+                | OperationMode::SetClockBrightness
+                | OperationMode::SetTimeManual
+        ) && (current_tick.saturating_sub(self.last_interaction_tick) >= 10000)
     }
 
     /// Increment the alarm hour

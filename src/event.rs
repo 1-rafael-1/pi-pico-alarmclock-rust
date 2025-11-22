@@ -60,4 +60,6 @@ pub enum Event {
     AlarmStop,
     /// The light effect `sunrise` has finished
     SunriseEffectFinished,
+    /// An interactive mode (menu, settings, or setting mode) has timed out due to inactivity
+    InteractiveModeTimeout,
 }
