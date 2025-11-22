@@ -245,7 +245,7 @@ Adjust NeoPixel clock brightness (0-20).
 
 **Range:** 0-20 (limited for battery safety)
 
-**✨ Live Preview:** Clock LEDs update immediately as you adjust!
+**Live Preview:** Clock LEDs update immediately as you adjust!
 
 **Auto-timeout:** Auto-saves and returns to Normal mode after 10 seconds of inactivity
 
