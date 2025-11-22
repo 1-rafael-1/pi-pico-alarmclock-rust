@@ -70,7 +70,7 @@ See the [User Manual](#user-manual) below for detailed instructions.
 - 5V Step-up Converter
 
 ### Interface
-- 3× LED Ring Push Buttons (16mm, Green/Blue/Yellow)
+- 3× LED Ring Push Buttons (12mm, Green/Blue/Yellow)
 - Power switch
 - Micro SD card (FAT32, for alarm audio)
 

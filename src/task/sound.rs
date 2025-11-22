@@ -24,6 +24,8 @@ pub fn signal_sound_volume_update(volume: u8) {
     // Use try_lock to avoid blocking
     if let Ok(mut vol) = SOUND_VOLUME.try_lock() {
         *vol = volume;
+    } else {
+        info!("Volume update skipped: mutex locked");
     }
 }
 
