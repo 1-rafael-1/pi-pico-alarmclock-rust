@@ -26,6 +26,9 @@ static LIGHTFX_START_SIGNAL: Signal<CriticalSectionRawMutex, (u8, u8, u8)> = Sig
 /// Signal for stopping the light effects
 static LIGHTFX_STOP_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
+/// Signal for updating the `NeoPixel` brightness
+static NEOPIXEL_BRIGHTNESS_UPDATE_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+
 /// Signals the light effects to start/update with the given time
 pub fn signal_lightfx_start(hour: u8, minute: u8, second: u8) {
     LIGHTFX_START_SIGNAL.signal((hour, minute, second));
@@ -34,6 +37,11 @@ pub fn signal_lightfx_start(hour: u8, minute: u8, second: u8) {
 /// Signals the light effects to stop
 pub fn signal_lightfx_stop() {
     LIGHTFX_STOP_SIGNAL.signal(());
+}
+
+/// Signals that the `NeoPixel` brightness should be updated from system state
+pub fn signal_neopixel_brightness_update() {
+    NEOPIXEL_BRIGHTNESS_UPDATE_SIGNAL.signal(());
 }
 
 /// Waits for the next light effects start signal
@@ -49,6 +57,16 @@ fn is_lightfx_stop_signaled() -> bool {
 /// Resets the light effects stop signal
 fn reset_lightfx_stop_signal() {
     LIGHTFX_STOP_SIGNAL.reset();
+}
+
+/// Checks if the brightness update signal has been signaled
+fn is_brightness_update_signaled() -> bool {
+    NEOPIXEL_BRIGHTNESS_UPDATE_SIGNAL.signaled()
+}
+
+/// Resets the brightness update signal
+fn reset_brightness_update_signal() {
+    NEOPIXEL_BRIGHTNESS_UPDATE_SIGNAL.reset();
 }
 
 /// Number of LEDs in the ring (as usize for compile-time array sizing)
@@ -106,6 +124,15 @@ impl NeopixelManager {
     /// Returns the clock brightness setting.
     pub const fn clock_brightness(&self) -> u8 {
         self.clock_brightness
+    }
+
+    /// Updates brightness from system state
+    pub async fn update_from_system_state(&mut self) {
+        let state = SYSTEM_STATE.lock().await;
+        if let Some(s) = state.as_ref() {
+            self.clock_brightness = s.system_settings.get_clock_brightness();
+            info!("Updated clock brightness to {}", self.clock_brightness);
+        }
     }
 
     /// Mixes two colors together
@@ -425,14 +452,25 @@ pub async fn light_effects_handler(
 ) {
     info!("Analog clock task start");
 
-    let neopixel_mgr = NeopixelManager::new();
+    let mut neopixel_mgr = NeopixelManager::new();
     let mut np = PioWs2812::new(&mut common, sm, dma, pin, &program);
+
+    // Load initial brightness from system state
+    neopixel_mgr.update_from_system_state().await;
     let colors = ClockColors::new();
 
     // All off initially
     turn_off_all_leds(&mut np).await;
 
     'mainloop: loop {
+        // Check if brightness update is signaled
+        if is_brightness_update_signaled() {
+            reset_brightness_update_signal();
+            neopixel_mgr.update_from_system_state().await;
+            // Re-trigger the current display by signaling with zeros
+            signal_lightfx_start(0, 0, 0);
+        }
+
         // Wait for the signal to update the neopixel
         let (hour, minute, second) = wait_for_lightfx_start().await;
         info!("LightFX signal received: ({}, {}, {})", hour, minute, second);
@@ -459,7 +497,14 @@ pub async fn light_effects_handler(
                 // Keep LEDs off during initialization
                 turn_off_all_leds(&mut np).await;
             }
-            OperationMode::Normal | OperationMode::Menu | OperationMode::SetAlarmTime | OperationMode::SystemInfo => {
+            OperationMode::Normal
+            | OperationMode::Menu
+            | OperationMode::SetAlarmTime
+            | OperationMode::SystemInfo
+            | OperationMode::SettingsMenu
+            | OperationMode::SetVolume
+            | OperationMode::SetClockBrightness
+            | OperationMode::SetTimeManual => {
                 handle_normal_mode(&mut np, &neopixel_mgr, &system_state, hour, minute, second, &colors).await;
             }
             OperationMode::Alarm => {

@@ -263,6 +263,27 @@ pub async fn rtc_set_time(dt: DateTime) -> Result<(), ()> {
     // Mutex is released here when _lock drops
 }
 
+/// Set the RTC time manually from hour and minute values
+/// This gets the current date from RTC and only updates the hour and minute, setting seconds to 0
+pub async fn rtc_set_time_manual(hour: u8, minute: u8) {
+    info!("Setting RTC time manually to {:02}:{:02}", hour, minute);
+
+    // Get current time to preserve the date
+    if let Some(mut current_dt) = rtc_get_time().await {
+        current_dt.hour = hour;
+        current_dt.minute = minute;
+        current_dt.second = 0; // Reset seconds to :00
+
+        if let Err(_e) = rtc_set_time(current_dt).await {
+            warn!("Failed to set RTC time manually");
+        } else {
+            info!("RTC time set manually to {:02}:{:02}", hour, minute);
+        }
+    } else {
+        warn!("Cannot set time manually - RTC not running");
+    }
+}
+
 /// Schedule an alarm with the given filter
 /// Returns Ok(()) on success, Err(()) on failure or timeout
 pub async fn rtc_schedule_alarm(filter: DateTimeFilter) -> Result<(), ()> {

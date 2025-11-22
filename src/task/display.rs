@@ -227,6 +227,42 @@ where
             )
             .draw(display);
         }
+        OperationMode::SettingsMenu => {
+            let _ = Text::with_baseline(
+                "Settings",
+                settings.state_indicator_position,
+                settings.state_indicator_text_style,
+                Baseline::Top,
+            )
+            .draw(display);
+        }
+        OperationMode::SetVolume => {
+            let _ = Text::with_baseline(
+                "Set Volume",
+                settings.state_indicator_position,
+                settings.state_indicator_text_style,
+                Baseline::Top,
+            )
+            .draw(display);
+        }
+        OperationMode::SetClockBrightness => {
+            let _ = Text::with_baseline(
+                "Set LED",
+                settings.state_indicator_position,
+                settings.state_indicator_text_style,
+                Baseline::Top,
+            )
+            .draw(display);
+        }
+        OperationMode::SetTimeManual => {
+            let _ = Text::with_baseline(
+                "Set Time",
+                settings.state_indicator_position,
+                settings.state_indicator_text_style,
+                Baseline::Top,
+            )
+            .draw(display);
+        }
         OperationMode::Alarm | OperationMode::Standby => {
             // Button info is drawn separately in alarm mode - this is handled in main content
             // Nothing shown for standby mode
@@ -286,7 +322,7 @@ where
 {
     let mut content_next_position = settings.content_start_position;
     let _ = Text::with_baseline(
-        "Green: Sys. Info",
+        "Green: Settings",
         content_next_position,
         settings.content_text_style,
         Baseline::Top,
@@ -302,9 +338,110 @@ where
     .draw(display);
     content_next_position.y += 15;
     let _ = Text::with_baseline(
-        "Yellow: Back",
+        "Yellow: Sys Info",
         content_next_position,
         settings.content_text_style,
+        Baseline::Top,
+    )
+    .draw(display);
+}
+
+/// Draws the settings menu content in the center area of the display
+fn draw_settings_menu_content<D>(display: &mut D, settings: &Settings)
+where
+    D: embedded_graphics::draw_target::DrawTarget<Color = BinaryColor>,
+{
+    let mut content_next_position = settings.content_start_position;
+    let _ = Text::with_baseline(
+        "Green: Volume",
+        content_next_position,
+        settings.content_text_style,
+        Baseline::Top,
+    )
+    .draw(display);
+    content_next_position.y += 15;
+    let _ = Text::with_baseline(
+        "Blue: LED Bright",
+        content_next_position,
+        settings.content_text_style,
+        Baseline::Top,
+    )
+    .draw(display);
+    content_next_position.y += 15;
+    let _ = Text::with_baseline(
+        "Yellow: Set Time",
+        content_next_position,
+        settings.content_text_style,
+        Baseline::Top,
+    )
+    .draw(display);
+}
+
+/// Draws the volume setting in the center area of the display
+fn draw_volume_setting<D>(display: &mut D, volume: u8, settings: &Settings)
+where
+    D: embedded_graphics::draw_target::DrawTarget<Color = BinaryColor>,
+{
+    let mut vol_txt: String<32> = String::new();
+    let _ = write!(vol_txt, "Volume: {volume}");
+    let _ = Text::with_baseline(
+        &vol_txt,
+        settings.content_start_position,
+        settings.content_text_style,
+        Baseline::Top,
+    )
+    .draw(display);
+
+    let mut help_position = settings.content_start_position;
+    help_position.y += 20;
+    let _ = Text::with_baseline(
+        "G:+ Y:- B:Save",
+        help_position,
+        settings.state_indicator_text_style,
+        Baseline::Top,
+    )
+    .draw(display);
+}
+
+/// Draws the brightness setting in the center area of the display
+fn draw_brightness_setting<D>(display: &mut D, brightness: u8, settings: &Settings)
+where
+    D: embedded_graphics::draw_target::DrawTarget<Color = BinaryColor>,
+{
+    let mut bright_txt: String<32> = String::new();
+    let _ = write!(bright_txt, "LED Clock: {brightness}");
+    let _ = Text::with_baseline(
+        &bright_txt,
+        settings.content_start_position,
+        settings.content_text_style,
+        Baseline::Top,
+    )
+    .draw(display);
+
+    let mut help_position = settings.content_start_position;
+    help_position.y += 20;
+    let _ = Text::with_baseline(
+        "G:+ Y:- B:Save",
+        help_position,
+        settings.state_indicator_text_style,
+        Baseline::Top,
+    )
+    .draw(display);
+}
+
+/// Draws the time manual setting in the center area of the display
+fn draw_time_manual_setting<D>(display: &mut D, hour: u8, minute: u8, settings: &Settings)
+where
+    D: embedded_graphics::draw_target::DrawTarget<Color = BinaryColor>,
+{
+    draw_time_display(display, hour, minute, settings);
+
+    let mut help_position = settings.content_start_position;
+    help_position.y += 35;
+    let _ = Text::with_baseline(
+        "G:Hr Y:Min B:Set",
+        help_position,
+        settings.state_indicator_text_style,
         Baseline::Top,
     )
     .draw(display);
@@ -514,6 +651,7 @@ pub async fn display_handler(i2c: I2c<'static, I2C0, Async>) {
                 system_state.alarm_settings.get_hour(),
                 system_state.alarm_settings.get_minute(),
             ),
+            OperationMode::SetTimeManual => (system_state.manual_time_buffer.0, system_state.manual_time_buffer.1),
             _ => (0, 0),
         };
 
@@ -538,6 +676,22 @@ pub async fn display_handler(i2c: I2c<'static, I2C0, Async>) {
             }
             OperationMode::Menu => {
                 draw_menu_content(&mut display, &settings);
+            }
+            OperationMode::SettingsMenu => {
+                draw_settings_menu_content(&mut display, &settings);
+            }
+            OperationMode::SetVolume => {
+                draw_volume_setting(&mut display, system_state.system_settings.get_volume(), &settings);
+            }
+            OperationMode::SetClockBrightness => {
+                draw_brightness_setting(
+                    &mut display,
+                    system_state.system_settings.get_clock_brightness(),
+                    &settings,
+                );
+            }
+            OperationMode::SetTimeManual => {
+                draw_time_manual_setting(&mut display, hours, minutes, &settings);
             }
             OperationMode::SystemInfo => {
                 if system_state.system_info_page == 0 {
