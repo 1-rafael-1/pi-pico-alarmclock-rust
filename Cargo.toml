@@ -1,6 +1,6 @@
 [package]
 name = "pi-pico-alarmclock"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2024"
 authors = ["rafael.koch@gmx.net"]
 description = "Raspberry Pi Pico W alarm clock with WiFi, time sync, OLED display, and WS2812 LED support"
@@ -13,30 +13,23 @@ categories = ["embedded", "no-std"]
 resolver = "2"
 
 [dependencies]
-embassy-embedded-hal = { git = "https://github.com/embassy-rs/embassy", rev = "2a79c55d4d38e95f90a8efcf93a3e28f4d6ad35f", features = [
-    "defmt",
-] }
-embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "2a79c55d4d38e95f90a8efcf93a3e28f4d6ad35f", features = [
-    "defmt",
-] }
-embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "2a79c55d4d38e95f90a8efcf93a3e28f4d6ad35f", features = [
+embassy-embedded-hal = { version = "0.5.0", features = ["defmt"] }
+embassy-sync = { version = "0.7.2", features = ["defmt"] }
+embassy-executor = { version = "0.9.1", features = [
     "arch-cortex-m",
     "executor-thread",
     "executor-interrupt",
     "defmt",
 ] }
-embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "2a79c55d4d38e95f90a8efcf93a3e28f4d6ad35f", features = [
-    "defmt",
-    "defmt-timestamp-uptime",
-] }
-embassy-rp = { git = "https://github.com/embassy-rs/embassy", rev = "2a79c55d4d38e95f90a8efcf93a3e28f4d6ad35f", features = [
+embassy-time = { version = "0.5.0", features = ["defmt", "defmt-timestamp-uptime"] }
+embassy-rp = { version = "0.9.0", features = [
     "defmt",
     "unstable-pac",
     "time-driver",
     "critical-section-impl",
     "rp2040",
 ] }
-embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "2a79c55d4d38e95f90a8efcf93a3e28f4d6ad35f", features = [
+embassy-net = { version = "0.7.1", features = [
     "defmt",
     "tcp",
     "udp",
@@ -46,14 +39,9 @@ embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "2a79c55d4d
     "dns",
     "dhcpv4-hostname",
 ] }
-embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "2a79c55d4d38e95f90a8efcf93a3e28f4d6ad35f" }
-cyw43 = { git = "https://github.com/embassy-rs/embassy", rev = "2a79c55d4d38e95f90a8efcf93a3e28f4d6ad35f", features = [
-    "defmt",
-    "firmware-logs",
-] }
-cyw43-pio = { git = "https://github.com/embassy-rs/embassy", rev = "2a79c55d4d38e95f90a8efcf93a3e28f4d6ad35f", features = [
-    "defmt",
-] }
+embassy-futures = "0.1.2"
+cyw43 = { version = "0.6.0", features = ["defmt", "firmware-logs"] }
+cyw43-pio = { version = "0.9.0", features = ["defmt"] }
 
 sequential-storage = "3.0.0"
 defmt = "1.0.1"
