@@ -60,6 +60,12 @@ impl InitializationState {
     }
 }
 
+/// Update interval for the analog clock effect.
+/// With 16 LEDs and 60 seconds, each LED represents ~3.75 seconds.
+/// We tick every second to ensure smooth LED transitions without aliasing
+/// between the ticker and the RTC's second updates.
+const ANALOG_CLOCK_UPDATE_INTERVAL: Duration = Duration::from_millis(1000);
+
 /// Signal for stopping the scheduler
 static SCHEDULER_STOP_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
@@ -518,7 +524,7 @@ async fn handle_yellow_button_press(system_state: &mut SystemState) {
 pub async fn scheduler() {
     info!("scheduler task started");
     // Start with a ticker for the default update rate when alarm is disabled
-    let mut ticker = Ticker::every(Duration::from_millis(3740));
+    let mut ticker = Ticker::every(ANALOG_CLOCK_UPDATE_INTERVAL);
     let mut last_alarm_enabled_state: Option<bool> = None;
     let mut last_menu_check = Instant::now();
 
@@ -590,9 +596,9 @@ pub async fn scheduler() {
                 // When alarm is enabled, we can wait longer since the RTC will handle the alarm
                 Duration::from_secs(60)
             } else {
-                // if the alarm is not enabled, we will be using the neopixel analog clock effect, which will need to be updated often
-                // so we must wait for 3.75 seconds (60s / 16leds -> 3.75s until we must update the leds). To avoid visual glitches, we reduce that time by 10ms
-                Duration::from_millis(3740)
+                // if the alarm is not enabled, we will be using the neopixel analog clock effect
+                // tick every second to ensure smooth LED transitions
+                ANALOG_CLOCK_UPDATE_INTERVAL
             };
             ticker = Ticker::every(update_period);
             last_alarm_enabled_state = Some(alarm_enabled);
