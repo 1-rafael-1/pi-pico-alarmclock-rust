@@ -4,6 +4,7 @@
 //! replacing the previous busy-polling approach.
 
 use defmt::{info, warn};
+use embassy_futures::select::{Either3, select3};
 use embassy_rp::rtc::{DateTime, DateTimeFilter, DayOfWeek};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Timer};
@@ -129,7 +130,12 @@ pub async fn alarm_trigger_task() {
             }
             AlarmWaitResult::Triggered => {
                 info!("Alarm triggered! Sending alarm event");
-                handle_alarm_triggered().await;
+                let cooldown_completed = handle_alarm_triggered().await;
+                if cooldown_completed {
+                    info!("Cooldown completed normally");
+                }
+                // Whether cooldown completed or was interrupted, the loop will
+                // read fresh config and reschedule appropriately
                 report_task_success(TaskId::AlarmTrigger).await;
             }
         }
@@ -299,13 +305,40 @@ async fn cleanup_rtc_alarm() {
 }
 
 /// Handles the alarm trigger event by sending notification and cooling down
-async fn handle_alarm_triggered() {
+/// Returns true if cooldown completed normally, false if interrupted by settings change
+async fn handle_alarm_triggered() -> bool {
     // Send alarm event to orchestrator
     send_event(Event::Alarm).await;
 
     // Cool down period to prevent immediate re-trigger if user stops alarm quickly
     // The alarm will be rescheduled in the next loop iteration if still enabled
-    Timer::after(POST_ALARM_COOLDOWN).await;
+    // This cooldown is interruptible - if alarm settings change or alarm is disabled,
+    // we exit early so the new settings can be applied immediately
+    let result = select3(
+        Timer::after(POST_ALARM_COOLDOWN),
+        ALARM_SCHEDULE_UPDATE_SIGNAL.wait(),
+        ALARM_SCHEDULE_DISABLE_SIGNAL.wait(),
+    )
+    .await;
+
+    match result {
+        Either3::First(()) => {
+            // Normal cooldown completed
+            true
+        }
+        Either3::Second(()) => {
+            // Settings changed during cooldown - reset signal and exit early
+            info!("Alarm settings changed during cooldown, exiting early");
+            ALARM_SCHEDULE_UPDATE_SIGNAL.reset();
+            false
+        }
+        Either3::Third(()) => {
+            // Alarm disabled during cooldown - reset signal and exit early
+            info!("Alarm disabled during cooldown, exiting early");
+            ALARM_SCHEDULE_DISABLE_SIGNAL.reset();
+            false
+        }
+    }
 }
 
 /// Calculate tomorrow's date based on the current datetime
