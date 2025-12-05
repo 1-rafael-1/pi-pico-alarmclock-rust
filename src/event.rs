@@ -36,24 +36,12 @@ pub enum Event {
     Vsys(f32),
     /// The alarm settings have been read from the flash memory, the data is the alarm settings
     AlarmSettingsReadFromFlash(AlarmSettings),
-    /// The alarm settings need to be updated in the flash memory
-    AlarmSettingsNeedUpdate,
     /// The system settings have been read from the flash memory, the data is the system settings
     SystemSettingsReadFromFlash(SystemSettings),
-    /// The system settings need to be updated in the flash memory
-    SystemSettingsNeedUpdate,
-    /// Manual time has been set, the data is (hour, minute)
-    ManualTimeSet((u8, u8)),
     /// The scheduler has ticked, the data is the time in (hour, minute, second)
     Scheduler((u8, u8, u8)),
     /// The rtc has been updated
     RtcUpdated,
-    /// The system has completed initialization (RTC set and alarm settings loaded)
-    SystemReady,
-    /// The system must go to standby mode
-    Standby,
-    /// The system must wake up from standby mode
-    WakeUp,
     /// The alarm must be raised
     Alarm,
     /// The alarm must be stopped

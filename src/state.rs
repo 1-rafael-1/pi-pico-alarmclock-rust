@@ -5,10 +5,7 @@ use embassy_rp::clocks::RoscRng;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use rand::Rng;
 
-use crate::{
-    event::{Event, send_event},
-    task::buttons::Button,
-};
+use crate::task::buttons::Button;
 
 /// Type alias for the system state protected by a mutex.
 ///
@@ -72,9 +69,8 @@ impl SystemState {
     }
 
     /// Toggle the alarm enabled state
-    pub async fn toggle_alarm_enabled(&mut self) {
+    pub const fn toggle_alarm_enabled(&mut self) {
         self.alarm_settings.set_enabled(!self.alarm_settings.get_enabled());
-        self.save_alarm_settings().await;
     }
 
     /// Set the system to menu mode
@@ -148,11 +144,6 @@ impl SystemState {
         self.manual_time_buffer.1 = (self.manual_time_buffer.1 + 1) % 60;
     }
 
-    /// Save the system settings to flash
-    pub async fn save_system_settings(&self) {
-        send_event(Event::SystemSettingsNeedUpdate).await;
-    }
-
     /// Advance to the next system info page, or exit if on the last page
     pub const fn next_system_info_page(&mut self) -> bool {
         if self.system_info_page == 0 {
@@ -192,21 +183,14 @@ impl SystemState {
         self.alarm_settings.increment_alarm_minute();
     }
 
-    /// Save the alarm settings
-    pub async fn save_alarm_settings(&self) {
-        send_event(Event::AlarmSettingsNeedUpdate).await;
-    }
-
     /// Set the system to standby mode
-    pub async fn set_standby_mode(&mut self) {
+    pub const fn set_standby_mode(&mut self) {
         self.operation_mode = OperationMode::Standby;
-        send_event(Event::Standby).await;
     }
 
     /// Wake up the system from standby mode
-    pub async fn wake_up(&mut self) {
+    pub const fn wake_up(&mut self) {
         self.set_normal_mode();
-        send_event(Event::WakeUp).await;
     }
 
     /// Randomize the alarm stop button sequence
