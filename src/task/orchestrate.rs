@@ -60,6 +60,12 @@ impl InitializationState {
     }
 }
 
+/// Update interval for the analog clock effect.
+/// With 16 LEDs and 60 seconds, each LED represents ~3.75 seconds.
+/// We tick every second to ensure smooth LED transitions without aliasing
+/// between the ticker and the RTC's second updates.
+const ANALOG_CLOCK_UPDATE_INTERVAL: Duration = Duration::from_millis(1000);
+
 /// Signal for stopping the scheduler
 static SCHEDULER_STOP_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
@@ -160,13 +166,7 @@ async fn handle_event(event: Event, system_state: &mut SystemState) {
         Event::Scheduler((hour, minute, second)) => {
             handle_scheduler_event(system_state, hour, minute, second);
         }
-        Event::RtcUpdated => handle_rtc_updated_event().await,
-        Event::SystemReady => handle_system_ready_event(system_state),
-        Event::AlarmSettingsNeedUpdate => handle_alarm_settings_update(system_state).await,
-        Event::SystemSettingsNeedUpdate => handle_system_settings_update(system_state).await,
-        Event::ManualTimeSet((hour, minute)) => handle_manual_time_set(hour, minute).await,
-        Event::Standby => handle_standby_event(),
-        Event::WakeUp => handle_wakeup_event(),
+        Event::RtcUpdated => handle_rtc_updated_event(system_state).await,
         Event::Alarm => handle_alarm_event(system_state),
         Event::AlarmStop => handle_alarm_stop_event(system_state),
         Event::SunriseEffectFinished => handle_sunrise_effect_finished_event(system_state),
@@ -179,13 +179,14 @@ async fn handle_interactive_mode_timeout_event(system_state: &mut SystemState) {
     // Auto-save any pending changes before returning to normal mode
     match system_state.operation_mode {
         OperationMode::SetVolume | OperationMode::SetClockBrightness => {
-            system_state.save_system_settings().await;
+            handle_system_settings_update(system_state).await;
         }
         OperationMode::SetTimeManual => {
-            send_event(Event::ManualTimeSet(system_state.manual_time_buffer)).await;
+            let (hour, minute) = system_state.manual_time_buffer;
+            handle_manual_time_set(hour, minute).await;
         }
         OperationMode::SetAlarmTime => {
-            system_state.save_alarm_settings().await;
+            handle_alarm_settings_update(system_state).await;
         }
         _ => {
             // No settings to save for Menu, SettingsMenu, SystemInfo
@@ -221,7 +222,7 @@ async fn handle_alarm_settings_read_event(system_state: &mut SystemState, alarm_
     init_state.mark_alarm_settings_loaded();
     if init_state.is_ready() {
         drop(init_state);
-        send_event(Event::SystemReady).await;
+        handle_system_ready_event(system_state);
     }
 }
 
@@ -236,13 +237,13 @@ fn handle_system_settings_read_event(system_state: &mut SystemState, system_sett
 }
 
 /// Handles RTC update completion
-async fn handle_rtc_updated_event() {
+async fn handle_rtc_updated_event(system_state: &mut SystemState) {
     info!("RTC updated event");
     let mut init_state = INIT_STATE.lock().await;
     init_state.mark_rtc_ready();
     if init_state.is_ready() {
         drop(init_state);
-        send_event(Event::SystemReady).await;
+        handle_system_ready_event(system_state);
     }
     signal_display_update();
 }
@@ -360,7 +361,8 @@ async fn handle_green_button_press(system_state: &mut SystemState) {
             // Ignore button presses during initialization
         }
         OperationMode::Normal => {
-            system_state.toggle_alarm_enabled().await;
+            system_state.toggle_alarm_enabled();
+            handle_alarm_settings_update(system_state).await;
         }
         OperationMode::SetAlarmTime => {
             system_state.increment_alarm_hour();
@@ -393,11 +395,12 @@ async fn handle_green_button_press(system_state: &mut SystemState) {
                 system_state.alarm_settings.erase_first_valid_stop_alarm_button();
             }
             if system_state.alarm_settings.is_alarm_stop_button_sequence_complete() {
-                send_event(Event::AlarmStop).await;
+                handle_alarm_stop_event(system_state);
             }
         }
         OperationMode::Standby => {
-            system_state.wake_up().await;
+            system_state.wake_up();
+            handle_wakeup_event();
         }
     }
 }
@@ -421,11 +424,12 @@ async fn handle_blue_button_press(system_state: &mut SystemState) {
             system_state.set_set_alarm_time_mode();
         }
         OperationMode::SetAlarmTime => {
-            system_state.save_alarm_settings().await;
+            handle_alarm_settings_update(system_state).await;
             system_state.set_normal_mode();
         }
         OperationMode::Menu => {
-            system_state.set_standby_mode().await;
+            system_state.set_standby_mode();
+            handle_standby_event();
         }
         OperationMode::SystemInfo => {
             system_state.set_normal_mode();
@@ -435,17 +439,18 @@ async fn handle_blue_button_press(system_state: &mut SystemState) {
         }
         OperationMode::SetVolume => {
             // Save volume to flash and return to settings menu
-            system_state.save_system_settings().await;
+            handle_system_settings_update(system_state).await;
             system_state.set_settings_menu_mode();
         }
         OperationMode::SetClockBrightness => {
             // Save brightness to flash and return to settings menu
-            system_state.save_system_settings().await;
+            handle_system_settings_update(system_state).await;
             system_state.set_settings_menu_mode();
         }
         OperationMode::SetTimeManual => {
             // Set the RTC time and return to settings menu
-            send_event(Event::ManualTimeSet(system_state.manual_time_buffer)).await;
+            let (hour, minute) = system_state.manual_time_buffer;
+            handle_manual_time_set(hour, minute).await;
             system_state.set_settings_menu_mode();
         }
         OperationMode::Alarm => {
@@ -453,11 +458,12 @@ async fn handle_blue_button_press(system_state: &mut SystemState) {
                 system_state.alarm_settings.erase_first_valid_stop_alarm_button();
             }
             if system_state.alarm_settings.is_alarm_stop_button_sequence_complete() {
-                send_event(Event::AlarmStop).await;
+                handle_alarm_stop_event(system_state);
             }
         }
         OperationMode::Standby => {
-            system_state.wake_up().await;
+            system_state.wake_up();
+            handle_wakeup_event();
         }
     }
 }
@@ -501,11 +507,12 @@ async fn handle_yellow_button_press(system_state: &mut SystemState) {
                 system_state.alarm_settings.erase_first_valid_stop_alarm_button();
             }
             if system_state.alarm_settings.is_alarm_stop_button_sequence_complete() {
-                send_event(Event::AlarmStop).await;
+                handle_alarm_stop_event(system_state);
             }
         }
         OperationMode::Standby => {
-            system_state.wake_up().await;
+            system_state.wake_up();
+            handle_wakeup_event();
         }
     }
 }
@@ -517,7 +524,7 @@ async fn handle_yellow_button_press(system_state: &mut SystemState) {
 pub async fn scheduler() {
     info!("scheduler task started");
     // Start with a ticker for the default update rate when alarm is disabled
-    let mut ticker = Ticker::every(Duration::from_millis(3740));
+    let mut ticker = Ticker::every(ANALOG_CLOCK_UPDATE_INTERVAL);
     let mut last_alarm_enabled_state: Option<bool> = None;
     let mut last_menu_check = Instant::now();
 
@@ -589,9 +596,9 @@ pub async fn scheduler() {
                 // When alarm is enabled, we can wait longer since the RTC will handle the alarm
                 Duration::from_secs(60)
             } else {
-                // if the alarm is not enabled, we will be using the neopixel analog clock effect, which will need to be updated often
-                // so we must wait for 3.75 seconds (60s / 16leds -> 3.75s until we must update the leds). To avoid visual glitches, we reduce that time by 10ms
-                Duration::from_millis(3740)
+                // if the alarm is not enabled, we will be using the neopixel analog clock effect
+                // tick every second to ensure smooth LED transitions
+                ANALOG_CLOCK_UPDATE_INTERVAL
             };
             ticker = Ticker::every(update_period);
             last_alarm_enabled_state = Some(alarm_enabled);
