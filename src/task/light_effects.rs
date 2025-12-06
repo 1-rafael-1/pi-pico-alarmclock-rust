@@ -8,7 +8,7 @@ use embassy_rp::{
     Peri,
     peripherals::{DMA_CH2, PIN_19, PIO1},
     pio::{Common, StateMachine},
-    pio_programs::ws2812::{Grb, PioWs2812, PioWs2812Program},
+    pio_programs::ws2812::{PioWs2812, PioWs2812Program},
 };
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Instant, Timer};
@@ -76,7 +76,7 @@ const NUM_LEDS_USIZE: usize = 16;
 const NUM_LEDS: u8 = 16;
 
 /// Type alias for the neopixel LED controller
-type NeopixelType = PioWs2812<'static, PIO1, 0, NUM_LEDS_USIZE, Grb>;
+type NeopixelType = PioWs2812<'static, PIO1, 0, NUM_LEDS_USIZE>;
 
 /// Helper struct to bundle clock hand colors
 struct ClockColors {

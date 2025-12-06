@@ -228,7 +228,7 @@ async fn setup_wifi(
     let state = WIFI_STATE.init(cyw43::State::new());
 
     let (net_device, mut control, runner) = cyw43::new(state, pwr, spi, fw).await;
-    unwrap!(spawner.spawn(wifi_task(runner)));
+    spawner.spawn(unwrap!(wifi_task(runner)));
 
     info!("init control");
     control.init(clm).await;
@@ -257,7 +257,7 @@ fn setup_network_stack(
         seed,
     );
     let stack = NETWORK_STACK.init(stack);
-    unwrap!(spawner.spawn(net_task(runner)));
+    spawner.spawn(unwrap!(net_task(runner)));
     stack
 }
 
