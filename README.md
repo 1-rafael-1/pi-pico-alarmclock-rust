@@ -96,7 +96,7 @@ The project is written in Rust using the Embassy async framework:
 - **`src/utility/`** - Helper functions (DateTime conversion, etc.)
 - **`media/`** - Custom BMP graphics for display
 - **`circuit/`** - KiCad schematic and PCB design
-- **`enclosure/`** - Autodesk Fusion 360 design files
+- **`enclosure/`** - FreeCAD 1.0 design files
 
 ### Documentation
 
@@ -382,9 +382,17 @@ Design includes:
 
 ## Enclosure
 
-Designed in Autodesk Fusion 360. Export files available: [enclosure/](enclosure/)
+Designed in FreeCAD 1.0. Export files available: [enclosure/](enclosure/)
 
-Gallery of images: [enclosure/gallery.md](enclosure/gallery.md)
+### Enclosure CAD View
+![Enclosure CAD](enclosure/enclosure-cad.jpg)
+
+*External view of the enclosure showing the front panel with OLED display cutout, NeoPixel ring hour markers, speaker grille, rotary encoder, and push button positions.*
+
+### Assembly View
+![Enclosure Assembly](enclosure/enclosure-assembly.jpg)
+
+*Interior assembly view with lid removed, showing PCB placement, speaker mounting, and 18650 battery holder positioning.*
 
 ---
 
