@@ -585,7 +585,7 @@ pub async fn scheduler() {
         if last_alarm_enabled_state != Some(alarm_enabled) {
             let update_period = if alarm_enabled {
                 // When alarm is enabled, we can wait longer since the RTC will handle the alarm
-                Duration::from_secs(60)
+                Duration::from_secs(10)
             } else {
                 // if the alarm is not enabled, we will be using the neopixel analog clock effect
                 // tick every second to ensure smooth LED transitions

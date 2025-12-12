@@ -92,6 +92,9 @@ pub async fn rtc_manager_task(mut rtc: Rtc<'static, peripherals::RTC>) {
 
             info!("RTC manager: starting alarm wait");
 
+            // Reset the stop signal to ensure we don't immediately exit if it was set previously
+            STOP_ALARM_WAIT_SIGNAL.reset();
+
             // Wait for either the alarm to trigger or a stop signal
             wait_for_alarm_or_requests(&mut rtc).await;
         } else {
