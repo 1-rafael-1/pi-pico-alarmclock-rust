@@ -4,9 +4,15 @@
 //! The task is responsible for initializing the `DFPlayer` Mini module, powering it on, playing a sound, and powering it off.
 use defmt::{Debug2Format, info};
 use dfplayer_async::{DfPlayer, Equalizer, PlayBackSource, TimeSource};
-use embassy_rp::{gpio::Output, uart::BufferedUart};
+use embassy_futures::select::{Either, select};
+use embassy_rp::{
+    gpio::{Input, Output},
+    uart::BufferedUart,
+};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex, signal::Signal};
 use embassy_time::{Delay, Duration, Instant, Timer};
+
+use crate::event::{Event, send_event};
 
 /// Signal for starting the sound
 static SOUND_START_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
@@ -71,62 +77,118 @@ impl TimeSource for MyTimeSource {
     }
 }
 
-#[embassy_executor::task]
-pub async fn sound_handler(mut uart: BufferedUart, mut pwr: Output<'static>) {
-    info!("Sound task started");
+/// Waits for the busy pin to go high (indicating playback finished)
+/// The busy pin is LOW during playback and HIGH when idle/finished
+async fn wait_for_music_end(busy_pin: &mut Input<'static>) {
+    // Wait for the pin to go high (song finished)
+    // We add a small initial delay to ensure the pin has stabilized after starting playback
+    Timer::after(Duration::from_millis(100)).await;
+    busy_pin.wait_for_high().await;
+}
 
+/// Powers on the `DFPlayer` module and waits for it to stabilize
+async fn power_on_dfplayer(pwr: &mut Output<'static>) {
+    info!("Powering on the dfplayer");
+    pwr.set_high();
+    Timer::after(Duration::from_millis(500)).await;
+    info!("Powered on the dfplayer");
+}
+
+/// Powers off the `DFPlayer` module
+fn power_off_dfplayer(pwr: &mut Output<'static>) {
+    info!("Powering off the dfplayer");
+    pwr.set_low();
+}
+
+/// Handles the sound playback after `DFPlayer` initialization
+async fn handle_playback(dfp: &mut DfPlayer<'_, BufferedUart, MyTimeSource, Delay>, busy_pin: &mut Input<'static>) {
+    info!("Playing sound");
+
+    // Step 1: Configure volume
+    let volume = get_current_volume().await;
+    info!("Setting volume to {}", volume);
+    let _ = dfp.set_volume(volume).await;
+    Timer::after(Duration::from_millis(100)).await;
+
+    // Step 2: Set equalizer
+    let _ = dfp.set_equalizer(Equalizer::Classic).await;
+    Timer::after(Duration::from_millis(100)).await;
+
+    // Step 3: Set playback source
+    let _ = dfp.set_playback_source(PlayBackSource::SDCard).await;
+    Timer::after(Duration::from_millis(100)).await;
+
+    // Step 4: Start playback
+    let _ = dfp.play(1).await;
+    Timer::after(Duration::from_millis(200)).await;
+
+    // Step 5: Wait for playback to complete
+    wait_for_playback_end(busy_pin).await;
+}
+
+/// Waits for playback to end either by user action or song completion
+async fn wait_for_playback_end(busy_pin: &mut Input<'static>) {
+    let result = select(wait_for_sound_stop(), wait_for_music_end(busy_pin)).await;
+
+    match result {
+        Either::First(()) => {
+            info!("Sound stopped by user");
+        }
+        Either::Second(()) => {
+            info!("Sound finished playing (busy pin high)");
+            // Notify that the alarm should stop since the song ended
+            send_event(Event::AlarmStop).await;
+        }
+    }
+}
+
+/// Initializes the `DFPlayer` and handles playback if successful
+async fn initialize_and_play(uart: &mut BufferedUart, busy_pin: &mut Input<'static>) {
+    // Initialize DFPlayer
     let feedback_enable = false;
     let timeout = Duration::from_secs(1);
     let reset_duration_override = Some(Duration::from_millis(1000));
 
+    let time_source = MyTimeSource;
+    let delay = Delay;
+
+    let dfp_result = DfPlayer::new(
+        uart,
+        feedback_enable,
+        timeout.as_millis(),
+        time_source,
+        delay,
+        reset_duration_override.map(|d| d.as_millis()),
+    )
+    .await;
+
+    // Handle the result
+    match dfp_result {
+        Ok(mut dfp) => {
+            info!("DfPlayer initialized successfully");
+            handle_playback(&mut dfp, busy_pin).await;
+        }
+        Err(ref e) => {
+            info!("DfPlayer initialization failed with error {:?}", Debug2Format(&e));
+        }
+    }
+}
+
+#[embassy_executor::task]
+pub async fn sound_handler(mut uart: BufferedUart, mut pwr: Output<'static>, mut busy_pin: Input<'static>) {
+    info!("Sound task started");
+
     loop {
-        // wait for the signal to start playing sound
+        // Wait for start signal
         wait_for_sound_start().await;
 
-        // power on the dfplayer
-        info!("Powering on the dfplayer");
-        pwr.set_high();
-        Timer::after(Duration::from_millis(500)).await;
-        info!("Powered on the dfplayer");
+        // Power on DFPlayer
+        power_on_dfplayer(&mut pwr).await;
 
-        let time_source = MyTimeSource;
-        let delay = Delay;
-        let mut dfp_result = DfPlayer::new(
-            &mut uart,
-            feedback_enable,
-            timeout.as_millis(),
-            time_source,
-            delay,
-            reset_duration_override.map(|d| d.as_millis()),
-        )
-        .await;
+        // Initialize and play sound
+        initialize_and_play(&mut uart, &mut busy_pin).await;
 
-        match dfp_result {
-            Ok(_) => info!("DfPlayer initialized successfully"),
-            Err(ref e) => info!("DfPlayer initialization failed with error {:?}", Debug2Format(&e)),
-        }
-
-        info!("Playing sound");
-        if let Ok(ref mut dfp) = dfp_result {
-            let volume = get_current_volume().await;
-            info!("Setting volume to {}", volume);
-            let _ = dfp.set_volume(volume).await;
-            Timer::after(Duration::from_millis(100)).await;
-            let _ = dfp.set_equalizer(Equalizer::Classic).await;
-            Timer::after(Duration::from_millis(100)).await;
-            let _ = dfp.set_playback_source(PlayBackSource::SDCard).await;
-            Timer::after(Duration::from_millis(100)).await;
-            let _ = dfp.play(1).await;
-            Timer::after(Duration::from_millis(200)).await;
-        } else {
-            info!("DfPlayer not initialized, skipping sound playback.");
-        }
-
-        // wait for the signal to stop playing sound
-        wait_for_sound_stop().await;
-
-        // power off the dfplayer
-        info!("Powering off the dfplayer");
-        pwr.set_low();
+        // Power off DFPlayer
+        power_off_dfplayer(&mut pwr);
     }
 }
