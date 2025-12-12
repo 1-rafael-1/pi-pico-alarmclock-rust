@@ -4,6 +4,7 @@
 //! The task is responsible for initializing the `DFPlayer` Mini module, powering it on, playing a sound, and powering it off.
 use defmt::{Debug2Format, info};
 use dfplayer_async::{DfPlayer, Equalizer, PlayBackSource, TimeSource};
+use embassy_futures::select::{Either, select};
 use embassy_rp::{
     gpio::{Input, Output},
     uart::BufferedUart,
@@ -78,7 +79,7 @@ impl TimeSource for MyTimeSource {
 
 /// Waits for the busy pin to go high (indicating playback finished)
 /// The busy pin is LOW during playback and HIGH when idle/finished
-async fn wait_for_busy_pin_high(busy_pin: &mut Input<'static>) {
+async fn wait_for_music_end(busy_pin: &mut Input<'static>) {
     // Wait for the pin to go high (song finished)
     // We add a small initial delay to ensure the pin has stabilized after starting playback
     Timer::after(Duration::from_millis(100)).await;
@@ -137,14 +138,13 @@ pub async fn sound_handler(mut uart: BufferedUart, mut pwr: Output<'static>, mut
         }
 
         // wait for either the sound to stop via signal OR the busy pin going high (song finished)
-        let result =
-            embassy_futures::select::select(wait_for_sound_stop(), wait_for_busy_pin_high(&mut busy_pin)).await;
+        let result = select(wait_for_sound_stop(), wait_for_music_end(&mut busy_pin)).await;
 
         match result {
-            embassy_futures::select::Either::First(()) => {
+            Either::First(()) => {
                 info!("Sound stopped by user");
             }
-            embassy_futures::select::Either::Second(()) => {
+            Either::Second(()) => {
                 info!("Sound finished playing (busy pin high)");
                 // Notify that the alarm should stop since the song ended
                 send_event(Event::AlarmStop).await;
