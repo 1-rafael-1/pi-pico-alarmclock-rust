@@ -33,7 +33,7 @@ use crate::{
         buttons::{Button, button_handler},
         display::display_handler,
         light_effects::light_effects_handler,
-        orchestrate::{alarm_expirer, orchestrator, scheduler},
+        orchestrate::{orchestrator, scheduler},
         power::{usb_power_detector, vsys_voltage_reader},
         rtc_manager::rtc_manager_task,
         sound::sound_handler,
@@ -85,7 +85,6 @@ async fn main(spawner: Spawner) {
     // Orchestrator tasks
     spawn_unwrap(spawner, orchestrator());
     spawn_unwrap(spawner, scheduler());
-    spawn_unwrap(spawner, alarm_expirer());
     spawn_unwrap(spawner, alarm_trigger_task());
 
     // Green button
@@ -124,7 +123,8 @@ async fn main(spawner: Spawner) {
     let rx_buf = RX_BUFFER.init([0u8; 256]);
     let uart = BufferedUart::new(p.UART1, p.PIN_4, p.PIN_5, Irqs, tx_buf, rx_buf, uart_config);
     let dfplayer_pwr = Output::new(p.PIN_6, Level::Low);
-    spawn_unwrap(spawner, sound_handler(uart, dfplayer_pwr));
+    let dfplayer_busy = Input::new(p.PIN_3, Pull::None);
+    spawn_unwrap(spawner, sound_handler(uart, dfplayer_pwr, dfplayer_busy));
 
     // Alarm settings persistence
     const FLASH_SIZE: usize = 2 * 1024 * 1024;

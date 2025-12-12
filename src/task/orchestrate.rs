@@ -75,9 +75,6 @@ static SCHEDULER_START_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new
 /// Signal for waking the scheduler early
 static SCHEDULER_WAKE_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
-/// Signal for the alarm expiry command
-static ALARM_EXPIRER_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
-
 /// Signals the scheduler to stop
 pub fn signal_scheduler_stop() {
     SCHEDULER_STOP_SIGNAL.signal(());
@@ -91,11 +88,6 @@ pub fn signal_scheduler_start() {
 /// Signals the scheduler to wake up early
 pub fn signal_scheduler_wake() {
     SCHEDULER_WAKE_SIGNAL.signal(());
-}
-
-/// Signals the alarm expirer to start
-fn signal_alarm_expirer() {
-    ALARM_EXPIRER_SIGNAL.signal(());
 }
 
 /// This task is responsible for the state transitions of the system. It acts as the main task of the system.
@@ -329,7 +321,6 @@ fn handle_alarm_event(system_state: &mut SystemState) {
     system_state.set_alarm_mode();
     signal_display_update();
     signal_lightfx_start(0, 0, 0);
-    signal_alarm_expirer();
     signal_button_leds(ButtonLedCommand::On);
 }
 
@@ -606,21 +597,5 @@ pub async fn scheduler() {
 
         // Wait for either the next tick or an early wake-up signal, whichever comes first
         select(ticker.next(), SCHEDULER_WAKE_SIGNAL.wait()).await;
-    }
-}
-
-/// This task handles the expiration of the alarm after 5 minutes.
-#[embassy_executor::task]
-pub async fn alarm_expirer() {
-    info!("Alarm expirer task started");
-    '_mainloop: loop {
-        // wait for the alarm expiry watcher signal
-        ALARM_EXPIRER_SIGNAL.wait().await;
-        // wait for 5 minutes
-        Timer::after(Duration::from_secs(300)).await;
-        // send the alarm stop event
-        send_event(Event::AlarmStop).await;
-        // Report successful alarm expiry to watchdog
-        report_task_success(TaskId::Orchestrator).await;
     }
 }

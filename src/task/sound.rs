@@ -4,9 +4,14 @@
 //! The task is responsible for initializing the `DFPlayer` Mini module, powering it on, playing a sound, and powering it off.
 use defmt::{Debug2Format, info};
 use dfplayer_async::{DfPlayer, Equalizer, PlayBackSource, TimeSource};
-use embassy_rp::{gpio::Output, uart::BufferedUart};
+use embassy_rp::{
+    gpio::{Input, Output},
+    uart::BufferedUart,
+};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex, signal::Signal};
 use embassy_time::{Delay, Duration, Instant, Timer};
+
+use crate::event::{Event, send_event};
 
 /// Signal for starting the sound
 static SOUND_START_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
@@ -71,8 +76,17 @@ impl TimeSource for MyTimeSource {
     }
 }
 
+/// Waits for the busy pin to go high (indicating playback finished)
+/// The busy pin is LOW during playback and HIGH when idle/finished
+async fn wait_for_busy_pin_high(busy_pin: &mut Input<'static>) {
+    // Wait for the pin to go high (song finished)
+    // We add a small initial delay to ensure the pin has stabilized after starting playback
+    Timer::after(Duration::from_millis(100)).await;
+    busy_pin.wait_for_high().await;
+}
+
 #[embassy_executor::task]
-pub async fn sound_handler(mut uart: BufferedUart, mut pwr: Output<'static>) {
+pub async fn sound_handler(mut uart: BufferedUart, mut pwr: Output<'static>, mut busy_pin: Input<'static>) {
     info!("Sound task started");
 
     let feedback_enable = false;
@@ -122,8 +136,20 @@ pub async fn sound_handler(mut uart: BufferedUart, mut pwr: Output<'static>) {
             info!("DfPlayer not initialized, skipping sound playback.");
         }
 
-        // wait for the signal to stop playing sound
-        wait_for_sound_stop().await;
+        // wait for either the sound to stop via signal OR the busy pin going high (song finished)
+        let result =
+            embassy_futures::select::select(wait_for_sound_stop(), wait_for_busy_pin_high(&mut busy_pin)).await;
+
+        match result {
+            embassy_futures::select::Either::First(()) => {
+                info!("Sound stopped by user");
+            }
+            embassy_futures::select::Either::Second(()) => {
+                info!("Sound finished playing (busy pin high)");
+                // Notify that the alarm should stop since the song ended
+                send_event(Event::AlarmStop).await;
+            }
+        }
 
         // power off the dfplayer
         info!("Powering off the dfplayer");
