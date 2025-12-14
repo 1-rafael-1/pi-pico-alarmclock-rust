@@ -5,11 +5,12 @@
 A fully-featured alarm clock built on a Raspberry Pi Pico W, written in Rust using the Embassy async framework.
 
 <div align="center">
-  <img src="images/normal_mode.jpg" alt="Finished alarm clock front view" width="45%">
-  <img src="images/alarm_starting.jpg" alt="Finished alarm clock with LEDs active" width="45%">
+  <img src="images/alarm_mode.jpg" alt="Alarm clock with alarm enabled" width="32%">
+  <img src="images/normal_mode.jpg" alt="Finished alarm clock front view" width="32%">
+  <img src="images/alarm_starting.jpg" alt="Finished alarm clock with LEDs active" width="32%">
 </div>
 
-*Left: The completed alarm clock showing the OLED display, NeoPixel ring with hour markers, and three illuminated control buttons (green, blue, yellow). Right: Alarm clock in operation with active NeoPixel LEDs displaying the analog clock.*
+*Left: Alarm enabled with lightsaber icon indicator. Center: The completed alarm clock showing the OLED display, NeoPixel ring with hour markers, and three illuminated control buttons (green, blue, yellow). Right: Alarm clock in operation with active NeoPixel LEDs displaying the analog clock.*
 
 ---
 
@@ -170,14 +171,6 @@ This is the default mode showing the current time.
 - Green LED = minute hand
 - Blue LED = second hand
 - Colors mix when hands overlap
-
----
-
-### Alarm Mode
-
-![Alarm Mode](images/alarm_mode.jpg)
-
-*The clock display when the alarm is enabled, showing the lightsaber icon indicator and the alarm time on the display.*
 
 ---
 
