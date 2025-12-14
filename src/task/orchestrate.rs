@@ -316,7 +316,6 @@ fn handle_standby_event() {
     signal_scheduler_stop();
     signal_display_update();
     signal_lightfx_start(0, 0, 0);
-    signal_sound_stop();
     signal_time_updater_suspend();
 }
 
