@@ -78,6 +78,24 @@ const NUM_LEDS: u8 = 16;
 /// Type alias for the neopixel LED controller
 type NeopixelType = PioWs2812<'static, PIO1, 0, NUM_LEDS_USIZE>;
 
+/// Helper struct to bundle time values (hour, minute, second)
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct ClockTime {
+    /// Hour (0-23)
+    hour: u8,
+    /// Minute (0-59)
+    minute: u8,
+    /// Second (0-59)
+    second: u8,
+}
+
+impl ClockTime {
+    /// Creates a new `ClockTime` from hour, minute, and second values
+    const fn new(hour: u8, minute: u8, second: u8) -> Self {
+        Self { hour, minute, second }
+    }
+}
+
 /// Helper struct to bundle clock hand colors
 struct ClockColors {
     /// Red color for hour hand
@@ -97,6 +115,17 @@ impl ClockColors {
             second: RGB8 { r: 0, g: 0, b: 255 },
         }
     }
+}
+
+/// LED state tracker to avoid redundant writes and save power
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LedState {
+    /// LEDs are off (all black)
+    Off,
+    /// LEDs are displaying the analog clock
+    AnalogClock,
+    /// LEDs are in alarm effect mode
+    AlarmEffect,
 }
 
 /// Manages the neopixel LED ring, including brightness settings for alarm and clock modes.
@@ -220,18 +249,20 @@ fn calculate_lit_leds(fraction_elapsed: f32) -> u8 {
 async fn display_analog_clock(
     np: &mut NeopixelType,
     neopixel_mgr: &NeopixelManager,
-    hour: u8,
-    minute: u8,
-    second: u8,
+    time: &ClockTime,
     colors: &ClockColors,
 ) {
     let mut data = [RGB8::default(); NUM_LEDS_USIZE];
 
     // Calculate LED indices for each hand
-    let hour_normalized = if hour.is_multiple_of(12) { 12 } else { hour % 12 };
+    let hour_normalized = if time.hour.is_multiple_of(12) {
+        12
+    } else {
+        time.hour % 12
+    };
     let hour_index = calculate_hand_index(hour_normalized, 12);
-    let minute_index = calculate_hand_index(minute, 60);
-    let second_index = calculate_hand_index(second, 60);
+    let minute_index = calculate_hand_index(time.minute, 60);
+    let second_index = calculate_hand_index(time.second, 60);
 
     // Set the colors of the hands
     data[hour_index as usize] = colors.hour;
@@ -415,26 +446,47 @@ async fn handle_normal_mode(
     np: &mut NeopixelType,
     neopixel_mgr: &NeopixelManager,
     system_state: &SystemState,
-    hour: u8,
-    minute: u8,
-    second: u8,
+    time: &ClockTime,
     colors: &ClockColors,
+    current_state: &mut LedState,
+    last_time: &mut Option<ClockTime>,
 ) {
     if system_state.alarm_settings.get_enabled() {
-        turn_off_all_leds(np).await;
+        // Only write if we need to transition to off state
+        if *current_state != LedState::Off {
+            info!("Alarm enabled - turning off LEDs");
+            turn_off_all_leds(np).await;
+            *current_state = LedState::Off;
+            *last_time = None;
+        }
     } else {
-        display_analog_clock(np, neopixel_mgr, hour, minute, second, colors).await;
+        // Only write if state changed or time changed (for analog clock updates)
+        if *current_state != LedState::AnalogClock || *last_time != Some(*time) {
+            display_analog_clock(np, neopixel_mgr, time, colors).await;
+            *current_state = LedState::AnalogClock;
+            *last_time = Some(*time);
+        }
     }
 }
 
 /// Handles the alarm mode
-async fn handle_alarm_mode(np: &mut NeopixelType, neopixel_mgr: &NeopixelManager, system_state: &SystemState) {
+async fn handle_alarm_mode(
+    np: &mut NeopixelType,
+    neopixel_mgr: &NeopixelManager,
+    system_state: &SystemState,
+    current_state: &mut LedState,
+    last_time: &mut Option<ClockTime>,
+) {
     match system_state.alarm_state {
         AlarmState::Sunrise => {
             sunrise_effect(np).await;
+            *current_state = LedState::AlarmEffect;
+            *last_time = None;
         }
         AlarmState::Noise => {
             noise_effect(np, neopixel_mgr).await;
+            *current_state = LedState::AlarmEffect;
+            *last_time = None;
         }
         AlarmState::None => {
             warn!("Alarm state is None, this should not happen");
@@ -459,6 +511,10 @@ pub async fn light_effects_handler(
     neopixel_mgr.update_from_system_state().await;
     let colors = ClockColors::new();
 
+    // Track LED state to avoid redundant writes and save power
+    let mut current_led_state = LedState::Off;
+    let mut last_time: Option<ClockTime> = None;
+
     // All off initially
     turn_off_all_leds(&mut np).await;
 
@@ -467,6 +523,8 @@ pub async fn light_effects_handler(
         if is_brightness_update_signaled() {
             reset_brightness_update_signal();
             neopixel_mgr.update_from_system_state().await;
+            // Force re-render by clearing the last time
+            last_time = None;
             // Re-trigger the current display by signaling with zeros
             signal_lightfx_start(0, 0, 0);
         }
@@ -493,9 +551,13 @@ pub async fn light_effects_handler(
 
         match system_state.operation_mode {
             OperationMode::Initializing => {
-                info!("Initializing mode - LEDs remain off");
-                // Keep LEDs off during initialization
-                turn_off_all_leds(&mut np).await;
+                // Only write if not already off
+                if current_led_state != LedState::Off {
+                    info!("Initializing mode - LEDs remain off");
+                    turn_off_all_leds(&mut np).await;
+                    current_led_state = LedState::Off;
+                    last_time = None;
+                }
             }
             OperationMode::Normal
             | OperationMode::Menu
@@ -505,14 +567,37 @@ pub async fn light_effects_handler(
             | OperationMode::SetVolume
             | OperationMode::SetClockBrightness
             | OperationMode::SetTimeManual => {
-                handle_normal_mode(&mut np, &neopixel_mgr, &system_state, hour, minute, second, &colors).await;
+                let time = ClockTime::new(hour, minute, second);
+                handle_normal_mode(
+                    &mut np,
+                    &neopixel_mgr,
+                    &system_state,
+                    &time,
+                    &colors,
+                    &mut current_led_state,
+                    &mut last_time,
+                )
+                .await;
             }
             OperationMode::Alarm => {
-                handle_alarm_mode(&mut np, &neopixel_mgr, &system_state).await;
+                handle_alarm_mode(
+                    &mut np,
+                    &neopixel_mgr,
+                    &system_state,
+                    &mut current_led_state,
+                    &mut last_time,
+                )
+                .await;
             }
             OperationMode::Standby => {
-                info!("Standby mode");
-                turn_off_all_leds(&mut np).await;
+                // Only write once when entering standby, then skip redundant writes
+                // This saves power by avoiding unnecessary PIO state machine activity
+                if current_led_state != LedState::Off {
+                    info!("Entering standby mode - turning off LEDs (power saving)");
+                    turn_off_all_leds(&mut np).await;
+                    current_led_state = LedState::Off;
+                    last_time = None;
+                }
             }
         }
     }
