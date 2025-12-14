@@ -512,6 +512,30 @@ Settings are stored using sequential-storage with wear leveling:
 
 ---
 
+## Lessons Learned for Future Iterations
+
+This project worked well as a learning experience, but there are several hardware design decisions that should be improved in a future version:
+
+### Power Management Issues
+
+**1. No Hardware Power Switch**
+- The device lacks a physical power switch, relying entirely on software standby mode
+- This means the device continuously draws power even when "off"
+- **Solution for next version:** Add a physical power switch between the battery and the circuit OR evern better add circuitry to power down and back up by push button, AFAIK that is possible but was out of my league for this iteration.
+
+**2. NeoPixel Power Consumption**
+- WS2812B LEDs consume >1mA per LED even when displaying black (all LEDs "off"). I did not know this at the time, but it does make sense.... something has to wait for a signal.
+- With 16 LEDs, this results in considerable constant draw that cannot be disabled in software, affecting us when alarm is active and NeoPixel ring is not needed as well as in standby mode.
+- **Solution for next version:** Add another N-channel MOSFET and passives to cut power to the NeoPixel ring when not in use. Plenty of unused GPIOs are available.
+
+**3. High-Impedance Voltage Dividers**
+- USB power detection (VBUS) and battery voltage measurement (VSYS) use very high-impedance voltage dividers (680kΩ/1MΩ). At the time I believed this would save power, which it does (though very little), but at the cost of stability.
+- While this works on a breadboard, these high-impedance circuits are susceptible to:
+  - Electrical noise from NeoPixel switching
+  - EMI (electromagnetic interference) inside the enclosed case
+- **Current workaround:** Software filtering with debouncing, median filters, and hysteresis
+- **Solution for next version:** Use lower-impedance voltage dividers (e.g., 10kΩ/20kΩ range) for more stable readings, accepting the slightly higher power consumption.
+
 ## Acknowledgments
 
 This is a hobby project and I have very little experience in electronics and had none before in Rust and also none before in CAD. All three things I taught myself along the way. While this was incredible fun, this project will be full of imperfections, literally everywhere. In case you happen across this repo and spots a thing to improve - if you find the time to let me know, I will be more than happy. After all, this was and is about learning things.
