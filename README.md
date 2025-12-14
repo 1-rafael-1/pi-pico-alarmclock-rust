@@ -4,7 +4,13 @@
 
 A fully-featured alarm clock built on a Raspberry Pi Pico W, written in Rust using the Embassy async framework.
 
-![Working Prototype](images/prototype.jpg)
+<div align="center">
+  <img src="images/alarm_mode.jpg" alt="Alarm clock with alarm enabled" width="32%">
+  <img src="images/normal_mode.jpg" alt="Finished alarm clock front view" width="32%">
+  <img src="images/alarm_starting.jpg" alt="Finished alarm clock with LEDs active" width="32%">
+</div>
+
+*Left: Alarm enabled with lightsaber icon indicator. Center: The completed alarm clock showing the OLED display, NeoPixel ring with hour markers, and three illuminated control buttons (green, blue, yellow). Right: Alarm clock in operation with active NeoPixel LEDs displaying the analog clock.*
 
 ---
 
@@ -71,7 +77,6 @@ See the [User Manual](#user-manual) below for detailed instructions.
 
 ### Interface
 - 3× LED Ring Push Buttons (12mm, Green/Blue/Yellow)
-- Power switch
 - Micro SD card (FAT32, for alarm audio)
 
 Complete bill of materials available in the [Components](#components-bill-of-materials) section below.
@@ -393,6 +398,20 @@ Designed in FreeCAD 1.0. Export files available: [enclosure/](enclosure/)
 ![Enclosure Assembly](enclosure/enclosure-assembly.jpg)
 
 *Interior assembly view with lid removed, showing PCB placement, speaker mounting, and 18650 battery holder positioning.*
+
+---
+
+## Assembly
+
+### Breadboard Prototype
+![Breadboard Prototype](images/prototype.jpg)
+
+*Early breadboard prototype used for development and testing of the circuit design before moving to the final PCB implementation.*
+
+### Finished Build
+![Finished Build](images/assembly.jpg)
+
+*The completed alarm clock showing the internal assembly with custom PCB, Raspberry Pi Pico W mounted on the controller board, DFPlayer Mini MP3 module, NeoPixel ring, speaker, 18650 battery, and wiring for the three LED ring push buttons.*
 
 ---
 
