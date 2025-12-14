@@ -475,6 +475,21 @@ Designed in FreeCAD 1.0. Export files available: [enclosure/](enclosure/)
 
 ## Technical Details
 
+### Power Detection Noise Filtering
+
+The USB power and battery voltage detection uses high-impedance voltage dividers (680kΩ/1MΩ) that are susceptible to electrical noise from NeoPixel switching and EMI in the enclosure. It worked on a breabboard, but crammed into the enclosure this is not stable. Software filtering compensates for this:
+
+
+**USB Detection (VBUS):**
+- Debouncing with 5 consecutive readings
+- 10ms delay between samples
+- Rejects transient noise spikes
+
+**Voltage Measurement (VSYS):**
+- Median filters for ADC samples (rejects impulse noise spikes)
+- 5ms settling delay between samples
+- 0.1V hysteresis to prevent display flicker
+
 ### Flash Memory Layout
 
 Settings are stored using sequential-storage with wear leveling:

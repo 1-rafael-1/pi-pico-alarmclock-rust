@@ -78,6 +78,7 @@ rand = { version = "0.8.5", default-features = false }
 reqwless = { version = "0.13.0", features = ["defmt"] }
 tinybmp = "0.6.0"
 dfplayer-async = { version = "0.5.0", features = ["defmt"] }
+moving_median = "0.3.0"
 
 [build-dependencies]
 serde = "1.0"
