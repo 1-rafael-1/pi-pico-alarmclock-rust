@@ -6,7 +6,7 @@ use defmt::{info, warn};
 use defmt_rtt as _;
 use embassy_rp::{
     Peri,
-    peripherals::{DMA_CH2, PIN_19, PIO1},
+    peripherals::{DMA_CH2, PIN_15, PIO1},
     pio::{Common, StateMachine},
     pio_programs::ws2812::{PioWs2812, PioWs2812Program},
 };
@@ -498,7 +498,7 @@ async fn handle_alarm_mode(
 pub async fn light_effects_handler(
     mut common: Common<'static, PIO1>,
     sm: StateMachine<'static, PIO1, 0>,
-    pin: Peri<'static, PIN_19>,
+    pin: Peri<'static, PIN_15>,
     dma: Peri<'static, DMA_CH2>,
     program: PioWs2812Program<'static, PIO1>,
 ) {
