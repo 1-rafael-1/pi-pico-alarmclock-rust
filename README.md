@@ -487,7 +487,7 @@ The USB power and battery voltage detection uses voltage dividers (200kΩ/100kΩ
 - Rejects transient noise spikes
 
 **Voltage Measurement (VSYS):**
-- Median filters for ADC samples (rejects impulse noise spikes)
+- Median filter for ADC samples (rejects impulse noise spikes)
 - 5ms settling delay between samples
 - 0.1V hysteresis to prevent display flicker
 
