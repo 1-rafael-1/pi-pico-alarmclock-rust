@@ -6,6 +6,7 @@ use defmt::{info, warn};
 use defmt_rtt as _;
 use embassy_rp::{
     Peri,
+    gpio::Output,
     peripherals::{DMA_CH2, PIN_15, PIO1},
     pio::{Common, StateMachine},
     pio_programs::ws2812::{PioWs2812, PioWs2812Program},
@@ -128,6 +129,18 @@ enum LedState {
     AlarmEffect,
 }
 
+/// Handle for controlling the Neopixel ring hardware and tracking its state
+struct NeopixelHandle<'a> {
+    /// Neopixel LED controller
+    np: &'a mut NeopixelType,
+    /// Power control pin for the Neopixel ring
+    pwr: &'a mut Output<'static>,
+    /// Current LED state tracker
+    current_led_state: &'a mut LedState,
+    /// Last displayed time (for detecting changes)
+    last_time: &'a mut Option<ClockTime>,
+}
+
 /// Manages the neopixel LED ring, including brightness settings for alarm and clock modes.
 pub struct NeopixelManager {
     /// Brightness setting for alarm mode
@@ -140,7 +153,7 @@ impl NeopixelManager {
     /// Creates a new `NeopixelManager` with default brightness settings.
     pub const fn new() -> Self {
         Self {
-            alarm_brightness: 10,
+            alarm_brightness: 7,
             clock_brightness: 1,
         }
     }
@@ -291,9 +304,14 @@ async fn display_analog_clock(
 }
 
 /// Turns off all LEDs
-async fn turn_off_all_leds(np: &mut NeopixelType) {
+async fn turn_off_all_leds(np: &mut NeopixelType, pwr: &mut Output<'static>) {
     let data = [RGB8::default(); NUM_LEDS_USIZE];
     np.write(&data).await;
+    // Wait 100ms before cutting power to ensure all LEDs are off
+    Timer::after(Duration::from_millis(100)).await;
+    // Cut power to the Neopixel ring
+    info!("Cutting power to Neopixel ring");
+    pwr.set_low();
 }
 
 /// Helper struct for sunrise effect parameters
@@ -443,50 +461,67 @@ async fn noise_effect(np: &mut NeopixelType, neopixel_mgr: &NeopixelManager) {
 
 /// Handles the normal operation mode
 async fn handle_normal_mode(
-    np: &mut NeopixelType,
+    neopixel_handle: &mut NeopixelHandle<'_>,
     neopixel_mgr: &NeopixelManager,
     system_state: &SystemState,
     time: &ClockTime,
     colors: &ClockColors,
-    current_state: &mut LedState,
-    last_time: &mut Option<ClockTime>,
 ) {
     if system_state.alarm_settings.get_enabled() {
         // Only write if we need to transition to off state
-        if *current_state != LedState::Off {
+        if *neopixel_handle.current_led_state != LedState::Off {
             info!("Alarm enabled - turning off LEDs");
-            turn_off_all_leds(np).await;
-            *current_state = LedState::Off;
-            *last_time = None;
+            turn_off_all_leds(neopixel_handle.np, neopixel_handle.pwr).await;
+            *neopixel_handle.current_led_state = LedState::Off;
+            *neopixel_handle.last_time = None;
         }
     } else {
         // Only write if state changed or time changed (for analog clock updates)
-        if *current_state != LedState::AnalogClock || *last_time != Some(*time) {
-            display_analog_clock(np, neopixel_mgr, time, colors).await;
-            *current_state = LedState::AnalogClock;
-            *last_time = Some(*time);
+        if *neopixel_handle.current_led_state != LedState::AnalogClock || *neopixel_handle.last_time != Some(*time) {
+            // Power on the Neopixel ring if transitioning from Off
+            if *neopixel_handle.current_led_state == LedState::Off {
+                info!("Powering on Neopixel ring");
+                neopixel_handle.pwr.set_high();
+                // Small delay to let power stabilize
+                Timer::after(Duration::from_millis(10)).await;
+            }
+            display_analog_clock(neopixel_handle.np, neopixel_mgr, time, colors).await;
+            *neopixel_handle.current_led_state = LedState::AnalogClock;
+            *neopixel_handle.last_time = Some(*time);
         }
     }
 }
 
 /// Handles the alarm mode
 async fn handle_alarm_mode(
-    np: &mut NeopixelType,
+    handle: &mut NeopixelHandle<'_>,
     neopixel_mgr: &NeopixelManager,
     system_state: &SystemState,
-    current_state: &mut LedState,
-    last_time: &mut Option<ClockTime>,
 ) {
     match system_state.alarm_state {
         AlarmState::Sunrise => {
-            sunrise_effect(np).await;
-            *current_state = LedState::AlarmEffect;
-            *last_time = None;
+            // Power on the Neopixel ring if transitioning from Off
+            if *handle.current_led_state == LedState::Off {
+                info!("Powering on Neopixel ring for sunrise effect");
+                handle.pwr.set_high();
+                // Small delay to let power stabilize
+                Timer::after(Duration::from_millis(10)).await;
+            }
+            sunrise_effect(handle.np).await;
+            *handle.current_led_state = LedState::AlarmEffect;
+            *handle.last_time = None;
         }
         AlarmState::Noise => {
-            noise_effect(np, neopixel_mgr).await;
-            *current_state = LedState::AlarmEffect;
-            *last_time = None;
+            // Power on the Neopixel ring if transitioning from Off
+            if *handle.current_led_state == LedState::Off {
+                info!("Powering on Neopixel ring for noise effect");
+                handle.pwr.set_high();
+                // Small delay to let power stabilize
+                Timer::after(Duration::from_millis(10)).await;
+            }
+            noise_effect(handle.np, neopixel_mgr).await;
+            *handle.current_led_state = LedState::AlarmEffect;
+            *handle.last_time = None;
         }
         AlarmState::None => {
             warn!("Alarm state is None, this should not happen");
@@ -501,6 +536,7 @@ pub async fn light_effects_handler(
     pin: Peri<'static, PIN_15>,
     dma: Peri<'static, DMA_CH2>,
     program: PioWs2812Program<'static, PIO1>,
+    mut pwr: Output<'static>,
 ) {
     info!("Analog clock task start");
 
@@ -515,8 +551,8 @@ pub async fn light_effects_handler(
     let mut current_led_state = LedState::Off;
     let mut last_time: Option<ClockTime> = None;
 
-    // All off initially
-    turn_off_all_leds(&mut np).await;
+    // All off initially and power off
+    turn_off_all_leds(&mut np, &mut pwr).await;
 
     'mainloop: loop {
         // Check if brightness update is signaled
@@ -554,7 +590,7 @@ pub async fn light_effects_handler(
                 // Only write if not already off
                 if current_led_state != LedState::Off {
                     info!("Initializing mode - LEDs remain off");
-                    turn_off_all_leds(&mut np).await;
+                    turn_off_all_leds(&mut np, &mut pwr).await;
                     current_led_state = LedState::Off;
                     last_time = None;
                 }
@@ -568,33 +604,29 @@ pub async fn light_effects_handler(
             | OperationMode::SetClockBrightness
             | OperationMode::SetTimeManual => {
                 let time = ClockTime::new(hour, minute, second);
-                handle_normal_mode(
-                    &mut np,
-                    &neopixel_mgr,
-                    &system_state,
-                    &time,
-                    &colors,
-                    &mut current_led_state,
-                    &mut last_time,
-                )
-                .await;
+                let mut handle = NeopixelHandle {
+                    np: &mut np,
+                    pwr: &mut pwr,
+                    current_led_state: &mut current_led_state,
+                    last_time: &mut last_time,
+                };
+                handle_normal_mode(&mut handle, &neopixel_mgr, &system_state, &time, &colors).await;
             }
             OperationMode::Alarm => {
-                handle_alarm_mode(
-                    &mut np,
-                    &neopixel_mgr,
-                    &system_state,
-                    &mut current_led_state,
-                    &mut last_time,
-                )
-                .await;
+                let mut handle = NeopixelHandle {
+                    np: &mut np,
+                    pwr: &mut pwr,
+                    current_led_state: &mut current_led_state,
+                    last_time: &mut last_time,
+                };
+                handle_alarm_mode(&mut handle, &neopixel_mgr, &system_state).await;
             }
             OperationMode::Standby => {
                 // Only write once when entering standby, then skip redundant writes
                 // This saves power by avoiding unnecessary PIO state machine activity
                 if current_led_state != LedState::Off {
                     info!("Entering standby mode - turning off LEDs (power saving)");
-                    turn_off_all_leds(&mut np).await;
+                    turn_off_all_leds(&mut np, &mut pwr).await;
                     current_led_state = LedState::Off;
                     last_time = None;
                 }

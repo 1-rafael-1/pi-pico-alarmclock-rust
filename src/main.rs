@@ -149,9 +149,10 @@ async fn main(spawner: Spawner) {
     // Neopixel light effects
     let Pio { mut common, sm0, .. } = Pio::new(p.PIO1, Irqs);
     let ws2812_program = PioWs2812Program::new(&mut common);
+    let neopixel_pwr = Output::new(p.PIN_14, Level::Low);
     spawn_unwrap(
         spawner,
-        light_effects_handler(common, sm0, p.PIN_15, p.DMA_CH2, ws2812_program),
+        light_effects_handler(common, sm0, p.PIN_15, p.DMA_CH2, ws2812_program, neopixel_pwr),
     );
 
     // Button LEDs controller
