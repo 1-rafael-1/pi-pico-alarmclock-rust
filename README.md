@@ -439,26 +439,27 @@ Designed in FreeCAD 1.0. Export files available: [enclosure/](enclosure/)
 ### Semiconductors
 |Component|Qty|Type|Description|
 |---------|---|----|-----------| 
-|Q1, Q4|2|IRLZ44N|N-channel MOSFET, logic-level (TO-220)|
+|Q1, Q2, Q4|3|IRLZ44N|N-channel MOSFET, logic-level (TO-220)|
 |Q3|1|IRF9540|P-channel MOSFET, logic-level (TO-220)|
 |D3|1|1N5819|Schottky diode, 40V, 1A (DO-41)|
 
 ### Resistors (1/4W)
 |Reference|Qty|Value|
 |---------|---|-----|
-|R1, R5|2|10kΩ|
-|R2|1|100Ω|
+|R1, R5, R14|3|10kΩ|
+|R2, R13|2|100Ω|
 |R3, R7|2|1kΩ|
 |R6|1|2.2kΩ|
 |R8|1|220Ω|
-|R9, R11|2|680kΩ|
-|R10, R12|2|1MΩ|
+|R9, R11|2|100kΩ|
+|R10, R12|2|200kΩ|
 
 ### Capacitors
-|Reference|Qty|Type|Value|Voltage|
-|---------|---|----|-----|-------|
-|C1, C3, C4, C6|4|Ceramic|100nF|50V|
-|C2, C7|2|Electrolytic|470µF|16V|
+|Reference|Qty|Type|Value|Voltage|Description|
+|---------|---|----|-----|-------|-----------|
+|C1, C3, C4, C5, C6|5|Ceramic|100nF|50V|General decoupling|
+|C2, C7|2|Electrolytic|470µF|16V|Power supply filtering|
+|C8, C9|2|Ceramic|100nF|50V|ADC input filters for VSYS/VBUS voltage dividers|
 
 ### Connectors
 |Reference|Qty|Type|Description|
@@ -474,6 +475,21 @@ Designed in FreeCAD 1.0. Export files available: [enclosure/](enclosure/)
 ---
 
 ## Technical Details
+
+### Power Detection Noise Filtering
+
+The USB power and battery voltage detection uses voltage dividers (200kΩ/100kΩ) with 100nF filter capacitors that help reduce electrical noise from NeoPixel switching and EMI in the enclosure. Software filtering further improves stability:
+
+
+**USB Detection (VBUS):**
+- Debouncing with 5 consecutive readings
+- 10ms delay between samples
+- Rejects transient noise spikes
+
+**Voltage Measurement (VSYS):**
+- Median filter for ADC samples (rejects impulse noise spikes)
+- 5ms settling delay between samples
+- 0.1V hysteresis to prevent display flicker
 
 ### Flash Memory Layout
 
@@ -496,6 +512,17 @@ Settings are stored using sequential-storage with wear leveling:
 - Reserved: 16K
 
 ---
+
+## Lessons Learned for Future Iterations
+
+This project worked well as a learning experience, but there are several hardware design decisions that should be improved in a future version:
+
+### Power Management Issues
+
+**1. No Hardware Power Switch**
+- The device lacks a physical power switch, relying entirely on software standby mode
+- This means the device continuously draws power even when "off"
+- **Solution for next version:** Add a physical power switch between the battery and the circuit OR even better add circuitry to power down and back up by push button, AFAIK that is possible but was out of my league for this iteration.
 
 ## Acknowledgments
 

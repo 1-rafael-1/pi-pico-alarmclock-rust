@@ -198,12 +198,26 @@ fn handle_vbus_event(system_state: &mut SystemState, usb: bool) {
     signal_display_update();
 }
 
-/// Handles system voltage changes
+/// Handles system voltage changes with hysteresis to filter noise
+/// Only updates if voltage change is significant (>0.1V) to avoid display flicker from noise
 fn handle_vsys_event(system_state: &mut SystemState, voltage: f32) {
-    info!("Vsys event, voltage: {}", voltage);
-    system_state.power_state.set_vsys(voltage);
-    system_state.power_state.set_battery_level();
-    signal_display_update();
+    const VOLTAGE_HYSTERESIS: f32 = 0.1; // Minimum voltage change to trigger update
+
+    let current_voltage = system_state.power_state.get_vsys();
+    let voltage_delta = (voltage - current_voltage).abs();
+
+    // Only update if this is the first reading (current is 0.0) or change is significant
+    if current_voltage == 0.0 || voltage_delta > VOLTAGE_HYSTERESIS {
+        info!("Vsys event, voltage: {}V (delta: {}V)", voltage, voltage_delta);
+        system_state.power_state.set_vsys(voltage);
+        system_state.power_state.set_battery_level();
+        signal_display_update();
+    } else {
+        info!(
+            "Vsys event ignored (within hysteresis): {}V (delta: {}V)",
+            voltage, voltage_delta
+        );
+    }
 }
 
 /// Handles alarm settings loaded from flash
@@ -302,7 +316,6 @@ fn handle_standby_event() {
     signal_scheduler_stop();
     signal_display_update();
     signal_lightfx_start(0, 0, 0);
-    signal_sound_stop();
     signal_time_updater_suspend();
 }
 

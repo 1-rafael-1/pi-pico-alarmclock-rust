@@ -584,7 +584,7 @@
       "plot": "",
       "pos_files": "",
       "specctra_dsn": "../../../../Downloads/pi-pico-alarmclock.dsn",
-      "step": "",
+      "step": "pi-pico-alarmclock.stl",
       "svg": "",
       "vrml": ""
     },

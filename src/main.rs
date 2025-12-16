@@ -17,7 +17,7 @@ use embassy_rp::{
     i2c::{Config as I2cConfig, I2c, InterruptHandler as I2cInterruptHandler},
     peripherals::{I2C0, PIO0, PIO1, UART1},
     pio::{InterruptHandler as PioInterruptHandler, Pio},
-    pio_programs::ws2812::PioWs2812Program,
+    pio_programs::ws2812::{PioWs2812, PioWs2812Program},
     rtc::{InterruptHandler as RtcInterruptHandler, Rtc},
     uart::{BufferedInterruptHandler, BufferedUart, Config as UartConfig},
 };
@@ -149,10 +149,9 @@ async fn main(spawner: Spawner) {
     // Neopixel light effects
     let Pio { mut common, sm0, .. } = Pio::new(p.PIO1, Irqs);
     let ws2812_program = PioWs2812Program::new(&mut common);
-    spawn_unwrap(
-        spawner,
-        light_effects_handler(common, sm0, p.PIN_19, p.DMA_CH2, ws2812_program),
-    );
+    let neopixel = PioWs2812::new(&mut common, sm0, p.DMA_CH2, p.PIN_15, &ws2812_program);
+    let neopixel_pwr = Output::new(p.PIN_14, Level::Low);
+    spawn_unwrap(spawner, light_effects_handler(neopixel, neopixel_pwr));
 
     // Button LEDs controller
     let button_leds_control = Output::new(p.PIN_26, Level::Low);

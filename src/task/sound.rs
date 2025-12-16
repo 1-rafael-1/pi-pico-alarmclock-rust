@@ -2,6 +2,7 @@
 //!  This module contains the task that plays sound using the `DFPlayer` Mini module.
 //!
 //! The task is responsible for initializing the `DFPlayer` Mini module, powering it on, playing a sound, and powering it off.
+use core::sync::atomic::{AtomicBool, Ordering};
 use defmt::{Debug2Format, info};
 use dfplayer_async::{DfPlayer, Equalizer, PlayBackSource, TimeSource};
 use embassy_futures::select::{Either, select};
@@ -19,6 +20,9 @@ static SOUND_START_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
 /// Signal for stopping the sound
 static SOUND_STOP_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+
+/// Tracks whether the `DFPlayer` is currently powered on
+static DFPLAYER_POWERED: AtomicBool = AtomicBool::new(false);
 
 /// Current volume level (protected by mutex)
 static SOUND_VOLUME: Mutex<CriticalSectionRawMutex, u8> = Mutex::new(13);
@@ -47,8 +51,14 @@ pub fn signal_sound_start() {
 }
 
 /// Signals the sound task to stop playing
+/// Only signals if the `DFPlayer` is currently powered to avoid pending signals
 pub fn signal_sound_stop() {
-    SOUND_STOP_SIGNAL.signal(());
+    // Only signal stop if DFPlayer is actually powered and potentially playing
+    if DFPLAYER_POWERED.load(Ordering::Relaxed) {
+        SOUND_STOP_SIGNAL.signal(());
+    } else {
+        info!("Skipping sound stop signal - DFPlayer not powered");
+    }
 }
 
 /// Waits for the next sound start signal
@@ -90,6 +100,7 @@ async fn wait_for_music_end(busy_pin: &mut Input<'static>) {
 async fn power_on_dfplayer(pwr: &mut Output<'static>) {
     info!("Powering on the dfplayer");
     pwr.set_high();
+    DFPLAYER_POWERED.store(true, Ordering::Relaxed);
     Timer::after(Duration::from_millis(500)).await;
     info!("Powered on the dfplayer");
 }
@@ -98,6 +109,7 @@ async fn power_on_dfplayer(pwr: &mut Output<'static>) {
 fn power_off_dfplayer(pwr: &mut Output<'static>) {
     info!("Powering off the dfplayer");
     pwr.set_low();
+    DFPLAYER_POWERED.store(false, Ordering::Relaxed);
 }
 
 /// Handles the sound playback after `DFPlayer` initialization
