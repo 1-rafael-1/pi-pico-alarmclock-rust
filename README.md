@@ -522,7 +522,7 @@ This project worked well as a learning experience, but there are several hardwar
 **1. No Hardware Power Switch**
 - The device lacks a physical power switch, relying entirely on software standby mode
 - This means the device continuously draws power even when "off"
-- **Solution for next version:** Add a physical power switch between the battery and the circuit OR evern better add circuitry to power down and back up by push button, AFAIK that is possible but was out of my league for this iteration.
+- **Solution for next version:** Add a physical power switch between the battery and the circuit OR even better add circuitry to power down and back up by push button, AFAIK that is possible but was out of my league for this iteration.
 
 ## Acknowledgments
 
