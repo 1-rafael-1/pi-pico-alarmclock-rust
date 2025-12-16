@@ -439,26 +439,27 @@ Designed in FreeCAD 1.0. Export files available: [enclosure/](enclosure/)
 ### Semiconductors
 |Component|Qty|Type|Description|
 |---------|---|----|-----------| 
-|Q1, Q4|2|IRLZ44N|N-channel MOSFET, logic-level (TO-220)|
+|Q1, Q2, Q4|3|IRLZ44N|N-channel MOSFET, logic-level (TO-220)|
 |Q3|1|IRF9540|P-channel MOSFET, logic-level (TO-220)|
 |D3|1|1N5819|Schottky diode, 40V, 1A (DO-41)|
 
 ### Resistors (1/4W)
 |Reference|Qty|Value|
 |---------|---|-----|
-|R1, R5|2|10kΩ|
-|R2|1|100Ω|
+|R1, R5, R14|3|10kΩ|
+|R2, R13|2|100Ω|
 |R3, R7|2|1kΩ|
 |R6|1|2.2kΩ|
 |R8|1|220Ω|
-|R9, R11|2|680kΩ|
-|R10, R12|2|1MΩ|
+|R9, R11|2|100kΩ|
+|R10, R12|2|200kΩ|
 
 ### Capacitors
-|Reference|Qty|Type|Value|Voltage|
-|---------|---|----|-----|-------|
-|C1, C3, C4, C6|4|Ceramic|100nF|50V|
-|C2, C7|2|Electrolytic|470µF|16V|
+|Reference|Qty|Type|Value|Voltage|Description|
+|---------|---|----|-----|-------|-----------|
+|C1, C3, C4, C5, C6|5|Ceramic|100nF|50V|General decoupling|
+|C2, C7|2|Electrolytic|470µF|16V|Power supply filtering|
+|C8, C9|2|Ceramic|100nF|50V|ADC input filters for VSYS/VBUS voltage dividers|
 
 ### Connectors
 |Reference|Qty|Type|Description|
@@ -477,7 +478,7 @@ Designed in FreeCAD 1.0. Export files available: [enclosure/](enclosure/)
 
 ### Power Detection Noise Filtering
 
-The USB power and battery voltage detection uses high-impedance voltage dividers (680kΩ/1MΩ) that are susceptible to electrical noise from NeoPixel switching and EMI in the enclosure. It worked on a breabboard, but crammed into the enclosure this is not stable. Software filtering compensates for this:
+The USB power and battery voltage detection uses voltage dividers (200kΩ/100kΩ) with 100nF filter capacitors that help reduce electrical noise from NeoPixel switching and EMI in the enclosure. Software filtering further improves stability:
 
 
 **USB Detection (VBUS):**
@@ -522,19 +523,6 @@ This project worked well as a learning experience, but there are several hardwar
 - The device lacks a physical power switch, relying entirely on software standby mode
 - This means the device continuously draws power even when "off"
 - **Solution for next version:** Add a physical power switch between the battery and the circuit OR evern better add circuitry to power down and back up by push button, AFAIK that is possible but was out of my league for this iteration.
-
-**2. NeoPixel Power Consumption**
-- WS2812B LEDs consume >1mA per LED even when displaying black (all LEDs "off"). I did not know this at the time, but it does make sense.... something has to wait for a signal.
-- With 16 LEDs, this results in considerable constant draw that cannot be disabled in software, affecting us when alarm is active and NeoPixel ring is not needed as well as in standby mode.
-- **Solution for next version:** Add another N-channel MOSFET and passives to cut power to the NeoPixel ring when not in use. Plenty of unused GPIOs are available.
-
-**3. High-Impedance Voltage Dividers**
-- USB power detection (VBUS) and battery voltage measurement (VSYS) use very high-impedance voltage dividers (680kΩ/1MΩ). At the time I believed this would save power, which it does (though very little), but at the cost of stability.
-- While this works on a breadboard, these high-impedance circuits are susceptible to:
-  - Electrical noise from NeoPixel switching
-  - EMI (electromagnetic interference) inside the enclosed case
-- **Current workaround:** Software filtering with debouncing, median filters, and hysteresis
-- **Solution for next version:** Use lower-impedance voltage dividers (e.g., 10kΩ/20kΩ range) for more stable readings, accepting the slightly higher power consumption.
 
 ## Acknowledgments
 

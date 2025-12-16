@@ -4,8 +4,8 @@
 //!
 //! ## Noise Filtering Strategy
 //!
-//! This module implements software filtering to compensate for high-impedance
-//! voltage dividers (680kΩ/1MΩ) that are susceptible to electrical noise, especially
+//! This module implements software filtering to compensate for
+//! voltage dividers (200kΩ/100kΩ) that may be susceptible to electrical noise, especially
 //! from `NeoPixel` switching and EMI in the enclosure environment.
 //!
 //! ### USB Power Detection (VBUS)
@@ -152,8 +152,8 @@ pub async fn vsys_voltage_reader(mut adc: Adc<'static, embassy_rp::adc::Async>, 
             // Get median value (outlier spikes automatically rejected!)
             let median_adc_value = median_filter.median();
 
-            // reference voltage is 3.3V, and the voltage divider ratio is 2.47 (R10: 1MΩ + R9: 680kΩ) / 680kΩ. The ADC is 12-bit, so 2^12 = 4096
-            let voltage = f32::from(median_adc_value) * 3.3 * 2.47 / 4096.0;
+            // reference voltage is 3.3V, and the voltage divider ratio is 3.0 (R10: 200kΩ + R9: 100kΩ) / 100kΩ. The ADC is 12-bit, so 2^12 = 4096
+            let voltage = f32::from(median_adc_value) * 3.3 * 3.0 / 4096.0;
 
             info!(
                 "Vsys voltage reading: {}V (median filtered from {} samples)",
