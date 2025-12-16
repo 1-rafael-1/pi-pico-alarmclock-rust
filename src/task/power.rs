@@ -38,7 +38,7 @@ const VBUS_DEBOUNCE_COUNT: u8 = 5;
 /// Allows transients to settle between readings
 const VBUS_DEBOUNCE_DELAY_MS: u64 = 10;
 
-/// Number of ADC samples to median for voltage reading, use odd number to avoid avaraging calculation
+/// Number of ADC samples to median for voltage reading, use odd number to avoid averaging calculation
 const VSYS_SAMPLE_COUNT: usize = 9;
 
 /// Delay between ADC samples (milliseconds)
