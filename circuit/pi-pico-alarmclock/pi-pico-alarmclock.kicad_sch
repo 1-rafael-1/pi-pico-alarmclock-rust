@@ -4692,8 +4692,8 @@
 		(uuid 5e61de26-19a2-4877-8e81-dcf59203269e)
 	)
 	(rectangle
-		(start 186.69 60.96)
-		(end 215.9 109.22)
+		(start 186.69 53.34)
+		(end 222.25 109.22)
 		(stroke
 			(width 0)
 			(type default)
@@ -4729,7 +4729,7 @@
 	)
 	(text "Power Measuring"
 		(exclude_from_sim no)
-		(at 195.58 63.246 0)
+		(at 195.58 55.118 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -4822,6 +4822,12 @@
 		(uuid "30c0ab71-90ce-4a61-8dab-feffbe0212d6")
 	)
 	(junction
+		(at 201.93 66.04)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "38464fb4-3ea5-44d5-b980-6117fb90036c")
+	)
+	(junction
 		(at 139.7 73.66)
 		(diameter 0)
 		(color 0 0 0 0)
@@ -4832,12 +4838,6 @@
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "5afbe7c9-a5d8-4c5d-a236-b9cb0494cc90")
-	)
-	(junction
-		(at 161.29 44.45)
-		(diameter 0)
-		(color 0 0 0 0)
-		(uuid "6ea8eef3-7c72-4a3b-86fe-ed254a4abd36")
 	)
 	(junction
 		(at 153.67 97.79)
@@ -4886,6 +4886,12 @@
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "d59a1b21-4737-486f-b5fc-feae4d5ac4de")
+	)
+	(junction
+		(at 201.93 90.17)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "e549942d-748c-411a-9b26-bb0a4f4b6db2")
 	)
 	(junction
 		(at 256.54 147.32)
@@ -5010,16 +5016,6 @@
 			(type default)
 		)
 		(uuid "0210ab91-7090-47f2-bf98-f846522da182")
-	)
-	(wire
-		(pts
-			(xy 173.99 44.45) (xy 173.99 54.61)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "040283f4-125b-489b-9cf8-0eb1784254ec")
 	)
 	(wire
 		(pts
@@ -5203,6 +5199,16 @@
 	)
 	(wire
 		(pts
+			(xy 201.93 66.04) (xy 201.93 77.47)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "50d6b93b-41d7-4094-8b84-34af14545a8a")
+	)
+	(wire
+		(pts
 			(xy 151.13 153.67) (xy 151.13 142.24)
 		)
 		(stroke
@@ -5363,7 +5369,7 @@
 	)
 	(wire
 		(pts
-			(xy 201.93 97.79) (xy 201.93 101.6)
+			(xy 201.93 86.36) (xy 201.93 90.17)
 		)
 		(stroke
 			(width 0)
@@ -5513,16 +5519,6 @@
 	)
 	(wire
 		(pts
-			(xy 161.29 44.45) (xy 173.99 44.45)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "a2e2472f-3a0f-40dd-88ce-51e20d3cb300")
-	)
-	(wire
-		(pts
 			(xy 153.67 142.24) (xy 151.13 142.24)
 		)
 		(stroke
@@ -5633,6 +5629,16 @@
 	)
 	(wire
 		(pts
+			(xy 201.93 90.17) (xy 201.93 101.6)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "d408e980-a04c-4ef3-bebe-dfbea309c09e")
+	)
+	(wire
+		(pts
 			(xy 242.57 132.08) (xy 245.11 132.08)
 		)
 		(stroke
@@ -5643,7 +5649,7 @@
 	)
 	(wire
 		(pts
-			(xy 201.93 73.66) (xy 201.93 77.47)
+			(xy 201.93 62.23) (xy 201.93 66.04)
 		)
 		(stroke
 			(width 0)
@@ -5680,16 +5686,6 @@
 			(type default)
 		)
 		(uuid "dfcd96ed-e84d-4c09-9ec2-50116ae33e1a")
-	)
-	(wire
-		(pts
-			(xy 173.99 54.61) (xy 168.91 54.61)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "e14a73d3-d747-4019-b177-5b390b34a3fc")
 	)
 	(wire
 		(pts
@@ -5951,16 +5947,6 @@
 		)
 		(uuid "7c055158-1353-4eb8-88d9-3a07dd53e523")
 	)
-	(label "BAT-"
-		(at 173.99 48.26 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "7eb2476f-b818-4525-a305-0f45f76d2ac6")
-	)
 	(label "GP13"
 		(at 63.5 88.9 180)
 		(effects
@@ -6062,7 +6048,7 @@
 		(uuid "b9e9f792-a9b7-4a27-b494-ece5b5e3826c")
 	)
 	(label "GP27"
-		(at 201.93 73.66 90)
+		(at 201.93 62.23 90)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -6112,7 +6098,7 @@
 		(uuid "c951696f-459b-4581-b402-d79dac878c48")
 	)
 	(label "GP28"
-		(at 201.93 97.79 90)
+		(at 201.93 86.36 90)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -6253,6 +6239,71 @@
 			(project "pi-pico-alarmclock"
 				(path "/4c5cb0eb-2550-406b-8a38-335faa16f981"
 					(reference "#PWR030")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 168.91 54.61 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "07375078-6221-4c32-894f-e5f45c8fb5cb")
+		(property "Reference" "#PWR040"
+			(at 175.26 54.61 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "GND"
+			(at 174.244 54.356 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 168.91 54.61 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 168.91 54.61 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 168.91 54.61 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "329f0015-8179-4cc2-b04a-649c8dd297c6")
+		)
+		(instances
+			(project "pi-pico-alarmclock"
+				(path "/4c5cb0eb-2550-406b-8a38-335faa16f981"
+					(reference "#PWR040")
 					(unit 1)
 				)
 			)
@@ -7282,6 +7333,73 @@
 		)
 	)
 	(symbol
+		(lib_id "power:GND")
+		(at 207.01 90.17 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "4afcd7a1-579e-47bd-845c-8ebe7e2ba988")
+		(property "Reference" "#PWR028"
+			(at 213.36 90.17 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "GND"
+			(at 210.82 90.1699 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
+		(property "Footprint" ""
+			(at 207.01 90.17 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 207.01 90.17 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 207.01 90.17 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "b9fb2e49-27d8-4ebc-a3ec-bae731e1e477")
+		)
+		(instances
+			(project "pi-pico-alarmclock"
+				(path "/4c5cb0eb-2550-406b-8a38-335faa16f981"
+					(reference "#PWR028")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "common-hobby-things:step-up-converter_5V")
 		(at 156.21 78.74 270)
 		(unit 1)
@@ -7488,6 +7606,75 @@
 		)
 	)
 	(symbol
+		(lib_id "PCM_SL_Capacitors:100nF_Ceramic")
+		(at 204.47 66.04 180)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "5bfdaabf-292b-4d71-a18a-0083b29b4f34")
+		(property "Reference" "C5"
+			(at 205.74 61.468 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
+		(property "Value" "100nF_Ceramic"
+			(at 205.74 64.008 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
+		(property "Footprint" "Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P2.50mm"
+			(at 204.47 62.23 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 204.47 66.04 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "100nF Ceramic Capacitor"
+			(at 204.47 66.04 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "2"
+			(uuid "92aa924d-3cba-411c-92e1-2121cc3f8e28")
+		)
+		(pin "1"
+			(uuid "ca10eeba-525d-41f2-ad10-eb79d55c4c25")
+		)
+		(instances
+			(project "pi-pico-alarmclock"
+				(path "/4c5cb0eb-2550-406b-8a38-335faa16f981"
+					(reference "C5")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "power:GND")
 		(at 262.89 144.78 0)
 		(unit 1)
@@ -7622,7 +7809,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 161.29 44.45 0)
+		(at 161.29 44.45 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -7630,7 +7817,7 @@
 		(dnp no)
 		(uuid "61e40f1a-8f68-40dc-a90d-2a75d14ca47b")
 		(property "Reference" "#PWR03"
-			(at 161.29 50.8 0)
+			(at 167.64 44.45 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7639,7 +7826,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 164.084 46.99 0)
+			(at 166.116 44.196 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7981,7 +8168,7 @@
 				)
 			)
 		)
-		(property "Value" "1M"
+		(property "Value" "200K"
 			(at 195.58 97.79 0)
 			(effects
 				(font
@@ -8574,7 +8761,7 @@
 				)
 			)
 		)
-		(property "Value" "680k"
+		(property "Value" "100K"
 			(at 208.28 73.66 0)
 			(effects
 				(font
@@ -9327,7 +9514,7 @@
 				)
 			)
 		)
-		(property "Value" "680k"
+		(property "Value" "100K"
 			(at 208.28 97.79 0)
 			(effects
 				(font
@@ -9534,7 +9721,7 @@
 				)
 			)
 		)
-		(property "Value" "1M"
+		(property "Value" "200K"
 			(at 195.58 73.66 0)
 			(effects
 				(font
@@ -10061,6 +10248,73 @@
 		)
 	)
 	(symbol
+		(lib_id "power:GND")
+		(at 207.01 66.04 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "c22b71b4-05f3-4197-b3d8-9b8da8f4ddcb")
+		(property "Reference" "#PWR08"
+			(at 213.36 66.04 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "GND"
+			(at 210.82 66.0399 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
+		(property "Footprint" ""
+			(at 207.01 66.04 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 207.01 66.04 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 207.01 66.04 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "fff09341-0f63-458d-8f34-55ce6ee555a2")
+		)
+		(instances
+			(project "pi-pico-alarmclock"
+				(path "/4c5cb0eb-2550-406b-8a38-335faa16f981"
+					(reference "#PWR08")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "PCM_SL_Resistors:100ohm")
 		(at 64.77 128.27 90)
 		(unit 1)
@@ -10328,6 +10582,75 @@
 			(project ""
 				(path "/4c5cb0eb-2550-406b-8a38-335faa16f981"
 					(reference "R1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "PCM_SL_Capacitors:100nF_Ceramic")
+		(at 204.47 90.17 180)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "ca67546d-ffc9-458d-85e8-b9c5bbf8b8a0")
+		(property "Reference" "C8"
+			(at 205.74 85.598 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
+		(property "Value" "100nF_Ceramic"
+			(at 205.74 88.138 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
+		(property "Footprint" "Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P2.50mm"
+			(at 204.47 86.36 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 204.47 90.17 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "100nF Ceramic Capacitor"
+			(at 204.47 90.17 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "2"
+			(uuid "e69e7e40-3579-4a3f-aa47-cc52d00ede3e")
+		)
+		(pin "1"
+			(uuid "8cd68c76-0d56-4880-91f9-4cbb37fbcf9e")
+		)
+		(instances
+			(project "pi-pico-alarmclock"
+				(path "/4c5cb0eb-2550-406b-8a38-335faa16f981"
+					(reference "C8")
 					(unit 1)
 				)
 			)
