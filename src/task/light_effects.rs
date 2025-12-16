@@ -4,13 +4,7 @@
 //! The tasks are responsible for initializing the neopixel, setting the colors of the LEDs, and updating the LEDs.
 use defmt::{info, warn};
 use defmt_rtt as _;
-use embassy_rp::{
-    Peri,
-    gpio::Output,
-    peripherals::{DMA_CH2, PIN_15, PIO1},
-    pio::{Common, StateMachine},
-    pio_programs::ws2812::{PioWs2812, PioWs2812Program},
-};
+use embassy_rp::{gpio::Output, peripherals::PIO1, pio_programs::ws2812::PioWs2812};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Instant, Timer};
 use panic_probe as _;
@@ -77,7 +71,7 @@ const NUM_LEDS_USIZE: usize = 16;
 const NUM_LEDS: u8 = 16;
 
 /// Type alias for the neopixel LED controller
-type NeopixelType = PioWs2812<'static, PIO1, 0, NUM_LEDS_USIZE>;
+type NeopixelType<'a> = PioWs2812<'a, PIO1, 0, NUM_LEDS_USIZE>;
 
 /// Helper struct to bundle time values (hour, minute, second)
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -130,9 +124,9 @@ enum LedState {
 }
 
 /// Handle for controlling the Neopixel ring hardware and tracking its state
-struct NeopixelHandle<'a> {
+struct NeopixelHandle<'a, 'b> {
     /// Neopixel LED controller
-    np: &'a mut NeopixelType,
+    np: &'a mut NeopixelType<'b>,
     /// Power control pin for the Neopixel ring
     pwr: &'a mut Output<'static>,
     /// Current LED state tracker
@@ -260,7 +254,7 @@ fn calculate_lit_leds(fraction_elapsed: f32) -> u8 {
 
 /// Displays the analog clock hands on the LED ring
 async fn display_analog_clock(
-    np: &mut NeopixelType,
+    np: &mut NeopixelType<'_>,
     neopixel_mgr: &NeopixelManager,
     time: &ClockTime,
     colors: &ClockColors,
@@ -304,7 +298,7 @@ async fn display_analog_clock(
 }
 
 /// Turns off all LEDs
-async fn turn_off_all_leds(np: &mut NeopixelType, pwr: &mut Output<'static>) {
+async fn turn_off_all_leds(np: &mut NeopixelType<'_>, pwr: &mut Output<'static>) {
     let data = [RGB8::default(); NUM_LEDS_USIZE];
     np.write(&data).await;
     // Wait 100ms before cutting power to ensure all LEDs are off
@@ -339,7 +333,7 @@ impl SunriseParams {
 }
 
 /// Displays the sunrise effect
-async fn sunrise_effect(np: &mut NeopixelType) {
+async fn sunrise_effect(np: &mut NeopixelType<'_>) {
     info!("Sunrise effect");
 
     let mut data = [RGB8::default(); NUM_LEDS_USIZE];
@@ -418,7 +412,7 @@ async fn sunrise_effect(np: &mut NeopixelType) {
 }
 
 /// Displays the rainbow noise effect
-async fn noise_effect(np: &mut NeopixelType, neopixel_mgr: &NeopixelManager) {
+async fn noise_effect(np: &mut NeopixelType<'_>, neopixel_mgr: &NeopixelManager) {
     info!("Noise effect");
 
     let mut data = [RGB8::default(); NUM_LEDS_USIZE];
@@ -461,7 +455,7 @@ async fn noise_effect(np: &mut NeopixelType, neopixel_mgr: &NeopixelManager) {
 
 /// Handles the normal operation mode
 async fn handle_normal_mode(
-    neopixel_handle: &mut NeopixelHandle<'_>,
+    neopixel_handle: &mut NeopixelHandle<'_, '_>,
     neopixel_mgr: &NeopixelManager,
     system_state: &SystemState,
     time: &ClockTime,
@@ -494,7 +488,7 @@ async fn handle_normal_mode(
 
 /// Handles the alarm mode
 async fn handle_alarm_mode(
-    handle: &mut NeopixelHandle<'_>,
+    handle: &mut NeopixelHandle<'_, '_>,
     neopixel_mgr: &NeopixelManager,
     system_state: &SystemState,
 ) {
@@ -530,18 +524,10 @@ async fn handle_alarm_mode(
 }
 
 #[embassy_executor::task]
-pub async fn light_effects_handler(
-    mut common: Common<'static, PIO1>,
-    sm: StateMachine<'static, PIO1, 0>,
-    pin: Peri<'static, PIN_15>,
-    dma: Peri<'static, DMA_CH2>,
-    program: PioWs2812Program<'static, PIO1>,
-    mut pwr: Output<'static>,
-) {
+pub async fn light_effects_handler(mut np: PioWs2812<'static, PIO1, 0, 16>, mut pwr: Output<'static>) {
     info!("Analog clock task start");
 
     let mut neopixel_mgr = NeopixelManager::new();
-    let mut np = PioWs2812::new(&mut common, sm, dma, pin, &program);
 
     // Load initial brightness from system state
     neopixel_mgr.update_from_system_state().await;
