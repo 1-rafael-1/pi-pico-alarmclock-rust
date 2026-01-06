@@ -6,8 +6,8 @@
 	(paper "A4")
 	(title_block
 		(title "pi-pico-alarmclock-rust")
-		(date "2025-11-20")
-		(rev "v0.3")
+		(date "2026-01-06")
+		(rev "v0.4")
 		(company "rafael")
 	)
 	(lib_symbols
@@ -8168,7 +8168,7 @@
 				)
 			)
 		)
-		(property "Value" "200K"
+		(property "Value" "220K"
 			(at 195.58 97.79 0)
 			(effects
 				(font
@@ -9721,7 +9721,7 @@
 				)
 			)
 		)
-		(property "Value" "200K"
+		(property "Value" "220K"
 			(at 195.58 73.66 0)
 			(effects
 				(font

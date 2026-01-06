@@ -1588,7 +1588,7 @@
 				)
 			)
 		)
-		(property "Value" "200K"
+		(property "Value" "220K"
 			(at 5.08 0 90)
 			(layer "F.SilkS")
 			(uuid "2119fe39-f2bf-4eca-ad1e-c9159ededa14")
@@ -3661,7 +3661,7 @@
 				)
 			)
 		)
-		(property "Value" "200K"
+		(property "Value" "220K"
 			(at 5.08 0 90)
 			(layer "F.SilkS")
 			(uuid "991fb6c1-a6f4-4565-a29d-f9ce0a244053")
@@ -3709,7 +3709,7 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
-			(uuid "8687747d-4163-402e-a637-79c723960a74")
+			(uuid "dca33505-1990-44c6-8bbe-832559fa264d")
 		)
 		(fp_line
 			(start 9.12 0)
@@ -3719,7 +3719,7 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
-			(uuid "ab00f2ad-a826-4fad-8324-d7af20d14bc7")
+			(uuid "88b5eeff-e1b7-41b0-ad1a-af97b71347d3")
 		)
 		(fp_rect
 			(start 1.81 -1.37)
@@ -3730,7 +3730,7 @@
 			)
 			(fill no)
 			(layer "F.SilkS")
-			(uuid "eb7b9f8b-0f95-4175-894f-412881f3dc0d")
+			(uuid "2a1bc0dd-b469-4bbf-9ccf-dcc5043fa743")
 		)
 		(fp_rect
 			(start -1.05 -1.5)
@@ -3741,7 +3741,7 @@
 			)
 			(fill no)
 			(layer "F.CrtYd")
-			(uuid "ef5bfbbb-6fb7-411a-8488-83da72f0df27")
+			(uuid "1ca00089-74ea-4fc3-a6d6-a4bb4bf59a8c")
 		)
 		(fp_line
 			(start 0 0)
@@ -3751,7 +3751,7 @@
 				(type solid)
 			)
 			(layer "F.Fab")
-			(uuid "90e6e84e-7da8-4633-8f3c-17879fa57f68")
+			(uuid "de806a29-a92c-418f-8bee-71353db1430d")
 		)
 		(fp_line
 			(start 10.16 0)
@@ -3761,7 +3761,7 @@
 				(type solid)
 			)
 			(layer "F.Fab")
-			(uuid "0d8684a7-c546-4a7e-ad42-904d974d1835")
+			(uuid "49a0b34f-2f2a-4851-b132-b9f06623f7e9")
 		)
 		(fp_rect
 			(start 1.93 -1.25)
@@ -3772,7 +3772,7 @@
 			)
 			(fill no)
 			(layer "F.Fab")
-			(uuid "d22324c1-595e-4bbe-b46e-b1f9b5a65d0f")
+			(uuid "ea47d111-ddff-45d2-a819-0666dd0ec7d5")
 		)
 		(fp_text user "${REFERENCE}"
 			(at 5.08 0 90)
@@ -16096,7 +16096,7 @@
 			(justify left bottom)
 		)
 	)
-	(gr_text "1-rafael-1\nPi Pico Alarmclock\nV0.3 / 12.2025"
+	(gr_text "1-rafael-1\nPi Pico Alarmclock\nV0.4 / 01.2026"
 		(at 122.75 55 0)
 		(layer "F.SilkS")
 		(uuid "7b5e74eb-7205-42b4-a6b1-4dda3b1dfbb0")
