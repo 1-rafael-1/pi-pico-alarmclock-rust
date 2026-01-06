@@ -1,6 +1,6 @@
 [package]
 name = "pi-pico-alarmclock"
-version = "0.7.2"
+version = "0.7.3"
 edition = "2024"
 authors = ["rafael.koch@gmx.net"]
 description = "Raspberry Pi Pico W alarm clock with WiFi, time sync, OLED display, and WS2812 LED support"

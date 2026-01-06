@@ -452,7 +452,7 @@ Designed in FreeCAD 1.0. Export files available: [enclosure/](enclosure/)
 |R6|1|2.2kΩ|
 |R8|1|220Ω|
 |R9, R11|2|100kΩ|
-|R10, R12|2|200kΩ|
+|R10, R12|2|220kΩ|
 
 ### Capacitors
 |Reference|Qty|Type|Value|Voltage|Description|
@@ -478,7 +478,7 @@ Designed in FreeCAD 1.0. Export files available: [enclosure/](enclosure/)
 
 ### Power Detection Noise Filtering
 
-The USB power and battery voltage detection uses voltage dividers (200kΩ/100kΩ) with 100nF filter capacitors that help reduce electrical noise from NeoPixel switching and EMI in the enclosure. Software filtering further improves stability:
+The USB power and battery voltage detection uses voltage dividers (220kΩ/100kΩ) with 100nF filter capacitors that help reduce electrical noise from NeoPixel switching and EMI in the enclosure. Software filtering further improves stability:
 
 
 **USB Detection (VBUS):**
