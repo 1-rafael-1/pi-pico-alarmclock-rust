@@ -237,25 +237,25 @@ pub async fn alarm_settings_handler(flash: Flash<'static, FLASH, Async, { FLASH_
 
     // Read the alarm settings from the flash memory only once at the start of the task
     // and send them to the event channel.
-    let alarm_settings = persisted_settings.read_alarm_settings_from_flash().await.map_or_else(
-        || {
+    let alarm_settings = persisted_settings
+        .read_alarm_settings_from_flash()
+        .await
+        .unwrap_or_else(|| {
             warn!("No alarm settings found in flash on startup, using defaults");
             AlarmSettings::new_empty()
-        },
-        |alarm_settings| alarm_settings,
-    );
+        });
 
     // Always send the event, even if we're using defaults
     send_event(Event::AlarmSettingsReadFromFlash(alarm_settings)).await;
 
     // Read the system settings from the flash memory
-    let system_settings = persisted_settings.read_system_settings_from_flash().await.map_or_else(
-        || {
+    let system_settings = persisted_settings
+        .read_system_settings_from_flash()
+        .await
+        .unwrap_or_else(|| {
             warn!("No system settings found in flash on startup, using defaults");
             SystemSettings::new_default()
-        },
-        |system_settings| system_settings,
-    );
+        });
 
     // Always send the event, even if we're using defaults
     send_event(Event::SystemSettingsReadFromFlash(system_settings)).await;

@@ -3,6 +3,7 @@
 //!
 //! The task is responsible for initializing the `DFPlayer` Mini module, powering it on, playing a sound, and powering it off.
 use core::sync::atomic::{AtomicBool, Ordering};
+
 use defmt::{Debug2Format, info};
 use dfplayer_async::{DfPlayer, Equalizer, PlayBackSource, TimeSource};
 use embassy_futures::select::{Either, select};

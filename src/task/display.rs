@@ -28,10 +28,9 @@ use tinybmp::Bmp;
 
 use crate::{
     state::{BatteryLevel, OperationMode, SYSTEM_STATE},
-    task::rtc_manager::rtc_get_scheduled_alarm,
     task::{
         buttons::Button,
-        rtc_manager::rtc_get_time,
+        rtc_manager::{rtc_get_scheduled_alarm, rtc_get_time},
         watchdog::{TaskId, report_task_success},
     },
     utility::string_utils::StringUtils,
@@ -596,22 +595,19 @@ pub async fn display_handler(i2c: I2c<'static, I2C0, Async>) {
         wait_for_display_update().await;
 
         // Get the current time from RTC manager
-        let dt: DateTime = rtc_get_time().await.map_or_else(
-            || {
-                info!("RTC not running");
-                // Return an empty DateTime
-                DateTime {
-                    year: 0,
-                    month: 0,
-                    day: 0,
-                    day_of_week: DayOfWeek::Monday,
-                    hour: 0,
-                    minute: 0,
-                    second: 0,
-                }
-            },
-            |dt| dt,
-        );
+        let dt: DateTime = rtc_get_time().await.unwrap_or_else(|| {
+            info!("RTC not running");
+            // Return an empty DateTime
+            DateTime {
+                year: 0,
+                month: 0,
+                day: 0,
+                day_of_week: DayOfWeek::Monday,
+                hour: 0,
+                minute: 0,
+                second: 0,
+            }
+        });
 
         // get the state of the system out of the mutex and quickly drop the mutex
         let system_state_guard = SYSTEM_STATE.lock().await;

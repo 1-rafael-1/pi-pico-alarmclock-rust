@@ -540,22 +540,19 @@ pub async fn scheduler() {
         }
 
         // Get the current time from RTC manager
-        let dt: DateTime = rtc_get_time().await.map_or_else(
-            || {
-                info!("RTC not running");
-                // Return an empty DateTime
-                DateTime {
-                    year: 0,
-                    month: 0,
-                    day: 0,
-                    day_of_week: DayOfWeek::Monday,
-                    hour: 0,
-                    minute: 0,
-                    second: 0,
-                }
-            },
-            |dt| dt,
-        );
+        let dt: DateTime = rtc_get_time().await.unwrap_or_else(|| {
+            info!("RTC not running");
+            // Return an empty DateTime
+            DateTime {
+                year: 0,
+                month: 0,
+                day: 0,
+                day_of_week: DayOfWeek::Monday,
+                hour: 0,
+                minute: 0,
+                second: 0,
+            }
+        });
 
         send_event(Event::Scheduler((dt.hour, dt.minute, dt.second))).await;
 

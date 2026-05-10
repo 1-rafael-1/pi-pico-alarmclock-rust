@@ -62,7 +62,9 @@ fn wifi_secrets() -> io::Result<()> {
 
     // Write the SSID and password to wifi_secrets.rs
     println!("in wifi_secrets, before writing ssid and password to output file");
+    writeln!(f, "/// Wi-Fi SSID loaded from `wifi_config.json`")?;
     writeln!(f, "pub const SSID: &str = \"{ssid}\";")?;
+    writeln!(f, "/// Wi-Fi password loaded from `wifi_config.json`")?;
     writeln!(f, "pub const PASSWORD: &str = \"{password}\";")?;
     Ok(())
 }
@@ -103,6 +105,7 @@ fn time_api_config() -> io::Result<()> {
     let combined_url = format!("{baseurl}{timezone}");
 
     // Write the baseurl and timezone to time_api_secrets.rs
+    writeln!(f, "/// Time server URL loaded from `time_api.json`")?;
     writeln!(f, "pub const TIME_SERVER_URL: &str = \"{combined_url}\";")?;
     Ok(())
 }
