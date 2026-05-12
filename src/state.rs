@@ -43,6 +43,8 @@ pub struct SystemState {
     pub manual_time_buffer: (u8, u8),
     /// The tick count of the last user interaction (for menu timeout)
     pub last_interaction_tick: u64,
+    /// Whether the display is currently on or off
+    pub display_state: DisplayState,
 }
 
 /// State transitions and operations
@@ -65,6 +67,7 @@ impl SystemState {
             system_info_page: 0,
             manual_time_buffer: (0, 0),
             last_interaction_tick: 0,
+            display_state: DisplayState::On,
         }
     }
 
@@ -159,6 +162,31 @@ impl SystemState {
         self.last_interaction_tick = tick;
     }
 
+    /// Turn the display on
+    pub const fn set_display_on(&mut self) {
+        self.display_state = DisplayState::On;
+    }
+
+    /// Turn the display off
+    pub const fn set_display_off(&mut self) {
+        self.display_state = DisplayState::Off;
+    }
+
+    /// Check if the display is off
+    pub fn is_display_off(&self) -> bool {
+        self.display_state == DisplayState::Off
+    }
+
+    /// Check if the display should sleep when the alarm is enabled
+    pub fn should_alarm_display_sleep(&self, current_tick: u64) -> bool {
+        const DISPLAY_SLEEP_TIMEOUT_MS: u64 = 30_000;
+
+        self.alarm_settings.get_enabled()
+            && matches!(self.operation_mode, OperationMode::Normal)
+            && self.display_state == DisplayState::On
+            && (current_tick.saturating_sub(self.last_interaction_tick) >= DISPLAY_SLEEP_TIMEOUT_MS)
+    }
+
     /// Check if any interactive mode should timeout (10 seconds = 10000ms of inactivity)
     pub const fn should_interactive_mode_timeout(&self, current_tick: u64) -> bool {
         matches!(
@@ -232,6 +260,15 @@ pub enum OperationMode {
     SetTimeManual,
     /// The system is in standby mode, the display is off, the neopixel ring is off, the system is in a low power state.
     Standby,
+}
+
+/// The on/off state of the display
+#[derive(Eq, PartialEq, Debug, Format, Clone)]
+pub enum DisplayState {
+    /// Display is on
+    On,
+    /// Display is off
+    Off,
 }
 
 /// User-configurable system settings (persisted to flash)

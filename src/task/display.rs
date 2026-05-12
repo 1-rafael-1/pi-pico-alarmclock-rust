@@ -27,11 +27,10 @@ use ssd1306_async::{I2CDisplayInterface, Ssd1306, prelude::*};
 use tinybmp::Bmp;
 
 use crate::{
-    state::{BatteryLevel, OperationMode, SYSTEM_STATE},
-    task::rtc_manager::rtc_get_scheduled_alarm,
+    state::{BatteryLevel, DisplayState, OperationMode, SYSTEM_STATE},
     task::{
         buttons::Button,
-        rtc_manager::rtc_get_time,
+        rtc_manager::{rtc_get_scheduled_alarm, rtc_get_time},
         watchdog::{TaskId, report_task_success},
     },
     utility::string_utils::StringUtils,
@@ -590,28 +589,26 @@ pub async fn display_handler(i2c: I2c<'static, I2C0, Async>) {
     let _ = display.set_brightness(Brightness::DIMMEST).await;
 
     let settings = Settings::new();
+    let mut display_is_off = false;
 
     'mainloop: loop {
         // Wait for a signal to update the display
         wait_for_display_update().await;
 
         // Get the current time from RTC manager
-        let dt: DateTime = rtc_get_time().await.map_or_else(
-            || {
-                info!("RTC not running");
-                // Return an empty DateTime
-                DateTime {
-                    year: 0,
-                    month: 0,
-                    day: 0,
-                    day_of_week: DayOfWeek::Monday,
-                    hour: 0,
-                    minute: 0,
-                    second: 0,
-                }
-            },
-            |dt| dt,
-        );
+        let dt: DateTime = rtc_get_time().await.unwrap_or_else(|| {
+            info!("RTC not running");
+            // Return an empty DateTime
+            DateTime {
+                year: 0,
+                month: 0,
+                day: 0,
+                day_of_week: DayOfWeek::Monday,
+                hour: 0,
+                minute: 0,
+                second: 0,
+            }
+        });
 
         // get the state of the system out of the mutex and quickly drop the mutex
         let system_state_guard = SYSTEM_STATE.lock().await;
@@ -624,6 +621,19 @@ pub async fn display_handler(i2c: I2c<'static, I2C0, Async>) {
 
         // Store operation mode locally to avoid move issues
         let operation_mode = system_state.operation_mode.clone();
+
+        if system_state.display_state == DisplayState::Off {
+            if !display_is_off {
+                display.clear();
+                let _ = display.flush().await;
+                display_is_off = true;
+            }
+            // Report successful display update to watchdog
+            report_task_success(TaskId::Display).await;
+            continue 'mainloop;
+        }
+
+        display_is_off = false;
 
         // prepare the display, note that nothing is sent to the display before flush()
         display.clear();

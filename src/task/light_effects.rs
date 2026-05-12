@@ -4,7 +4,9 @@
 //! The tasks are responsible for initializing the neopixel, setting the colors of the LEDs, and updating the LEDs.
 use defmt::{info, warn};
 use defmt_rtt as _;
-use embassy_rp::{gpio::Output, peripherals::PIO1, pio_programs::ws2812::PioWs2812};
+use embassy_rp::{
+    gpio::Output, pac, pac::io::vals::Gpio0ctrlFuncsel, peripherals::PIO1, pio_programs::ws2812::PioWs2812,
+};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Instant, Timer};
 use panic_probe as _;
@@ -297,10 +299,54 @@ async fn display_analog_clock(
     np.write(&bright_data).await;
 }
 
+/// Reconfigures GP15 from PIO1 control to a floating SIO input (high-impedance).
+///
+/// This must be called before cutting neopixel power via the MOSFET.
+/// When the MOSFET is off, VCC (+5V) remains connected to the WS2812B ring.
+/// Without this, the WS2812B can draw parasitic current through the DIN line:
+/// `VCC → WS2812B internals → DIN pin → GP15 → Pico GND`.
+/// Making the pin high-impedance eliminates this return path entirely.
+///
+/// # Why direct PAC access instead of `Flex`
+///
+/// At the register level, [`embassy_rp::gpio::Flex`] does exactly the same
+/// thing: `Flex::new()` sets `FUNCSEL = SIO_0` and `Flex::set_as_input()`
+/// clears the SIO output-enable bit. However, `Flex` requires *owning* the
+/// pin peripheral, and `PIN_15` was already moved into `PioWs2812::new()`
+/// via `make_pio_pin()` at startup. Using `Flex` here would require unsafely
+/// stealing the pin a second time, and `Flex::new()` would immediately
+/// reconfigure `FUNCSEL` to `SIO_0`, breaking PIO control from that point
+/// on. Direct PAC access lets us *transiently* manipulate the register
+/// without disturbing the PIO's ownership of the pin, which is exactly what
+/// the `unstable-pac` feature is intended for.
+fn float_neopixel_data_pin() {
+    // Switch GP15 function from PIO1 to SIO
+    pac::IO_BANK0.gpio(15).ctrl().modify(|w| {
+        w.set_funcsel(Gpio0ctrlFuncsel::SIO_0 as _);
+    });
+    // Clear the SIO output-enable bit → pin becomes a floating input
+    pac::SIO.gpio_oe(0).value_clr().write_value(1u32 << 15);
+}
+
+/// Restores GP15 from floating SIO input back to PIO1 control.
+///
+/// Must be called *before* enabling the neopixel power MOSFET so the
+/// WS2812B data line is driven by the PIO state machine from the moment
+/// power arrives. See [`float_neopixel_data_pin`] for the full rationale
+/// on why PAC access is used instead of [`embassy_rp::gpio::Flex`].
+fn restore_neopixel_data_pin() {
+    pac::IO_BANK0.gpio(15).ctrl().modify(|w| {
+        w.set_funcsel(Gpio0ctrlFuncsel::PIO1_0 as _);
+    });
+}
+
 /// Turns off all LEDs
 async fn turn_off_all_leds(np: &mut NeopixelType<'_>, pwr: &mut Output<'static>) {
     let data = [RGB8::default(); NUM_LEDS_USIZE];
     np.write(&data).await;
+    // Float GP15 before cutting power to break the parasitic current path
+    // that flows through the data line when VCC is still connected.
+    float_neopixel_data_pin();
     // Wait 100ms before cutting power to ensure all LEDs are off
     Timer::after(Duration::from_millis(100)).await;
     // Cut power to the Neopixel ring
@@ -475,6 +521,9 @@ async fn handle_normal_mode(
             // Power on the Neopixel ring if transitioning from Off
             if *neopixel_handle.current_led_state == LedState::Off {
                 info!("Powering on Neopixel ring");
+                // Restore data pin to PIO1 control before enabling power so the
+                // WS2812B sees a driven (low) DIN from the very first moment.
+                restore_neopixel_data_pin();
                 neopixel_handle.pwr.set_high();
                 // Small delay to let power stabilize
                 Timer::after(Duration::from_millis(10)).await;
@@ -497,6 +546,7 @@ async fn handle_alarm_mode(
             // Power on the Neopixel ring if transitioning from Off
             if *handle.current_led_state == LedState::Off {
                 info!("Powering on Neopixel ring for sunrise effect");
+                restore_neopixel_data_pin();
                 handle.pwr.set_high();
                 // Small delay to let power stabilize
                 Timer::after(Duration::from_millis(10)).await;
@@ -509,6 +559,7 @@ async fn handle_alarm_mode(
             // Power on the Neopixel ring if transitioning from Off
             if *handle.current_led_state == LedState::Off {
                 info!("Powering on Neopixel ring for noise effect");
+                restore_neopixel_data_pin();
                 handle.pwr.set_high();
                 // Small delay to let power stabilize
                 Timer::after(Duration::from_millis(10)).await;

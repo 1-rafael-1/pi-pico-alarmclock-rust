@@ -129,24 +129,37 @@ pub async fn orchestrator() {
 async fn handle_event(event: Event, system_state: &mut SystemState) {
     match event {
         Event::BlueBtn => {
-            system_state.update_interaction_tick(Instant::now().as_millis());
+            let now_tick = Instant::now().as_millis();
+            if handle_display_wake_if_off(system_state, now_tick) {
+                return;
+            }
+            system_state.update_interaction_tick(now_tick);
             handle_blue_button_press(system_state).await;
             signal_display_update();
             handle_button_led_on_button_press(system_state);
         }
         Event::GreenBtn => {
-            system_state.update_interaction_tick(Instant::now().as_millis());
+            let now_tick = Instant::now().as_millis();
+            if handle_display_wake_if_off(system_state, now_tick) {
+                return;
+            }
+            system_state.update_interaction_tick(now_tick);
             handle_green_button_press(system_state).await;
             signal_display_update();
             handle_button_led_on_button_press(system_state);
         }
         Event::YellowBtn => {
-            system_state.update_interaction_tick(Instant::now().as_millis());
+            let now_tick = Instant::now().as_millis();
+            if handle_display_wake_if_off(system_state, now_tick) {
+                return;
+            }
+            system_state.update_interaction_tick(now_tick);
             handle_yellow_button_press(system_state).await;
             signal_display_update();
             handle_button_led_on_button_press(system_state);
         }
         Event::InteractiveModeTimeout => handle_interactive_mode_timeout_event(system_state).await,
+        Event::DisplaySleepTimeout => handle_display_sleep_timeout_event(system_state),
         Event::Vbus(usb) => handle_vbus_event(system_state, usb),
         Event::Vsys(voltage) => handle_vsys_event(system_state, voltage),
         Event::AlarmSettingsReadFromFlash(alarm_settings) => {
@@ -186,6 +199,27 @@ async fn handle_interactive_mode_timeout_event(system_state: &mut SystemState) {
     }
     system_state.set_normal_mode();
     signal_display_update();
+}
+
+/// Handles waking the display if it is currently off.
+/// Returns true if the button press should be consumed for wake-up only.
+fn handle_display_wake_if_off(system_state: &mut SystemState, now_tick: u64) -> bool {
+    if system_state.is_display_off() {
+        system_state.set_display_on();
+        system_state.update_interaction_tick(now_tick);
+        signal_display_update();
+        return true;
+    }
+    false
+}
+
+/// Handles the alarm-enabled display sleep timeout
+fn handle_display_sleep_timeout_event(system_state: &mut SystemState) {
+    let now_tick = Instant::now().as_millis();
+    if system_state.should_alarm_display_sleep(now_tick) {
+        system_state.set_display_off();
+        signal_display_update();
+    }
 }
 
 /// Handles USB power state changes
@@ -332,6 +366,7 @@ fn handle_alarm_event(system_state: &mut SystemState) {
     info!("Alarm event");
     system_state.randomize_alarm_stop_button_sequence();
     system_state.set_alarm_mode();
+    system_state.set_display_on();
     signal_display_update();
     signal_lightfx_start(0, 0, 0);
     signal_button_leds(ButtonLedCommand::On);
@@ -342,6 +377,8 @@ fn handle_alarm_stop_event(system_state: &mut SystemState) {
     info!("Alarm stop event");
     if system_state.alarm_state.is_active() {
         system_state.set_normal_mode();
+        system_state.set_display_on();
+        system_state.update_interaction_tick(Instant::now().as_millis());
         signal_display_update();
         signal_lightfx_stop();
         signal_lightfx_start(0, 0, 0);
@@ -540,22 +577,19 @@ pub async fn scheduler() {
         }
 
         // Get the current time from RTC manager
-        let dt: DateTime = rtc_get_time().await.map_or_else(
-            || {
-                info!("RTC not running");
-                // Return an empty DateTime
-                DateTime {
-                    year: 0,
-                    month: 0,
-                    day: 0,
-                    day_of_week: DayOfWeek::Monday,
-                    hour: 0,
-                    minute: 0,
-                    second: 0,
-                }
-            },
-            |dt| dt,
-        );
+        let dt: DateTime = rtc_get_time().await.unwrap_or_else(|| {
+            info!("RTC not running");
+            // Return an empty DateTime
+            DateTime {
+                year: 0,
+                month: 0,
+                day: 0,
+                day_of_week: DayOfWeek::Monday,
+                hour: 0,
+                minute: 0,
+                second: 0,
+            }
+        });
 
         send_event(Event::Scheduler((dt.hour, dt.minute, dt.second))).await;
 
@@ -578,6 +612,17 @@ pub async fn scheduler() {
 
             if should_timeout {
                 send_event(Event::InteractiveModeTimeout).await;
+            }
+
+            let should_sleep: bool = {
+                let system_state_guard = SYSTEM_STATE.lock().await;
+                system_state_guard
+                    .as_ref()
+                    .is_some_and(|state| state.should_alarm_display_sleep(current_tick))
+            };
+
+            if should_sleep {
+                send_event(Event::DisplaySleepTimeout).await;
             }
         }
 
