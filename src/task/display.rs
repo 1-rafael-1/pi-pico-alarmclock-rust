@@ -27,7 +27,7 @@ use ssd1306_async::{I2CDisplayInterface, Ssd1306, prelude::*};
 use tinybmp::Bmp;
 
 use crate::{
-    state::{BatteryLevel, OperationMode, SYSTEM_STATE},
+    state::{BatteryLevel, DisplayState, OperationMode, SYSTEM_STATE},
     task::{
         buttons::Button,
         rtc_manager::{rtc_get_scheduled_alarm, rtc_get_time},
@@ -589,6 +589,7 @@ pub async fn display_handler(i2c: I2c<'static, I2C0, Async>) {
     let _ = display.set_brightness(Brightness::DIMMEST).await;
 
     let settings = Settings::new();
+    let mut display_is_off = false;
 
     'mainloop: loop {
         // Wait for a signal to update the display
@@ -620,6 +621,19 @@ pub async fn display_handler(i2c: I2c<'static, I2C0, Async>) {
 
         // Store operation mode locally to avoid move issues
         let operation_mode = system_state.operation_mode.clone();
+
+        if system_state.display_state == DisplayState::Off {
+            if !display_is_off {
+                display.clear();
+                let _ = display.flush().await;
+                display_is_off = true;
+            }
+            // Report successful display update to watchdog
+            report_task_success(TaskId::Display).await;
+            continue 'mainloop;
+        }
+
+        display_is_off = false;
 
         // prepare the display, note that nothing is sent to the display before flush()
         display.clear();

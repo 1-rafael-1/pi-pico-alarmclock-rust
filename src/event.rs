@@ -50,4 +50,6 @@ pub enum Event {
     SunriseEffectFinished,
     /// An interactive mode (menu, settings, or setting mode) has timed out due to inactivity
     InteractiveModeTimeout,
+    /// The alarm-enabled display sleep timer has elapsed
+    DisplaySleepTimeout,
 }
