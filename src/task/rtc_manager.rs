@@ -222,16 +222,8 @@ pub async fn rtc_get_time() -> Option<DateTime> {
     // Wait for response signal with timeout
     with_timeout(Duration::from_millis(200), GET_TIME_RESPONSE.wait())
         .await
-        .map_or_else(
-            |_| {
-                warn!("rtc_get_time: timeout waiting for response");
-                None
-            },
-            |dt| {
-                info!("rtc_get_time: got response");
-                dt
-            },
-        )
+        .ok()
+        .flatten()
     // Mutex is released here when _lock drops
 }
 

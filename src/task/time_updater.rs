@@ -1,6 +1,6 @@
 //! # Time Updater Task
-//! This module contains the task that updates the RTC using a time API.
-//! The task is responsible for connecting to a wifi network, making a request to a time API, parsing the response, and updating the RTC.
+//! This module contains the task that updates the RTC using NTP.
+//! The task is responsible for connecting to a wifi network, querying an NTP server, applying CET/CEST rules, and updating the RTC.
 //!
 //! # populate constants SSID and PASSWORD
 //! make sure to have a `wifi_config.json` file in the config folder formatted as follows:
@@ -11,22 +11,8 @@
 //! }
 //! ```
 //! also make sure that `build.rs` loads the `wifi_config.json` file and writes it to `wifi_secrets.rs`
-//!
-//! # populate constant `TIME_SERVER_URL`
-//! make sure to have a `time_api_config.json` file in the config folder formatted as follows:
-//! ```json
-//! {
-//!     "time api by zone": {
-//!         "baseurl": "http://worldtimeapi.org/api",
-//!         "timezone": "/timezone/Europe/Berlin"
-//!     }
-//! }
-//! ```
 
 include!(concat!(env!("OUT_DIR"), "/wifi_secrets.rs"));
-include!(concat!(env!("OUT_DIR"), "/time_api_config.rs"));
-
-use core::str::from_utf8;
 
 use cyw43::JoinOptions;
 use cyw43_pio::{DEFAULT_CLOCK_DIVIDER, PioSpi};
@@ -35,8 +21,8 @@ use defmt_rtt as _;
 use embassy_executor::Spawner;
 use embassy_futures::select::select;
 use embassy_net::{
-    Config, DhcpConfig, StackResources, dns,
-    tcp::client::{TcpClient, TcpClientState},
+    Config, DhcpConfig, IpEndpoint, StackResources, dns,
+    udp::{PacketMetadata, UdpSocket},
 };
 use embassy_rp::{
     Peri,
@@ -47,21 +33,15 @@ use embassy_rp::{
 };
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Timer, with_timeout};
-use heapless;
 use panic_probe as _;
-use reqwless::{
-    client::{HttpClient, TlsConfig, TlsVerify},
-    request::Method,
-};
-use serde::Deserialize;
-use serde_json_core;
 use static_cell::StaticCell;
+
+use embassy_rp::rtc::{DateTime, DayOfWeek};
 
 use crate::{
     Irqs,
     event::{Event, send_event},
     task::watchdog::{TaskId, report_task_failure, report_task_success},
-    utility::string_utils::StringUtils,
 };
 
 /// Signal for suspending the time updater task
@@ -121,31 +101,33 @@ static NETWORK_STACK: StaticCell<embassy_net::Stack<'_>> = StaticCell::new();
 /// Static cell for network stack resources.
 static NETWORK_RESOURCES: StaticCell<StackResources<5>> = StaticCell::new();
 
-/// Static buffers for HTTP communication (protected by mutex to allow reuse).
-static HTTP_BUFFERS: embassy_sync::mutex::Mutex<
+/// Static buffers for NTP UDP communication (protected by mutex to allow reuse).
+static NTP_BUFFERS: embassy_sync::mutex::Mutex<
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    Option<HttpBuffers>,
-> = embassy_sync::mutex::Mutex::new(Some(HttpBuffers::new()));
+    Option<NtpBuffers>,
+> = embassy_sync::mutex::Mutex::new(Some(NtpBuffers::new()));
 
-/// HTTP communication buffers.
+/// NTP UDP communication buffers.
 #[allow(clippy::struct_field_names)]
-struct HttpBuffers {
-    /// Receive buffer for `HTTP` responses
-    rx_buffer: [u8; 8192],
-    /// `TLS` read buffer
-    tls_read_buffer: [u8; 16640],
-    /// `TLS` write buffer
-    tls_write_buffer: [u8; 16640],
+struct NtpBuffers {
+    /// Receive packet metadata
+    rx_meta: [PacketMetadata; 4],
+    /// Receive buffer
+    rx_buffer: [u8; 128],
+    /// Transmit packet metadata
+    tx_meta: [PacketMetadata; 4],
+    /// Transmit buffer
+    tx_buffer: [u8; 128],
 }
 
-impl HttpBuffers {
-    /// Create new `HTTP` buffers initialized to zero.
-    #[allow(clippy::large_stack_arrays)]
+impl NtpBuffers {
+    /// Create new NTP buffers initialized to zero.
     const fn new() -> Self {
         Self {
-            rx_buffer: [0; 8192],
-            tls_read_buffer: [0; 16640],
-            tls_write_buffer: [0; 16640],
+            rx_meta: [PacketMetadata::EMPTY; 4],
+            rx_buffer: [0; 128],
+            tx_meta: [PacketMetadata::EMPTY; 4],
+            tx_buffer: [0; 128],
         }
     }
 }
@@ -156,8 +138,8 @@ pub struct TimeUpdater {
     ssid: &'static str,
     /// `WiFi` password
     password: &'static str,
-    /// Time API URL
-    time_api_url: &'static str,
+    /// NTP server hostname
+    ntp_server: &'static str,
     /// Seconds to wait before refreshing time
     refresh_after_secs: u64,
     /// Seconds to wait before retrying on error
@@ -172,10 +154,10 @@ impl TimeUpdater {
         Self {
             ssid: SSID,
             password: PASSWORD,
-            time_api_url: TIME_SERVER_URL,
+            ntp_server: "europe.pool.ntp.org",
             refresh_after_secs: 21_600, // 6 hours
             retry_after_secs: 30,
-            timeout_duration: Duration::from_secs(10),
+            timeout_duration: Duration::from_secs(15),
         }
     }
 
@@ -184,9 +166,9 @@ impl TimeUpdater {
         (self.ssid, self.password)
     }
 
-    /// Returns the time API URL.
-    const fn time_api_url(&self) -> &str {
-        self.time_api_url
+    /// Returns the NTP server hostname.
+    const fn ntp_server(&self) -> &str {
+        self.ntp_server
     }
 }
 
@@ -328,112 +310,261 @@ async fn wait_for_network_ready(stack: &embassy_net::Stack<'static>) -> Result<(
     Ok(())
 }
 
-/// API response structure for time data from worldclockapi.com
-#[derive(Deserialize)]
-struct ApiResponse<'a> {
-    /// ISO 8601 datetime string (e.g., "2025-01-15T19:10+01:00")
-    #[serde(rename = "currentDateTime")]
-    current_date_time: &'a str,
-    /// Day of week as string (e.g., "Saturday")
-    #[serde(rename = "dayOfTheWeek")]
-    day_of_the_week: &'a str,
-}
+/// NTP server port.
+const NTP_PORT: u16 = 123;
+/// NTP request/response size in bytes.
+const NTP_PACKET_SIZE: usize = 48;
+/// Seconds between NTP epoch (1900-01-01) and Unix epoch (1970-01-01).
+const NTP_UNIX_EPOCH_DELTA: u64 = 2_208_988_800;
 
-/// Fetch time data from the `API` using static buffers.
+/// Fetch current UTC time from NTP server.
 #[allow(clippy::significant_drop_tightening)]
-async fn fetch_time_from_api(
+async fn fetch_time_from_ntp(
     stack: &embassy_net::Stack<'static>,
-    url: &str,
-    seed: u64,
-) -> Result<heapless::String<8192>, &'static str> {
-    info!("Starting HTTP request to: {}", url);
+    server: &str,
+    timeout_duration: Duration,
+) -> Result<i64, &'static str> {
+    info!("Starting NTP request to: {}", server);
 
-    let mut buffers_guard = HTTP_BUFFERS.lock().await;
-    let buffers = buffers_guard.as_mut().ok_or("HTTP buffers not available")?;
-    info!("HTTP buffers acquired");
+    let mut buffers_guard = NTP_BUFFERS.lock().await;
+    let buffers = buffers_guard.as_mut().ok_or("NTP buffers not available")?;
+    info!("NTP buffers acquired");
 
-    let client_state = TcpClientState::<1, 1024, 1024>::new();
-    let tcp_client = TcpClient::new(*stack, &client_state);
-    let dns_client = dns::DnsSocket::new(*stack);
-    info!("TCP and DNS clients created");
-
-    let _tls_config = TlsConfig::new(
-        seed,
-        &mut buffers.tls_read_buffer,
-        &mut buffers.tls_write_buffer,
-        TlsVerify::None,
+    let mut socket = UdpSocket::new(
+        *stack,
+        &mut buffers.rx_meta,
+        &mut buffers.rx_buffer,
+        &mut buffers.tx_meta,
+        &mut buffers.tx_buffer,
     );
-    info!("TLS config created (not used for HTTP)");
 
-    let mut http_client = HttpClient::new(&tcp_client, &dns_client);
-    info!("HTTP client created");
+    socket.bind(0).map_err(|_| "Failed to bind UDP socket")?;
 
-    info!("Creating HTTP GET request...");
-    let mut request = http_client.request(Method::GET, url).await.map_err(|e| {
-        warn!(
-            "Failed to create HTTP request (could be DNS or connection issue): {:?}",
-            e
-        );
-        "Failed to create HTTP request"
-    })?;
-    info!("HTTP request created successfully (DNS resolved, TCP connection established)");
+    let addrs = with_timeout(timeout_duration, stack.dns_query(server, dns::DnsQueryType::A))
+        .await
+        .map_err(|_| "DNS query timed out")?
+        .map_err(|_| "DNS query failed")?;
+    let server_ip = addrs.first().ok_or("DNS query returned no results")?;
+    let endpoint = IpEndpoint::new(*server_ip, NTP_PORT);
 
-    info!("Sending HTTP request...");
-    let response = request.send(&mut buffers.rx_buffer).await.map_err(|e| {
-        warn!(
-            "Failed to send HTTP request (connection reset or send failure): {:?}",
-            e
-        );
-        "Failed to send HTTP request"
-    })?;
-    info!("HTTP response received");
+    let mut request = [0u8; NTP_PACKET_SIZE];
+    request[0] = 0x23; // LI=0, VN=4, Mode=3 (client)
 
-    info!("Reading response body...");
-    let response_bytes = response.body().read_to_end().await.map_err(|e| {
-        warn!("Failed to read response body: {:?}", e);
-        "Failed to read response body"
-    })?;
-    info!("Response body read successfully, {} bytes", response_bytes.len());
+    let mut response = [0u8; NTP_PACKET_SIZE];
+    let max_retries = 2;
 
-    let body_str = from_utf8(response_bytes).map_err(|_| "Failed to parse response as UTF-8")?;
+    for attempt in 0..=max_retries {
+        info!("Sending NTP request... (attempt {}/{})", attempt + 1, max_retries + 1);
+        let send_result = with_timeout(timeout_duration, socket.send_to(&request, endpoint)).await;
+        match send_result {
+            Ok(Ok(())) => {}
+            Ok(Err(_)) => {
+                warn!("Failed to send NTP request");
+                if attempt >= max_retries {
+                    return Err("Failed to send NTP request");
+                }
+                Timer::after(Duration::from_millis(250)).await;
+                continue;
+            }
+            Err(_) => {
+                warn!("Timed out while sending NTP request");
+                if attempt >= max_retries {
+                    return Err("Timed out while sending NTP request");
+                }
+                Timer::after(Duration::from_millis(250)).await;
+                continue;
+            }
+        }
 
-    info!("Response body: {:?}", &body_str);
+        let recv_result = with_timeout(timeout_duration, socket.recv_from(&mut response)).await;
+        match recv_result {
+            Ok(Ok((n, meta))) => {
+                if meta.endpoint != endpoint {
+                    warn!("Ignoring NTP response from unexpected endpoint: {:?}", meta.endpoint);
+                    if attempt >= max_retries {
+                        return Err("Unexpected NTP response source");
+                    }
+                    Timer::after(Duration::from_millis(250)).await;
+                    continue;
+                }
+                if n < NTP_PACKET_SIZE {
+                    warn!("NTP response too short: {} bytes", n);
+                    if attempt >= max_retries {
+                        return Err("NTP response too short");
+                    }
+                    Timer::after(Duration::from_millis(250)).await;
+                    continue;
+                }
 
-    // Copy to a heapless string to avoid lifetime issues
-    heapless::String::try_from(body_str).map_err(|_| "Response too large for buffer")
+                let ntp_seconds = u64::from(u32::from_be_bytes([
+                    response[40],
+                    response[41],
+                    response[42],
+                    response[43],
+                ]));
+
+                if ntp_seconds < NTP_UNIX_EPOCH_DELTA {
+                    return Err("NTP time is before Unix epoch");
+                }
+
+                let unix_seconds_u64 = ntp_seconds - NTP_UNIX_EPOCH_DELTA;
+                let unix_seconds = i64::try_from(unix_seconds_u64).map_err(|_| "NTP time out of range for i64")?;
+                return Ok(unix_seconds);
+            }
+            Ok(Err(_)) => {
+                warn!("Failed to receive NTP response");
+                if attempt >= max_retries {
+                    return Err("Failed to receive NTP response");
+                }
+                Timer::after(Duration::from_millis(250)).await;
+            }
+            Err(_) => {
+                warn!("Timed out waiting for NTP response");
+                if attempt >= max_retries {
+                    return Err("Timed out waiting for NTP response");
+                }
+                Timer::after(Duration::from_millis(250)).await;
+            }
+        }
+    }
+
+    Err("Failed to fetch time from NTP")
 }
 
-/// Parse the time `API` response and return datetime and day of week.
-fn parse_time_response(body: &str) -> Result<(&str, u8), &'static str> {
-    let bytes = body.as_bytes();
-    let response: ApiResponse = serde_json_core::de::from_slice::<ApiResponse>(bytes)
-        .map_err(|_| "Failed to parse JSON response")?
-        .0;
+/// Returns whether the given year is a leap year in the Gregorian calendar.
+const fn is_leap_year(year: u16) -> bool {
+    (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400)
+}
 
-    info!("Datetime: {:?}", response.current_date_time);
-    info!("Day of week: {:?}", response.day_of_the_week);
+/// Returns the number of days in the given month for the provided year.
+const fn days_in_month(year: u16, month: u8) -> u8 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => {
+            if is_leap_year(year) {
+                29
+            } else {
+                28
+            }
+        }
+        _ => 0,
+    }
+}
 
-    // Convert day of week string to number (0 = Sunday, 6 = Saturday)
-    let day_num = match response.day_of_the_week {
-        "Sunday" => 0,
-        "Monday" => 1,
-        "Tuesday" => 2,
-        "Wednesday" => 3,
-        "Thursday" => 4,
-        "Friday" => 5,
-        "Saturday" => 6,
-        _ => return Err("Invalid day of week"),
-    };
+/// Convert a date to the number of days since Unix epoch (1970-01-01).
+fn date_to_days_since_epoch(year: u16, month: u8, day: u8) -> i64 {
+    let mut days: i64 = 0;
+    for y in 1970..year {
+        days += if is_leap_year(y) { 366 } else { 365 };
+    }
+    for m in 1..month {
+        days += i64::from(days_in_month(year, m));
+    }
+    days + i64::from(day - 1)
+}
 
-    Ok((response.current_date_time, day_num))
+/// Convert a UTC date/time to Unix seconds.
+fn datetime_to_unix_seconds(year: u16, month: u8, day: u8, hour: u8, minute: u8, second: u8) -> i64 {
+    let days = date_to_days_since_epoch(year, month, day);
+    days * 86_400 + i64::from(hour) * 3_600 + i64::from(minute) * 60 + i64::from(second)
+}
+
+/// Map day-of-week index (0=Sunday) to `DayOfWeek`.
+const fn day_of_week_from_index(idx: u8) -> DayOfWeek {
+    match idx {
+        0 => DayOfWeek::Sunday,
+        1 => DayOfWeek::Monday,
+        2 => DayOfWeek::Tuesday,
+        3 => DayOfWeek::Wednesday,
+        4 => DayOfWeek::Thursday,
+        5 => DayOfWeek::Friday,
+        _ => DayOfWeek::Saturday,
+    }
+}
+
+/// Convert Unix seconds (UTC) to a `DateTime`.
+fn unix_seconds_to_datetime(seconds: i64) -> DateTime {
+    let mut days = seconds.div_euclid(86_400);
+    let mut rem = seconds.rem_euclid(86_400);
+
+    let hour = u8::try_from(rem / 3_600).unwrap_or(0);
+    rem %= 3_600;
+    let minute = u8::try_from(rem / 60).unwrap_or(0);
+    let second = u8::try_from(rem % 60).unwrap_or(0);
+
+    let mut year: u16 = 1970;
+    loop {
+        let year_days = if is_leap_year(year) { 366 } else { 365 };
+        if days >= i64::from(year_days) {
+            days -= i64::from(year_days);
+            year += 1;
+        } else {
+            break;
+        }
+    }
+
+    let mut month: u8 = 1;
+    loop {
+        let dim = days_in_month(year, month);
+        if days >= i64::from(dim) {
+            days -= i64::from(dim);
+            month += 1;
+        } else {
+            break;
+        }
+    }
+
+    let day = u8::try_from(days + 1).unwrap_or(1);
+    let dow_index = u8::try_from((seconds.div_euclid(86_400) + 4).rem_euclid(7)).unwrap_or(0); // 1970-01-01 was Thursday
+
+    DateTime {
+        year,
+        month,
+        day,
+        day_of_week: day_of_week_from_index(dow_index),
+        hour,
+        minute,
+        second,
+    }
+}
+
+/// Returns the day of month for the last Sunday in the given month.
+fn last_sunday(year: u16, month: u8) -> u8 {
+    let mut day = days_in_month(year, month);
+    loop {
+        let days_since_epoch = date_to_days_since_epoch(year, month, day);
+        let dow_index = (days_since_epoch + 4).rem_euclid(7);
+        if dow_index == 0 {
+            return day;
+        }
+        day -= 1;
+    }
+}
+
+/// Returns `true` if CET/CEST DST is active for the given UTC timestamp.
+fn is_cet_dst(utc_seconds: i64) -> bool {
+    let utc_dt = unix_seconds_to_datetime(utc_seconds);
+    let year = utc_dt.year;
+    let dst_start_day = last_sunday(year, 3);
+    let dst_end_day = last_sunday(year, 10);
+
+    let dst_start = datetime_to_unix_seconds(year, 3, dst_start_day, 1, 0, 0);
+    let dst_end = datetime_to_unix_seconds(year, 10, dst_end_day, 1, 0, 0);
+
+    utc_seconds >= dst_start && utc_seconds < dst_end
+}
+
+/// Convert UTC seconds to CET/CEST local time.
+fn apply_cet_with_dst(utc_seconds: i64) -> DateTime {
+    let offset = 3_600 + if is_cet_dst(utc_seconds) { 3_600 } else { 0 };
+    unix_seconds_to_datetime(utc_seconds + offset)
 }
 
 /// Update the RTC with the fetched time data.
 #[allow(clippy::significant_drop_tightening)]
-async fn update_rtc_with_time(datetime_str: &str, day_of_week: u8) -> Result<(), &'static str> {
+async fn update_rtc_with_time(dt: DateTime) -> Result<(), &'static str> {
     use crate::task::rtc_manager::rtc_set_time;
-
-    let dt = StringUtils::convert_str_to_datetime(datetime_str, day_of_week);
 
     rtc_set_time(dt).await.map_err(|()| "Failed to set datetime")?;
 
@@ -468,10 +599,10 @@ async fn handle_retry_delay(retry_secs: u64, error_msg: &str) {
     Timer::after(Duration::from_secs(retry_secs)).await;
 }
 
-/// Main time updater task that periodically connects to `WiFi`, fetches time from an API,
+/// Main time updater task that periodically connects to `WiFi`, fetches time from NTP,
 /// and updates the `RTC`.
 ///
-/// This task manages the entire lifecycle of `WiFi` connectivity, `HTTP` requests,
+/// This task manages the entire lifecycle of `WiFi` connectivity, NTP queries,
 /// and `RTC` synchronization.
 #[allow(clippy::large_futures)]
 #[embassy_executor::task]
@@ -499,7 +630,7 @@ pub async fn time_updater(spawner: Spawner, wifi_peripherals: WifiPeripherals) {
         }
 
         // Attempt to update time
-        if let Err(error_msg) = update_time_once(&mut control, stack, ssid, password, &time_updater, seed).await {
+        if let Err(error_msg) = update_time_once(&mut control, stack, ssid, password, &time_updater).await {
             // Report failure to watchdog on error path
             report_task_failure(TaskId::TimeUpdater).await;
             handle_retry_delay(time_updater.retry_after_secs, error_msg).await;
@@ -526,7 +657,6 @@ async fn update_time_once(
     ssid: &str,
     password: &str,
     config: &TimeUpdater,
-    seed: u64,
 ) -> Result<(), &'static str> {
     // Set performance mode for connection
     control
@@ -549,26 +679,22 @@ async fn update_time_once(
         return Err(e);
     }
 
-    // Fetch time from API
-    let body = match fetch_time_from_api(stack, config.time_api_url(), seed).await {
-        Ok(b) => b,
+    // Fetch time from NTP and apply CET/CEST rules.
+    let ntp_server = config.ntp_server();
+    info!("NTP server: {}", ntp_server);
+
+    let utc_seconds = match fetch_time_from_ntp(stack, ntp_server, config.timeout_duration).await {
+        Ok(s) => s,
         Err(e) => {
             disconnect_wifi(control, stack).await;
             return Err(e);
         }
     };
 
-    // Parse the response
-    let (datetime_str, day_of_week) = match parse_time_response(&body) {
-        Ok(data) => data,
-        Err(e) => {
-            disconnect_wifi(control, stack).await;
-            return Err(e);
-        }
-    };
+    let local_dt = apply_cet_with_dst(utc_seconds);
 
     // Update RTC
-    if let Err(e) = update_rtc_with_time(datetime_str, day_of_week).await {
+    if let Err(e) = update_rtc_with_time(local_dt).await {
         disconnect_wifi(control, stack).await;
         return Err(e);
     }
