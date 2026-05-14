@@ -340,9 +340,9 @@ async fn fetch_time_from_ntp(
 
     socket.bind(0).map_err(|_| "Failed to bind UDP socket")?;
 
-    let addrs = stack
-        .dns_query(server, dns::DnsQueryType::A)
+    let addrs = with_timeout(timeout_duration, stack.dns_query(server, dns::DnsQueryType::A))
         .await
+        .map_err(|_| "DNS query timed out")?
         .map_err(|_| "DNS query failed")?;
     let server_ip = addrs.first().ok_or("DNS query returned no results")?;
     let endpoint = IpEndpoint::new(*server_ip, NTP_PORT);
@@ -378,7 +378,15 @@ async fn fetch_time_from_ntp(
 
         let recv_result = with_timeout(timeout_duration, socket.recv_from(&mut response)).await;
         match recv_result {
-            Ok(Ok((n, _meta))) => {
+            Ok(Ok((n, meta))) => {
+                if meta.endpoint != endpoint {
+                    warn!("Ignoring NTP response from unexpected endpoint: {:?}", meta.endpoint);
+                    if attempt >= max_retries {
+                        return Err("Unexpected NTP response source");
+                    }
+                    Timer::after(Duration::from_millis(250)).await;
+                    continue;
+                }
                 if n < NTP_PACKET_SIZE {
                     warn!("NTP response too short: {} bytes", n);
                     if attempt >= max_retries {
@@ -456,7 +464,7 @@ fn date_to_days_since_epoch(year: u16, month: u8, day: u8) -> i64 {
     days + i64::from(day - 1)
 }
 
-/// Convert a local date/time to Unix seconds (UTC).
+/// Convert a UTC date/time to Unix seconds.
 fn datetime_to_unix_seconds(year: u16, month: u8, day: u8, hour: u8, minute: u8, second: u8) -> i64 {
     let days = date_to_days_since_epoch(year, month, day);
     days * 86_400 + i64::from(hour) * 3_600 + i64::from(minute) * 60 + i64::from(second)
