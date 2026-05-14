@@ -67,15 +67,13 @@ embedded-graphics = "0.8.1"
 smart-leds = "0.4.0"
 ssd1306-async = { git = "https://github.com/kalkyl/ssd1306-async", rev = "21b611be2f0dc85cf7ff6dca01f53a71dbe1c622" }
 heapless = "0.9.1"
-serde = { version = "1.0.203", default-features = false, features = ["derive"] }
-serde-json-core = "0.6.0"
 
-static_cell = "2"
+static_cell = { version = "2" }
 portable-atomic = { version = "1.5", features = ["critical-section"] }
 pio-proc = "0.3.0"
 
 rand = { version = "0.8.5", default-features = false }
-reqwless = { version = "0.13.0", features = ["defmt"] }
+
 tinybmp = "0.7.0"
 dfplayer-async = { version = "0.5.0", features = ["defmt"] }
 moving_median = "0.3.0"
