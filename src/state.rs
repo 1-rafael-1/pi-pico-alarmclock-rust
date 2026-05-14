@@ -272,7 +272,7 @@ pub enum DisplayState {
 }
 
 /// User-configurable system settings (persisted to flash)
-#[derive(Eq, PartialEq, Debug, Format, Clone)]
+#[derive(Eq, PartialEq, Debug, Format, Clone, Copy)]
 pub struct SystemSettings {
     /// Volume level for alarm sound (0-30, `DFPlayer` range)
     volume: u8,
@@ -290,7 +290,7 @@ impl SystemSettings {
     }
 
     /// Get the volume level
-    pub const fn get_volume(&self) -> u8 {
+    pub const fn get_volume(self) -> u8 {
         self.volume
     }
 
@@ -310,7 +310,7 @@ impl SystemSettings {
     }
 
     /// Get the clock brightness level
-    pub const fn get_clock_brightness(&self) -> u8 {
+    pub const fn get_clock_brightness(self) -> u8 {
         self.clock_brightness
     }
 
