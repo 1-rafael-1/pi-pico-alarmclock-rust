@@ -153,14 +153,14 @@ fn handle_request(rtc: &mut Rtc<'static, peripherals::RTC>, request: RtcRequest)
             GET_TIME_RESPONSE.reset();
             let time = rtc.now().map_or_else(
                 |_| {
-                    // warn!("RTC manager: GetTime request -> RTC not running");
+                    warn!("RTC manager: GetTime request -> RTC not running");
                     None
                 },
                 |dt| {
-                    // info!(
-                    //     "RTC manager: GetTime request -> {:04}-{:02}-{:02} {:02}:{:02}:{:02}",
-                    //     dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second
-                    // );
+                    info!(
+                        "RTC manager: GetTime request -> {:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+                        dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second
+                    );
                     Some(dt)
                 },
             );
@@ -205,7 +205,7 @@ pub async fn rtc_get_time() -> Option<DateTime> {
     // This prevents concurrent requests from stealing each other's responses
     let _lock = RTC_API_MUTEX.lock().await;
 
-    // info!("rtc_get_time: sending request");
+    info!("rtc_get_time: sending request");
     // Send request with timeout to prevent blocking during startup
     if with_timeout(
         Duration::from_millis(200),
@@ -218,7 +218,7 @@ pub async fn rtc_get_time() -> Option<DateTime> {
         return None;
     }
 
-    // info!("rtc_get_time: waiting for response");
+    info!("rtc_get_time: waiting for response");
     // Wait for response signal with timeout
     with_timeout(Duration::from_millis(200), GET_TIME_RESPONSE.wait())
         .await
