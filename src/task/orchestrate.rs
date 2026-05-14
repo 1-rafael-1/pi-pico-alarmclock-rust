@@ -141,7 +141,6 @@ async fn handle_event(event: Event) {
             if handle_display_wake_if_off(now_tick).await {
                 return;
             }
-            // system_state.update_interaction_tick(now_tick);
             handle_yellow_button_press(now_tick).await;
             signal_display_update();
             handle_button_led_on_button_press().await;
@@ -762,6 +761,7 @@ async fn handle_yellow_button_press(now_tick: u64) {
         let mut system_state_guard = SYSTEM_STATE.lock().await;
         let Some(system_state) = system_state_guard.as_mut() else {
             warn!("System state not initialized");
+            drop(system_state_guard);
             return;
         };
 
@@ -792,7 +792,6 @@ async fn handle_yellow_button_press(now_tick: u64) {
             }
             OperationMode::SetClockBrightness => {
                 system_state.system_settings.decrement_clock_brightness();
-                drop(system_state_guard);
                 // Live preview: update NeoPixel brightness immediately
                 signal_neopixel_brightness_update();
             }
