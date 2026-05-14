@@ -24,7 +24,6 @@
 //! ```
 
 include!(concat!(env!("OUT_DIR"), "/wifi_secrets.rs"));
-include!(concat!(env!("OUT_DIR"), "/time_api_config.rs"));
 
 use core::str::from_utf8;
 
@@ -172,10 +171,10 @@ impl TimeUpdater {
         Self {
             ssid: SSID,
             password: PASSWORD,
-            time_api_url: TIME_SERVER_URL,
+            time_api_url: "http://worldclockapi.com/api/json/cet/now",
             refresh_after_secs: 21_600, // 6 hours
             retry_after_secs: 30,
-            timeout_duration: Duration::from_secs(10),
+            timeout_duration: Duration::from_secs(15),
         }
     }
 
@@ -330,7 +329,7 @@ async fn wait_for_network_ready(stack: &embassy_net::Stack<'static>) -> Result<(
 
 /// API response structure for time data from worldclockapi.com
 #[derive(Deserialize)]
-struct ApiResponse<'a> {
+struct WorldClockApiResponse<'a> {
     /// ISO 8601 datetime string (e.g., "2025-01-15T19:10+01:00")
     #[serde(rename = "currentDateTime")]
     current_date_time: &'a str,
@@ -339,12 +338,22 @@ struct ApiResponse<'a> {
     day_of_the_week: &'a str,
 }
 
+/// API response structure for worldtimeapi.org (time.now-compatible fields).
+#[derive(Deserialize)]
+struct TimeNowApiResponse<'a> {
+    /// ISO 8601 datetime string (e.g., "2023-10-05T14:30:00.123456+01:00")
+    datetime: &'a str,
+    /// Day of week as number (0 = Sunday, 6 = Saturday)
+    day_of_week: u8,
+}
+
 /// Fetch time data from the `API` using static buffers.
 #[allow(clippy::significant_drop_tightening)]
 async fn fetch_time_from_api(
     stack: &embassy_net::Stack<'static>,
     url: &str,
     seed: u64,
+    timeout_duration: Duration,
 ) -> Result<heapless::String<8192>, &'static str> {
     info!("Starting HTTP request to: {}", url);
 
@@ -357,61 +366,171 @@ async fn fetch_time_from_api(
     let dns_client = dns::DnsSocket::new(*stack);
     info!("TCP and DNS clients created");
 
-    let _tls_config = TlsConfig::new(
-        seed,
-        &mut buffers.tls_read_buffer,
-        &mut buffers.tls_write_buffer,
-        TlsVerify::None,
-    );
-    info!("TLS config created (not used for HTTP)");
-
-    let mut http_client = HttpClient::new(&tcp_client, &dns_client);
-    info!("HTTP client created");
-
-    info!("Creating HTTP GET request...");
-    let mut request = http_client.request(Method::GET, url).await.map_err(|e| {
-        warn!(
-            "Failed to create HTTP request (could be DNS or connection issue): {:?}",
-            e
+    let max_retries = 2;
+    let body = if url.starts_with("https://") {
+        let mut tls_config = TlsConfig::new(
+            seed,
+            &mut buffers.tls_read_buffer,
+            &mut buffers.tls_write_buffer,
+            TlsVerify::None,
         );
-        "Failed to create HTTP request"
-    })?;
-    info!("HTTP request created successfully (DNS resolved, TCP connection established)");
+        info!("TLS config created for HTTPS");
 
-    info!("Sending HTTP request...");
-    let response = request.send(&mut buffers.rx_buffer).await.map_err(|e| {
-        warn!(
-            "Failed to send HTTP request (connection reset or send failure): {:?}",
-            e
-        );
-        "Failed to send HTTP request"
-    })?;
-    info!("HTTP response received");
+        let mut http_client = HttpClient::new_with_tls(&tcp_client, &dns_client, tls_config);
+        info!("HTTPS client created");
 
-    info!("Reading response body...");
-    let response_bytes = response.body().read_to_end().await.map_err(|e| {
-        warn!("Failed to read response body: {:?}", e);
-        "Failed to read response body"
-    })?;
-    info!("Response body read successfully, {} bytes", response_bytes.len());
+        let mut attempt = 0;
+        let body = loop {
+            info!(
+                "Creating HTTP GET request... (attempt {}/{})",
+                attempt + 1,
+                max_retries + 1
+            );
+            let mut request = match http_client.request(Method::GET, url).await {
+                Ok(req) => req,
+                Err(e) => {
+                    warn!(
+                        "Failed to create HTTP request (could be DNS or connection issue): {:?}",
+                        e
+                    );
+                    if attempt >= max_retries {
+                        return Err("Failed to create HTTP request");
+                    }
+                    attempt += 1;
+                    Timer::after(Duration::from_millis(250)).await;
+                    continue;
+                }
+            };
+            info!("HTTP request created successfully (DNS resolved, TCP connection established)");
 
-    let body_str = from_utf8(response_bytes).map_err(|_| "Failed to parse response as UTF-8")?;
+            info!("Sending HTTP request...");
+            let response = match with_timeout(timeout_duration, request.send(&mut buffers.rx_buffer)).await {
+                Ok(Ok(resp)) => resp,
+                Ok(Err(e)) => {
+                    warn!(
+                        "Failed to send HTTP request (connection reset or send failure): {:?}",
+                        e
+                    );
+                    if attempt >= max_retries {
+                        return Err("Failed to send HTTP request");
+                    }
+                    attempt += 1;
+                    Timer::after(Duration::from_millis(250)).await;
+                    continue;
+                }
+                Err(_) => {
+                    warn!("Timed out while sending HTTP request");
+                    if attempt >= max_retries {
+                        return Err("Timed out while sending HTTP request");
+                    }
+                    attempt += 1;
+                    Timer::after(Duration::from_millis(250)).await;
+                    continue;
+                }
+            };
+            info!("HTTP response received");
 
-    info!("Response body: {:?}", &body_str);
+            info!("Reading response body...");
+            let response_bytes = response.body().read_to_end().await.map_err(|e| {
+                warn!("Failed to read response body: {:?}", e);
+                "Failed to read response body"
+            })?;
+            info!("Response body read successfully, {} bytes", response_bytes.len());
 
-    // Copy to a heapless string to avoid lifetime issues
-    heapless::String::try_from(body_str).map_err(|_| "Response too large for buffer")
+            let body_str = from_utf8(response_bytes).map_err(|_| "Failed to parse response as UTF-8")?;
+
+            info!("Response body: {:?}", &body_str);
+
+            // Copy to a heapless string to avoid lifetime issues
+            let body = heapless::String::try_from(body_str).map_err(|_| "Response too large for buffer")?;
+            break body;
+        };
+        body
+    } else {
+        let mut http_client = HttpClient::new(&tcp_client, &dns_client);
+        info!("HTTP client created");
+
+        let mut attempt = 0;
+        let body = loop {
+            info!(
+                "Creating HTTP GET request... (attempt {}/{})",
+                attempt + 1,
+                max_retries + 1
+            );
+            let mut request = match http_client.request(Method::GET, url).await {
+                Ok(req) => req,
+                Err(e) => {
+                    warn!(
+                        "Failed to create HTTP request (could be DNS or connection issue): {:?}",
+                        e
+                    );
+                    if attempt >= max_retries {
+                        return Err("Failed to create HTTP request");
+                    }
+                    attempt += 1;
+                    Timer::after(Duration::from_millis(250)).await;
+                    continue;
+                }
+            };
+            info!("HTTP request created successfully (DNS resolved, TCP connection established)");
+
+            info!("Sending HTTP request...");
+            let response = match with_timeout(timeout_duration, request.send(&mut buffers.rx_buffer)).await {
+                Ok(Ok(resp)) => resp,
+                Ok(Err(e)) => {
+                    warn!(
+                        "Failed to send HTTP request (connection reset or send failure): {:?}",
+                        e
+                    );
+                    if attempt >= max_retries {
+                        return Err("Failed to send HTTP request");
+                    }
+                    attempt += 1;
+                    Timer::after(Duration::from_millis(250)).await;
+                    continue;
+                }
+                Err(_) => {
+                    warn!("Timed out while sending HTTP request");
+                    if attempt >= max_retries {
+                        return Err("Timed out while sending HTTP request");
+                    }
+                    attempt += 1;
+                    Timer::after(Duration::from_millis(250)).await;
+                    continue;
+                }
+            };
+            info!("HTTP response received");
+
+            info!("Reading response body...");
+            let response_bytes = response.body().read_to_end().await.map_err(|e| {
+                warn!("Failed to read response body: {:?}", e);
+                "Failed to read response body"
+            })?;
+            info!("Response body read successfully, {} bytes", response_bytes.len());
+
+            let body_str = from_utf8(response_bytes).map_err(|_| "Failed to parse response as UTF-8")?;
+
+            info!("Response body: {:?}", &body_str);
+
+            // Copy to a heapless string to avoid lifetime issues
+            let body = heapless::String::try_from(body_str).map_err(|_| "Response too large for buffer")?;
+            break body;
+        };
+        body
+    };
+
+    Ok(body)
 }
 
-/// Parse the time `API` response and return datetime and day of week.
-fn parse_time_response(body: &str) -> Result<(&str, u8), &'static str> {
+/// Parse worldclockapi response and return owned datetime and day of week.
+fn parse_worldclockapi_response(body: &str) -> Result<(heapless::String<64>, u8), &'static str> {
     let bytes = body.as_bytes();
-    let response: ApiResponse = serde_json_core::de::from_slice::<ApiResponse>(bytes)
-        .map_err(|_| "Failed to parse JSON response")?
+    let response: WorldClockApiResponse = serde_json_core::de::from_slice::<WorldClockApiResponse>(bytes)
+        .map_err(|_| "Failed to parse worldclockapi JSON response")?
         .0;
 
-    info!("Datetime: {:?}", response.current_date_time);
-    info!("Day of week: {:?}", response.day_of_the_week);
+    info!("WorldClockAPI datetime: {:?}", response.current_date_time);
+    info!("WorldClockAPI day of week: {:?}", response.day_of_the_week);
 
     // Convert day of week string to number (0 = Sunday, 6 = Saturday)
     let day_num = match response.day_of_the_week {
@@ -422,10 +541,33 @@ fn parse_time_response(body: &str) -> Result<(&str, u8), &'static str> {
         "Thursday" => 4,
         "Friday" => 5,
         "Saturday" => 6,
-        _ => return Err("Invalid day of week"),
+        _ => return Err("Invalid day of week in worldclockapi response"),
     };
 
-    Ok((response.current_date_time, day_num))
+    let datetime = heapless::String::<64>::try_from(response.current_date_time)
+        .map_err(|_| "Datetime too large in worldclockapi response")?;
+
+    Ok((datetime, day_num))
+}
+
+/// Parse time.now response and return owned datetime and day of week.
+fn parse_time_now_response(body: &str) -> Result<(heapless::String<64>, u8), &'static str> {
+    let bytes = body.as_bytes();
+    let response: TimeNowApiResponse = serde_json_core::de::from_slice::<TimeNowApiResponse>(bytes)
+        .map_err(|_| "Failed to parse time.now JSON response")?
+        .0;
+
+    info!("time.now datetime: {:?}", response.datetime);
+    info!("time.now day of week: {:?}", response.day_of_week);
+
+    if response.day_of_week > 6 {
+        return Err("Invalid day_of_week in time.now response");
+    }
+
+    let datetime =
+        heapless::String::<64>::try_from(response.datetime).map_err(|_| "Datetime too large in time.now response")?;
+
+    Ok((datetime, response.day_of_week))
 }
 
 /// Update the RTC with the fetched time data.
@@ -549,8 +691,11 @@ async fn update_time_once(
         return Err(e);
     }
 
-    // Fetch time from API
-    let body = match fetch_time_from_api(stack, config.time_api_url(), seed).await {
+    // Fetch and parse time from the configured API.
+    let time_api_url = config.time_api_url();
+    info!("Time API: {}", time_api_url);
+
+    let body = match fetch_time_from_api(stack, time_api_url, seed, config.timeout_duration).await {
         Ok(b) => b,
         Err(e) => {
             disconnect_wifi(control, stack).await;
@@ -558,8 +703,7 @@ async fn update_time_once(
         }
     };
 
-    // Parse the response
-    let (datetime_str, day_of_week) = match parse_time_response(&body) {
+    let (datetime_str, day_of_week) = match parse_worldclockapi_response(&body) {
         Ok(data) => data,
         Err(e) => {
             disconnect_wifi(control, stack).await;
@@ -568,7 +712,7 @@ async fn update_time_once(
     };
 
     // Update RTC
-    if let Err(e) = update_rtc_with_time(datetime_str, day_of_week).await {
+    if let Err(e) = update_rtc_with_time(datetime_str.as_str(), day_of_week).await {
         disconnect_wifi(control, stack).await;
         return Err(e);
     }

@@ -170,7 +170,7 @@ async fn wait_for_enable_signal() {
 async fn schedule_alarm(config: &AlarmConfig) -> bool {
     // Get current time from RTC manager
     let Some(now) = rtc_get_time().await else {
-        warn!("Failed to get current time from RTC");
+        // warn!("Failed to get current time from RTC");
         return false;
     };
 
